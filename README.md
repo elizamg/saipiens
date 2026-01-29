@@ -1,5 +1,30 @@
 ## sApIens
 
+
+## Sprint 1 Progress
+
+[Figma Demo](https://www.figma.com/proto/GtyuApL5TlYQUJhwWFYQNR/SAIPIENS?node-id=13007-15&t=kIJol6aDAmDJwseV-1&scaling=scale-down&content-scaling=fixed&page-id=3%3A2&starting-point-node-id=13007%3A15)
+
+
+Running the Project
+
+1. Clone the repo  
+   git clone https://github.com/elizamg/sapiens.git
+
+2. Navigate to the frontend  
+   cd sapiens/frontend
+
+3. Install dependencies  
+   npm install
+
+4. Start the dev server  
+   npm run dev
+
+5. Open the app  
+   Visit http://localhost:5173 in your browser
+
+
+
 sApIens is a process-first, AI-driven learning system that redefines how homework, feedback, and assessment work in schools.
 
 Rather than producing answers or explanations, sApIens structures learning around student reasoning, adapting questions, feedback, and pacing based on how a student thinks, not just whether they are correct.
