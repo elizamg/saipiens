@@ -10,19 +10,19 @@ It is an instructional system designed to make thinking visible.
 ##Motivation
 
 The American education system is facing a systemic mismatch:
--Teachers are overstretched and under-resourced
--Students receive limited individualized feedback
--Homework is graded on outcomes, not understanding
--AI is increasingly present—but institutionally restricted
+- Teachers are overstretched and under-resourced
+- Students receive limited individualized feedback
+- Homework is graded on outcomes, not understanding
+- AI is increasingly present—but institutionally restricted
 
 Current policies attempt to limit AI usage in schools. sApIens explores a different approach:
 What if AI were used to reshape learning workflows instead of bypassing them?
 
 sApIens is built on the premise that AI can:
--Reduce repetitive grading and explanation work
--Surface student misconceptions in real time
--Preserve teacher authority and curriculum control
--Encourage genuine critical thinking at scale
+- Reduce repetitive grading and explanation work
+- Surface student misconceptions in real time
+- Preserve teacher authority and curriculum control
+- Encourage genuine critical thinking at scale
 
 ##What sApIens Does
 
@@ -34,24 +34,24 @@ At a high level:
 3. AI generates adaptive, process-aware homework
 4. Students work through assignments while the system responds to their reasoning
 5. Teachers receive structured reports that reflect understanding, not just completion
-6. 
+
 The system emphasizes learning dynamics, not answer production.
 
 ## Core Principles
 - Process over product
 Reasoning, explanation, and reflection are primary signals.
 
--Adaptive instructional flow
+- Adaptive instructional flow
 Problem difficulty and sequencing change based on student input.
 
--Misconception detection
+- Misconception detection
 Errors trigger targeted feedback and reframed questions.
 
--Teacher-defined instruction
+- Teacher-defined instruction
 Curriculum originates from educators, not the model.
 
--Safety and focus by design
+- Safety and focus by design
 Instructional agents are constrained, on-task, and privacy-preserving.
 
 ## Goal
-To explore how AI can be utilized in the education system to better support students in developing critical thinking skills, not remembering what to answer. We believe that AI shouldn't be restricted by schools but instead used to create a better, more-interactive learning experience.
+To transform homework and assessment into a process-first learning system that makes student reasoning visible while reducing teacher workload. To not fear AI in schools, but utilize it to better the experience of learning.
