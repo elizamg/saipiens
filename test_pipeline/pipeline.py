@@ -6,6 +6,7 @@ from google import genai
 from test_pipeline.utils.prompt import Prompt
 
 ENV_GEMINI_API_KEY = "SAIPIENS_GEMINI_API_KEY"
+
 IDENTIFY_KNOWLEDGE_PROMPT_PATH = "../prompts/identify_knowledge_prompt.txt"
 IDENTIFY_KNOWLEDGE_JSON_PATH = "../prompts/identify_knowledge_schema.json"
 
@@ -57,7 +58,7 @@ class Pipeline:
     def identify_knowledge(self, uploaded_file):
         content = self.identify_knowledge_prompt.arguments_to_content({"TEXTBOOK_CHAPTER": uploaded_file})
         response = self.client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             contents=content,
             config={
                 "response_mime_type": "application/json",
