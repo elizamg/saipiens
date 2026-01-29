@@ -24,6 +24,9 @@ Running the Project
    Visit http://localhost:5173 in your browser
 
 
+Viewing Prompts and the Prompt Testing:
+
+
 
 sApIens is a process-first, AI-driven learning system that redefines how homework, feedback, and assessment work in schools.
 
@@ -64,18 +67,23 @@ The system emphasizes learning dynamics, not answer production.
 
 ## Core Principles
 - Process over product
+  
 Reasoning, explanation, and reflection are primary signals.
 
 - Adaptive instructional flow
+  
 Problem difficulty and sequencing change based on student input.
 
 - Misconception detection
+  
 Errors trigger targeted feedback and reframed questions.
 
 - Teacher-defined instruction
+  
 Curriculum originates from educators, not the model.
 
-- Safety and focus by design
+- Safety and focus by desig
+  
 Instructional agents are constrained, on-task, and privacy-preserving.
 
 ## Goal
