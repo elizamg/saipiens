@@ -5,7 +5,7 @@ class Prompt:
         parameter_names = re.findall(r'\{\{(.*?)\}\}', self.raw_prompt)
         valid_parameter_names = [name for name in parameter_names if not bool(re.search(r'\s', name))]
 
-        assert len(valid_parameter_names) == len(parameter_names) and len(valid_parameter_names) == len(set(valid_parameter_names)), "Parameter names must not contain whitespace."
+        assert len(valid_parameter_names) == len(parameter_names) and len(valid_parameter_names) == len(set(valid_parameter_names)), "Parameter names must not contain whitespace!"
 
         return valid_parameter_names
 
@@ -13,7 +13,9 @@ class Prompt:
         self.raw_prompt = raw_prompt
         self.parameter_names = self.get_parameter_names()
 
-    def arguments_to_content(self, **kwargs):
+    def arguments_to_content(self, must_have_all_parameters=True, **kwargs):
+        assert (not must_have_all_parameters) or set(kwargs.keys()) == set(self.parameter_names), "Not all parameters specified!"
+
         pattern = r"\{\{.*?\}\}"
         split_prompt = re.split(pattern, self.raw_prompt)
 

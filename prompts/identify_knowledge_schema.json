@@ -1,0 +1,31 @@
+{
+  "name": "identified_knowledge",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "knowledge_list": {
+        "type": "array",
+        "description": "A list of information and skill knowledge.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["information", "skill"],
+              "description": "The type of knowledge."
+            },
+            "description": {
+              "type": "string",
+              "description": "A description of the skill or the piece of knowledge."
+            }
+          },
+          "required": ["type", "description"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["knowledge_list"],
+    "additionalProperties": false
+  }
+}
