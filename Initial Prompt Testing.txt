@@ -5,7 +5,7 @@
    * Come up with feedback for the problem (specific feedback, what was right or wrong)
    * Grading output summary
    * Done: Create initial prompts that allow test code to run and be interpretable 
-Gemini 3 Pro - Low
+
 Break up curriculum into sections
 Prompt
 Break this textbook up into chapters and store those chapters in a JSON format. Only return the proper JSON format with no leading or trailing characters or text.
@@ -2116,4 +2116,5 @@ Output: {
 [g]Mostly correct
 [h]incorrect
 [i]I don't know if we need to include these, since they seem unused besides being passed from the input to the output
+
 [j]This enum syntax doesn't work for structured JSON API, but it's fine for the prompt
