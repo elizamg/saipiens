@@ -1,0 +1,696 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 ArialMT;\f1\froman\fcharset0 Times-Roman;\f2\fmodern\fcharset0 Courier;
+\f3\froman\fcharset0 Times-Bold;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;}
+\margl1440\margr1440\vieww11520\viewh12640\viewkind0
+\deftab720
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\fs42\fsmilli21333 \cf0 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Break up curriculum into sections
+\f1\fs24 \
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs29\fsmilli14667 \cf0 Break this textbook up into chapters and store those chapters in a JSON format. Only return the proper JSON format with no leading or trailing characters or text.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Here is an example JSON format, use this exact format:
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 \{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"document": \{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"id": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"title": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"authors": ["string"],
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"edition": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"publisher": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"publication_year": number,
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"language": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"source": "string"
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\},
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"chapters": [
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"chapter_id": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"chapter_number": number,
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"title": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"summary": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"content": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"page_range": \{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"start": number,
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"end": number
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0]
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \}
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Here is the textbook: \{\{TEXTBOOK\}\}\
+\
+\pard\pardeftab720\partightenfactor0
+
+\f1\fs24 \cf0 \
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\fs42\fsmilli21333 \cf0 Identify skills and bits of knowledge to test/teach
+\f1\fs24 \
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs29\fsmilli14667 \cf0 Identify pieces of information that a student would need to know from this textbook chapter. Identify different skills that a student should have from this textbook chapter. Output all of the information and skills for this chapter in a JSON format.\'a0
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 This is the JSON structure:\uc0\u8232 
+\f2\fs21\fsmilli10667 \strokec2 \{
+\f1\fs24 \strokec2 \
+\pard\pardeftab720\partightenfactor0
+
+\f2\fs21\fsmilli10667 \cf0 \strokec2 \'a0\'a0"name": "identified_knowledge",
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0"strict": true,
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0"schema": \{
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0"type": "object",
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0"properties": \{
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0"knowledge_list": \{
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"type": "array",
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"description": "A list of information and skill knowledge.",
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"items": \{
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"type": "object",
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"properties": \{
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"type": \{
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"type": "string",
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"enum": ["information", "skill"],
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"description": "The type of knowledge."
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\},
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"description": \{
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"type": "string",
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"description": "A description of the skill or the piece of knowledge."
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\}
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\},
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"required": ["type", "description"],
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0"additionalProperties": false
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\'a0\'a0\}
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0\}
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\},
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0"required": ["knowledge_list"],
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0"additionalProperties": false
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\}
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \}
+\f1\fs24 \strokec2 \
+\
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs29\fsmilli14667 \cf0 This is an example output:\uc0\u8232 
+\f2\fs21\fsmilli10667 \strokec2 \{
+\f1\fs24 \strokec2 \
+\pard\pardeftab720\partightenfactor0
+
+\f2\fs21\fsmilli10667 \cf0 \strokec2 \'a0\'a0"knowledge_list": [
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\{\uc0\u8232 \'a0 \'a0 \'a0 "type": "information"
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0"description": "The definition of a mineral: a solid inorganic substance of natural occurrence."\uc0\u8232 \'a0 \'a0 \},
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\{\uc0\u8232 \'a0 \'a0 \'a0 "type": "information"
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0"description": "The definition of igneous rock: rocks formed from the cooling and solidification of hot, molten rock."\uc0\u8232 \'a0 \'a0 \},
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\{\uc0\u8232 \'a0 \'a0 \'a0 "type": "skill"
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0"description": "Converting between pounds and kilograms."\uc0\u8232 \'a0 \'a0 \},
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\{\uc0\u8232 \'a0 \'a0 \'a0 "type": "information"
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0\'a0\'a0\'a0\'a0"description": "How old the Earth is: 4.54 billion years old."\uc0\u8232 \'a0 \'a0 \},
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \'a0\'a0]
+\f1\fs24 \strokec2 \
+
+\f2\fs21\fsmilli10667 \strokec2 \}
+\f1\fs24 \strokec2 \
+\
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs29\fsmilli14667 \cf0 This is the textbook chapter: \{\{TEXTBOOK_CHAPTER\}\}\
+\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\fs42\fsmilli21333 \cf0 Question generation
+\f1\fs24 \
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs29\fsmilli14667 \cf0 You are an expert educator and curriculum designer.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 You generate homework problems that assess conceptual understanding and applied reasoning.
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 You strictly limit yourself to the provided content.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Instructional content:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{\{CONTENT\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Constraints:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Student level: \{\{LEVEL\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Difficulty: \{\{DIFFICULTY\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Problem type: \{\{PROBLEM_TYPE\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Problem ID: \{\{PROBLEM_ID\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Number of problems: 1
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Do NOT include a solution or hints
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - The problem must require application or reasoning, not definition recall
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Output the result in the following JSON format:
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 \{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'93problem_id\'94: \'93string\'94,
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"problem_statement": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"learning_objective": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"difficulty": number (1 for easy, 2 for medium, 3 for hard),
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"allowed_concepts": ["string"]
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \}
+\f1\fs24 \
+\pard\pardeftab720\partightenfactor0
+\cf0 \
+\
+\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\fs42\fsmilli21333 \cf0 Rubric
+\f1\fs24 \
+\pard\pardeftab720\partightenfactor0
+\cf0 \
+
+\f0\fs29\fsmilli14667 You are an expert educator and assessment designer.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Your task is to create a correctness rubric for a homework problem.
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 The rubric must assess conceptual understanding and reasoning.
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 Do not provide a model answer.
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 Do not introduce new concepts beyond those required by the problem.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Homework problem:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{\{PROBLEM_STATEMENT\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Constraints:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Student level: \{\{LEVEL\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Do NOT include a solution or sample answer
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - Do NOT reference information not required by the problem
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - The rubric must focus on correctness and reasoning
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Output the rubric in the following JSON format:
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 \{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"criteria": [
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"criterion_id": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"description": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"required_for_full_credit": true,
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"common_errors": ["string"]
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0],
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"overall_correctness_definition": "string"
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \}
+\f1\fs24 \
+\pard\pardeftab720\partightenfactor0
+\cf0 \
+\
+\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\fs42\fsmilli21333 \cf0 Giving Feedback
+\f1\fs24 \
+\pard\pardeftab720\partightenfactor0
+\cf0 \
+
+\f0\fs29\fsmilli14667 You are an expert educator providing formative feedback.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 You reference rubric criteria explicitly and give constructive guidance.
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 You never reveal the full solution.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Homework problem:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{\{PROBLEM\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Rubric:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{\{RUBRIC_JSON\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Student response:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{\{STUDENT_ANSWER\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Generate feedback in the following JSON format:
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 \{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"overall_assessment": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"criterion_feedback": [
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"criterion_id": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"status": "met | partially_met | not_met",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"feedback": "string"
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0],
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"next_steps": ["string"]
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \}
+\f1\fs24 \
+\pard\pardeftab720\partightenfactor0
+\cf0 \
+\
+\
+\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\fs42\fsmilli21333 \cf0 Grading Report
+\f3\b\fs36 \
+\pard\pardeftab720\partightenfactor0
+
+\f0\b0\fs29\fsmilli14667 \cf0 You are an expert teacher and assessment specialist.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Generate a teacher-facing grading report based only on the given problem, allowed concepts, rubric (if provided), and student answer.
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 Do not reveal a full solution.
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 Use the student's wording as evidence where possible.
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 If a concept cannot be assessed from the student's response, mark it "not_evaluable".
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 Return valid JSON only that matches the requested schema exactly.
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Context:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - student_id: \{\{STUDENT_ID\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - assignment_id: \{\{ASSIGNMENT_ID\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - problem_id: \{\{PROBLEM_ID\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 - difficulty_level: \{\{DIFFICULTY\}\}
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Problem:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{\{PROBLEM_STATEMENT\}\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 """
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Allowed concepts:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{\{ALLOWED_CONCEPTS_JSON_ARRAY\}\}
+\f1\fs24 \
+\
+
+\f0\fs29\fsmilli14667 Rubric:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{\{RUBRIC_JSON\}\}
+\f1\fs24 \
+\
+\
+
+\f0\fs29\fsmilli14667 Return the grading report in this JSON schema:
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"student_id": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"assignment_id": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"problem_id": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"difficulty_level": number,
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"overall_result": \{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0"status": "correct | partially_correct | incorrect"
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\},
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"concept_mastery": [
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"concept": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"status": "understood | partially_understood | not_understood | not_evaluable",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"evidence": "string"
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0],
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"rubric_results": [
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"criterion_id": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"status": "met | partially_met | not_met",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"evidence": "string"
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0],
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"strengths": ["string"],
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"gaps": ["string"],
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"likely_misconceptions": ["string"],
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"teacher_notes": "string",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0"recommended_next_steps": [
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\{
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"type": "reteach | practice | extension",
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\'a0\'a0"description": "string"
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0\'a0\'a0\}
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \'a0\'a0]
+\f1\fs24 \
+
+\f0\fs29\fsmilli14667 \}
+\f1\fs24 \
+\
+}
