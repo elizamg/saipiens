@@ -26,6 +26,8 @@ Running the Project
 
 Viewing Prompts and the Prompt Testing:
 
+- Prompt testing can be viewed in the document Initial Prompt Testing.txt
+- Initial prompts can be viewed in the document Initial_Prompts.rtf
 
 
 sApIens is a process-first, AI-driven learning system that redefines how homework, feedback, and assessment work in schools.
