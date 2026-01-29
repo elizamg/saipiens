@@ -1,4 +1,4 @@
-##sApIens
+## sApIens
 
 sApIens is a process-first, AI-driven learning system that redefines how homework, feedback, and assessment work in schools.
 
@@ -7,7 +7,7 @@ Rather than producing answers or explanations, sApIens structures learning aroun
 sApIens is not a tutor.
 It is an instructional system designed to make thinking visible.
 
-##Motivation
+## Motivation
 
 The American education system is facing a systemic mismatch:
 - Teachers are overstretched and under-resourced
@@ -24,7 +24,7 @@ sApIens is built on the premise that AI can:
 - Preserve teacher authority and curriculum control
 - Encourage genuine critical thinking at scale
 
-##What sApIens Does
+## What sApIens Does
 
 sApIens is a process-centric homework and assessment system built on teacher-provided materials.
 
