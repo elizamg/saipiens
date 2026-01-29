@@ -1,0 +1,2119 @@
+﻿* Break up curriculum into sections
+   * Identify skills and bits of knowledge to test/teach
+   * Pick problem type(s) (e.g. true/false, multiple choice, single word answer, long answer)
+   * Determine correctness/satisfactory answers
+   * Come up with feedback for the problem (specific feedback, what was right or wrong)
+   * Grading output summary
+   * Done: Create initial prompts that allow test code to run and be interpretable 
+Gemini 3 Pro - Low
+Break up curriculum into sections
+Prompt
+Break this textbook up into chapters and store those chapters in a JSON format. Only return the proper JSON format with no leading or trailing characters or text.
+
+
+Here is an example JSON format, use this exact format:
+
+
+{
+  "document": {
+    "id": "string",
+    "title": "string",
+    "authors": ["string"],
+    "edition": "string",
+    "publisher": "string",
+    "publication_year": number,
+    "language": "string",
+    "source": "string"
+  },
+  "chapters": [
+    {
+      "chapter_id": "string",
+      "chapter_number": number,
+      "title": "string",
+      "summary": "string",
+      "content": "string",
+      "page_range": {
+        "start": number,
+        "end": number
+      }
+    }
+  ]
+}
+
+
+Here is the textbook: {textbook}
+
+
+Model: Gemini 3 Pro
+Output: Too many tokens
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Identify skills and bits of knowledge to test/teach
+Prompt
+Identify pieces of information that a student would need to know from this textbook chapter. Identify different skills that a student should have from this textbook chapter. Output all of the information and skills for this chapter in a JSON format. 
+
+
+This is the JSON structure:
+{
+  "name": "identified_knowledge",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "knowledge_list": {
+        "type": "array",
+        "description": "A list of information and skill knowledge.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["information", "skill"],
+              "description": "The type of knowledge."
+            },
+            "description": {
+              "type": "string",
+              "description": "A description of the skill or the piece of knowledge."
+            }
+          },
+          "required": ["type", "description"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["knowledge_list"],
+    "additionalProperties": false
+  }
+}
+
+
+This is an example output:
+{
+  "knowledge_list": [
+    {
+     "type": "information"
+      "description": "The definition of a mineral: a solid inorganic substance of natural occurrence."
+   },
+    {
+     "type": "information"
+      "description": "The definition of igneous rock: rocks formed from the cooling and solidification of hot, molten rock."
+   },
+    {
+     "type": "skill"
+      "description": "Converting between pounds and kilograms."
+   },
+    {
+     "type": "information"
+      "description": "How old the Earth is: 4.54 billion years old."
+   },
+  ]
+}
+
+
+This is the textbook chapter: phys sci ch 7.pdf
+
+
+
+
+Model: Gemini 3 Pro
+Output:
+
+
+{
+  "name": "identified_knowledge",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "knowledge_list": {
+        "type": "array",
+        "description": "A list of information and skill knowledge.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "information",
+                "skill"
+              ],
+              "description": "The type of knowledge."
+            },
+            "description": {
+              "type": "string",
+              "description": "A description of the skill or the piece of knowledge."
+            }
+          },
+          "required": [
+            "type",
+            "description"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "knowledge_list"
+    ],
+    "additionalProperties": false
+  },
+  "knowledge_list": [
+    {
+      "type": "information",
+      "description": "The Law of Conservation of Mass: Mass is neither created nor destroyed in a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of reactants: the substances present before a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of products: the new substances formed as a result of a chemical reaction."
+    },
+    {
+      "type": "skill",
+      "description": "Writing chemical equations to represent reactions (Reactants → Products)."
+    },
+    {
+      "type": "information",
+      "description": "The function of coefficients in a chemical equation to represent the relative numbers of moles of reactants and products."
+    },
+    {
+      "type": "skill",
+      "description": "Balancing chemical equations by adjusting coefficients to ensure the number of atoms of each element is equal on both sides."
+    },
+    {
+      "type": "skill",
+      "description": "Counting the number of atoms of each element in a chemical formula."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a mole: an amount of substance containing approximately 6.02 × 10^23 particles (Avogadro's number)."
+    },
+    {
+      "type": "information",
+      "description": "The definition of molar mass: the mass of one mole of a substance."
+    },
+    {
+      "type": "skill",
+      "description": "Calculating the molar mass of a compound by summing the atomic masses of its component atoms."
+    },
+    {
+      "type": "skill",
+      "description": "Converting between the mass of a substance and the number of moles using molar mass."
+    },
+    {
+      "type": "skill",
+      "description": "Using balanced chemical equations and molar masses to calculate the mass of product formed from a given mass of reactant (stoichiometry)."
+    },
+    {
+      "type": "information",
+      "description": "The five general types of chemical reactions: synthesis, decomposition, single-replacement, double-replacement, and combustion."
+    },
+    {
+      "type": "information",
+      "description": "Characteristics of a synthesis reaction: two or more substances react to form a single substance (A + B → AB)."
+    },
+    {
+      "type": "information",
+      "description": "Characteristics of a decomposition reaction: a compound breaks down into two or more simpler substances (AB → A + B)."
+    },
+    {
+      "type": "information",
+      "description": "Characteristics of a single-replacement reaction: one element takes the place of another element in a compound (A + BC → B + AC)."
+    },
+    {
+      "type": "information",
+      "description": "Characteristics of a double-replacement reaction: two different compounds exchange positive ions and form two new compounds (AB + CD → AD + CB)."
+    },
+    {
+      "type": "information",
+      "description": "Characteristics of a combustion reaction: a substance reacts rapidly with oxygen, often producing heat and light."
+    },
+    {
+      "type": "skill",
+      "description": "Classifying a chemical reaction into one of the five general types based on its chemical equation."
+    },
+    {
+      "type": "information",
+      "description": "The definition of an oxidation-reduction (redox) reaction: a reaction involving the transfer of electrons from one reactant to another."
+    },
+    {
+      "type": "information",
+      "description": "The difference between oxidation (loss of electrons) and reduction (gain of electrons)."
+    },
+    {
+      "type": "information",
+      "description": "The concept that chemical energy is stored in the chemical bonds of a substance."
+    },
+    {
+      "type": "information",
+      "description": "The energy changes in bonds: breaking bonds requires energy, while forming bonds releases energy."
+    },
+    {
+      "type": "information",
+      "description": "The definition of an exothermic reaction: a chemical reaction that releases energy to its surroundings."
+    },
+    {
+      "type": "information",
+      "description": "The definition of an endothermic reaction: a chemical reaction that absorbs energy from its surroundings."
+    },
+    {
+      "type": "skill",
+      "description": "Interpreting energy diagrams to distinguish between exothermic and endothermic reactions."
+    },
+    {
+      "type": "information",
+      "description": "The Law of Conservation of Energy: energy is neither created nor destroyed during a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of reaction rate: the rate at which reactants change into products over time."
+    },
+    {
+      "type": "information",
+      "description": "Factors that affect reaction rates: temperature, surface area, concentration, stirring, and catalysts."
+    },
+    {
+      "type": "skill",
+      "description": "Predicting how changes in temperature, surface area, concentration, or the addition of a catalyst will affect the rate of a reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a catalyst: a substance that affects the reaction rate without being used up in the reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of equilibrium: a state in which the forward and reverse paths of a change take place at the same rate."
+    },
+    {
+      "type": "information",
+      "description": "The concept of a reversible reaction: a reaction in which the conversion of reactants into products and the conversion of products into reactants can happen simultaneously."
+    },
+    {
+      "type": "information",
+      "description": "Le Châtelier's Principle: when a change is introduced to a system in equilibrium, the equilibrium shifts in the direction that relieves the change."
+    },
+    {
+      "type": "skill",
+      "description": "Predicting the shift in equilibrium when temperature, pressure, or concentration is altered for a specific reaction."
+    }
+  ]
+}
+
+
+
+Model: Gemini 3 Flash
+Output: 
+{
+  "knowledge_list": [
+    {
+      "type": "information",
+      "description": "The law of conservation of mass: mass is neither created nor destroyed in a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of reactants (substances undergoing change) and products (new substances formed)."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a mole as a counting unit representing 6.02 x 10^23 particles (Avogadro's number)."
+    },
+    {
+      "type": "information",
+      "description": "The definition of molar mass as the mass of one mole of a substance, equal to its atomic mass in grams."
+    },
+    {
+      "type": "information",
+      "description": "The five general types of chemical reactions: synthesis, decomposition, single-replacement, double-replacement, and combustion."
+    },
+    {
+      "type": "information",
+      "description": "The definition of oxidation-reduction (redox) reactions as processes where electrons are transferred between atoms."
+    },
+    {
+      "type": "information",
+      "description": "The concept that breaking chemical bonds requires energy, while forming chemical bonds releases energy."
+    },
+    {
+      "type": "information",
+      "description": "The difference between exothermic reactions (release energy to surroundings) and endothermic reactions (absorb energy from surroundings)."
+    },
+    {
+      "type": "information",
+      "description": "The factors that affect reaction rates: temperature, surface area, concentration, stirring, and catalysts."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a catalyst as a substance that speeds up a reaction without being consumed."
+    },
+    {
+      "type": "information",
+      "description": "Le Châtelier's principle: when a change is introduced to a system in equilibrium, the equilibrium shifts to relieve that change."
+    },
+    {
+      "type": "skill",
+      "description": "Writing and balancing chemical equations to show the conservation of mass."
+    },
+    {
+      "type": "skill",
+      "description": "Calculating the molar mass of a compound by adding the atomic masses of its component atoms."
+    },
+    {
+      "type": "skill",
+      "description": "Converting between the mass of a substance and the number of moles using molar mass as a conversion factor."
+    },
+    {
+      "type": "skill",
+      "description": "Calculating the mass of a reactant or product using balanced chemical equations and mole ratios."
+    },
+    {
+      "type": "skill",
+      "description": "Classifying a chemical reaction into one of the five main categories based on its reactants and products."
+    },
+    {
+      "type": "skill",
+      "description": "Identifying which elements are oxidized and which are reduced in a redox reaction based on electron transfer."
+    },
+    {
+      "type": "skill",
+      "description": "Interpreting reaction energy diagrams to determine if a reaction is exothermic or endothermic."
+    },
+    {
+      "type": "skill",
+      "description": "Predicting how changes in temperature, pressure, or concentration will shift the equilibrium of a reversible reaction."
+    }
+  ]
+}
+
+Model: OpenAI 4.1 mini
+Output: {
+"knowledge_list": [
+{
+"type": "information",
+"description": "A chemical reaction involves the transformation of reactants into products, often accompanied by heat and light."
+},
+{
+"type": "information",
+"description": "Chemical equations represent chemical reactions using formulas for reactants and products."
+},
+{
+"type": "information",
+"description": "The law of conservation of mass states that mass is neither created nor destroyed in a chemical reaction."
+},
+{
+"type": "information",
+"description": "A balanced chemical equation has equal numbers of atoms of each element on both sides of the equation."
+},
+{
+"type": "information",
+"description": "Coefficients in a chemical equation indicate the number of molecules or atoms, and are used to balance the equation."
+},
+{
+"type": "information",
+"description": "A mole is a counting unit used in chemistry to measure amounts of substances, equivalent to about 6.02 × 10^23 particles."
+},
+{
+"type": "information",
+"description": "Molar mass is the mass of one mole of a substance, expressed in grams."
+},
+{
+"type": "information",
+"description": "Mole-mass conversions allow conversion between mass and moles using molar mass as a conversion factor."
+},
+{
+"type": "information",
+"description": "Types of chemical reactions include synthesis, decomposition, single-replacement, double-replacement, and combustion reactions."
+},
+{
+"type": "information",
+"description": "Chemical reactions can involve transfers of electrons, such as oxidation-reduction (redox) reactions."
+},
+{
+"type": "information",
+"description": "Exothermic reactions release energy, while endothermic reactions absorb energy."
+},
+{
+"type": "information",
+"description": "Chemical bonds store energy; breaking bonds requires energy and forming bonds releases energy."
+},
+{
+"type": "information",
+"description": "Reaction rates describe how fast reactants change into products."
+},
+{
+"type": "information",
+"description": "Factors affecting reaction rates include temperature, surface area, concentration, stirring, and catalysts."
+},
+{
+"type": "information",
+"description": "Equilibrium in chemical reactions occurs when forward and reverse reactions proceed at the same rate, with no net change."
+},
+{
+"type": "information",
+"description": "Le Châtelier’s principle explains how changes in conditions (temperature, pressure, concentration) shift chemical equilibrium."
+},
+{
+"type": "skill",
+"description": "Formulating and balancing chemical equations to reflect the conservation of mass."
+},
+{
+"type": "skill",
+"description": "Using mole concepts and molar mass to perform mole-to-mass and mass-to-mole conversions."
+},
+{
+"type": "skill",
+"description": "Identifying the type of chemical reaction (synthesis, decomposition, single/double replacement, combustion, redox)."
+},
+{
+"type": "skill",
+"description": "Applying the law of conservation of mass to explain chemical processes and balance equations."
+},
+{
+"type": "skill",
+"description": "Performing calculations to predict masses or moles of reactants or products using balanced equations and molar masses."
+},
+{
+"type": "skill",
+"description": "Analyzing and interpreting reaction rates and factors that affect reaction speed."
+},
+{
+"type": "skill",
+"description": "Explaining chemical equilibrium and predicting the effects of changes in conditions using Le Châtelier’s principle."
+},
+{
+"type": "skill",
+"description": "Designing and conducting experiments to observe chemical reactions and collect data on reaction rates and equilibrium."
+},
+{
+"type": "skill",
+"description": "Using chemical equations and models to represent electron transfers in oxidation-reduction reactions."
+}
+]
+}
+
+
+Model: OpenAI 4.1 
+Output: {
+"knowledge_list": [
+{
+"type": "information",
+"description": "The definition of a chemical reaction: a process in which substances change into different substances with new properties."
+},
+{
+"type": "information",
+"description": "How to write and balance chemical equations, including identification of reactants and products."
+},
+{
+"type": "information",
+"description": "Law of conservation of mass: mass is neither created nor destroyed in a chemical reaction."
+},
+{
+"type": "information",
+"description": "Types of chemical reactions: synthesis, decomposition, single-replacement, double-replacement, combustion, oxidation-reduction."
+},
+{
+"type": "information",
+"description": "Definition and examples of exothermic and endothermic reactions."
+},
+{
+"type": "information",
+"description": "What happens to energy (absorbed or released) in chemical reactions."
+},
+{
+"type": "information",
+"description": "Definition of mole and Avogadro's number (6.02 x 10^23)."
+},
+{
+"type": "information",
+"description": "How to use molar mass to convert between grams and moles of a substance."
+},
+{
+"type": "information",
+"description": "The concept and definition of chemical equilibrium: when the rate of the forward reaction equals the rate of the reverse reaction."
+},
+{
+"type": "information",
+"description": "Factors affecting reaction rates: temperature, surface area, concentration, stirring, and catalysts."
+},
+{
+"type": "information",
+"description": "Factors affecting equilibrium: concentration, temperature, pressure."
+},
+{
+"type": "information",
+"description": "The difference between physical and chemical equilibrium."
+},
+{
+"type": "information",
+"description": "How energy changes in chemical reactions can be used to classify them as either endothermic or exothermic."
+},
+{
+"type": "information",
+"description": "The role of catalysts: substances that increase the rate of a reaction without being used up."
+},
+{
+"type": "information",
+"description": "Examples of everyday chemical reactions and their classifications."
+},
+{
+"type": "information",
+"description": "How chemical reactions are important in biological and environmental contexts (respiration, combustion, etc.)."
+},
+{
+"type": "skill",
+"description": "Writing and balancing chemical equations given word or formula equations."
+},
+{
+"type": "skill",
+"description": "Identifying reactants and products in a chemical equation."
+},
+{
+"type": "skill",
+"description": "Classifying types of chemical reactions from given equations or descriptions."
+},
+{
+"type": "skill",
+"description": "Converting between grams, moles, and molecules using molar mass and Avogadro's number."
+},
+{
+"type": "skill",
+"description": "Predicting the products of synthesis, decomposition, single-replacement, and double-replacement reactions."
+},
+{
+"type": "skill",
+"description": "Describing and analyzing energy changes during chemical reactions."
+},
+{
+"type": "skill",
+"description": "Carrying out and interpreting simple lab activities and data related to conservation of mass and reaction types."
+},
+{
+"type": "skill",
+"description": "Explaining how different variables affect reaction rate and equilibrium using experimental and real-world examples."
+},
+{
+"type": "skill",
+"description": "Relating the law of conservation of mass to real laboratory measurements and calculations."
+},
+{
+"type": "skill",
+"description": "Using scientific reasoning to infer and predict outcomes of reactions under different conditions."
+},
+{
+"type": "skill",
+"description": "Constructing explanations for why chemical reactions proceed as observed using principles of atoms, molecules, and bonds."
+},
+{
+"type": "skill",
+"description": "Comparing and contrasting exothermic and endothermic reactions."
+},
+{
+"type": "skill",
+"description": "Interpreting and constructing graphs or tables summarizing energy changes or reaction progress."
+}
+]
+}
+
+
+
+
+
+
+
+
+NO EXAMPLE INCLUDED
+
+
+Model: Gemini 3 pro
+Output: 
+{
+  "name": "identified_knowledge",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "knowledge_list": {
+        "type": "array",
+        "description": "A list of information and skill knowledge.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "information",
+                "skill"
+              ],
+              "description": "The type of knowledge."
+            },
+            "description": {
+              "type": "string",
+              "description": "A description of the skill or the piece of knowledge."
+            }
+          },
+          "required": [
+            "type",
+            "description"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "knowledge_list"
+    ],
+    "additionalProperties": false
+  },
+  "knowledge_list": [
+    {
+      "type": "information",
+      "description": "The Law of Conservation of Mass: Mass is neither created nor destroyed in a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of reactants: the substances present before a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of products: the new substances formed as a result of a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a chemical equation: a representation of a chemical reaction in which the reactants and products are expressed as formulas."
+    },
+    {
+      "type": "information",
+      "description": "The role of coefficients in a chemical equation: numbers that appear before formulas to balance the equation and represent relative amounts."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a mole: an amount of substance containing approximately 6.02 × 10^23 particles (Avogadro’s number)."
+    },
+    {
+      "type": "information",
+      "description": "The definition of molar mass: the mass of one mole of a substance, which is the same as its atomic mass expressed in grams."
+    },
+    {
+      "type": "information",
+      "description": "The five general types of chemical reactions: synthesis, decomposition, single-replacement, double-replacement, and combustion."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a synthesis reaction: a reaction in which two or more substances react to form a single substance (A + B → AB)."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a decomposition reaction: a reaction in which a compound breaks down into two or more simpler substances (AB → A + B)."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a single-replacement reaction: a reaction in which one element takes the place of another element in a compound (A + BC → B + AC)."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a double-replacement reaction: a reaction in which two different compounds exchange positive ions and form two new compounds (AB + CD → AD + CB)."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a combustion reaction: a reaction in which a substance reacts rapidly with oxygen, often producing heat and light."
+    },
+    {
+      "type": "information",
+      "description": "The definition of oxidation: the process in which an element loses electrons during a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of reduction: the process in which an element gains electrons during a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The concept of chemical energy: the energy stored in the chemical bonds of a substance."
+    },
+    {
+      "type": "information",
+      "description": "The energy changes involving bonds: breaking bonds requires energy, while forming bonds releases energy."
+    },
+    {
+      "type": "information",
+      "description": "The definition of an exothermic reaction: a chemical reaction that releases energy to its surroundings."
+    },
+    {
+      "type": "information",
+      "description": "The definition of an endothermic reaction: a chemical reaction that absorbs energy from its surroundings."
+    },
+    {
+      "type": "information",
+      "description": "The Law of Conservation of Energy: energy is neither created nor destroyed during a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of reaction rate: the rate at which reactants change into products over time."
+    },
+    {
+      "type": "information",
+      "description": "Factors affecting reaction rates: temperature, surface area, concentration, stirring, and catalysts."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a catalyst: a substance that affects the reaction rate without being used up in the reaction."
+    },
+    {
+      "type": "information",
+      "description": "The definition of equilibrium: a state in which the forward and reverse paths of a change take place at the same rate."
+    },
+    {
+      "type": "information",
+      "description": "The definition of a reversible reaction: a reaction in which the conversion of reactants into products and the conversion of products into reactants can happen simultaneously."
+    },
+    {
+      "type": "information",
+      "description": "Le Châtelier's Principle: when a change is introduced to a system in equilibrium, the equilibrium shifts in the direction that relieves the change."
+    },
+    {
+      "type": "skill",
+      "description": "Writing balanced chemical equations by counting atoms and adjusting coefficients."
+    },
+    {
+      "type": "skill",
+      "description": "Calculating the molar mass of a compound by summing the atomic masses of its component atoms."
+    },
+    {
+      "type": "skill",
+      "description": "Converting between the mass of a substance and the number of moles using molar mass."
+    },
+    {
+      "type": "skill",
+      "description": "Calculating the mass of a product or reactant using a balanced chemical equation and molar masses (stoichiometry)."
+    },
+    {
+      "type": "skill",
+      "description": "Classifying a chemical reaction as synthesis, decomposition, single-replacement, double-replacement, or combustion based on its equation."
+    },
+    {
+      "type": "skill",
+      "description": "Identifying oxidation and reduction in a reaction by tracking electron transfer."
+    },
+    {
+      "type": "skill",
+      "description": "Interpreting energy diagrams to distinguish between exothermic and endothermic reactions."
+    },
+    {
+      "type": "skill",
+      "description": "Predicting how changes in temperature, surface area, concentration, or the addition of a catalyst will affect the rate of a reaction."
+    },
+    {
+      "type": "skill",
+      "description": "Applying Le Châtelier's Principle to predict how a system in equilibrium will shift in response to changes in temperature, pressure, or concentration."
+    }
+  ]
+}
+
+
+
+Model: Gemini 3 mini
+Output: 
+{
+  "knowledge_list": [
+    {
+      "type": "information",
+      "description": "The law of conservation of mass: mass is neither created nor destroyed in a chemical reaction."
+    },
+    {
+      "type": "information",
+      "description": "Definitions of reactants (substances undergoing change) and products (substances formed as a result of change)."
+    },
+    {
+      "type": "information",
+      "description": "A mole is a counting unit representing approximately 6.02 x 10^23 particles (Avogadro's number)."
+    },
+    {
+      "type": "information",
+      "description": "Molar mass is the mass of one mole of a substance, which is equal to its atomic mass expressed in grams."
+    },
+    {
+      "type": "information",
+      "description": "The five general types of chemical reactions: synthesis, decomposition, single-replacement, double-replacement, and combustion."
+    },
+    {
+      "type": "information",
+      "description": "Redox (oxidation-reduction) reactions involve the transfer of electrons between atoms: oxidation is loss, and reduction is gain."
+    },
+    {
+      "type": "information",
+      "description": "Chemical reactions involve the breaking of chemical bonds in reactants (requiring energy) and the formation of bonds in products (releasing energy)."
+    },
+    {
+      "type": "information",
+      "description": "Exothermic reactions release energy to their surroundings, while endothermic reactions absorb energy from their surroundings."
+    },
+    {
+      "type": "information",
+      "description": "Reaction rates tell how fast a reaction is going and can be changed by varying conditions."
+    },
+    {
+      "type": "information",
+      "description": "Factors that affect reaction rates include temperature, surface area, concentration, stirring, and catalysts."
+    },
+    {
+      "type": "information",
+      "description": "A catalyst is a substance that speeds up a chemical reaction without being consumed by it."
+    },
+    {
+      "type": "information",
+      "description": "Equilibrium is a state in which the forward and reverse paths of a change take place at the same rate."
+    },
+    {
+      "type": "information",
+      "description": "Le Châtelier's principle states that when a change is introduced to a system in equilibrium, the system shifts in a direction that relieves the change."
+    },
+    {
+      "type": "skill",
+      "description": "Writing balanced chemical equations by adjusting coefficients to show the conservation of mass."
+    },
+    {
+      "type": "skill",
+      "description": "Calculating the molar mass of an element or compound using atomic masses from the periodic table."
+    },
+    {
+      "type": "skill",
+      "description": "Converting between the mass of a substance and the number of moles using molar mass as a conversion factor."
+    },
+    {
+      "type": "skill",
+      "description": "Using mole ratios from balanced equations to calculate the mass of a reactant or product in a chemical reaction."
+    },
+    {
+      "type": "skill",
+      "description": "Classifying reactions into the five main categories based on the number and type of reactants and products."
+    },
+    {
+      "type": "skill",
+      "description": "Identifying oxidation and reduction processes in a reaction by tracking electron loss or gain."
+    },
+    {
+      "type": "skill",
+      "description": "Interpreting reaction energy diagrams to identify exothermic and endothermic processes and the energy barrier."
+    },
+    {
+      "type": "skill",
+      "description": "Predicting how changes in temperature, pressure, or concentration will shift a chemical equilibrium based on Le Châtelier's principle."
+    }
+  ]
+}
+
+
+
+Model: OpenAI 4.1 mini
+Output: {
+"knowledge_list": [
+{
+"type": "information",
+"description": "Chemical bonds are the forces that hold atoms together in compounds."
+},
+{
+"type": "information",
+"description": "Types of chemical bonds include ionic bonds, polar covalent bonds, nonpolar covalent bonds, polyatomic bonds, and metallic bonds."
+},
+{
+"type": "information",
+"description": "Metallic bonds form between cations and electrons."
+},
+{
+"type": "information",
+"description": "The law of conservation of mass states that mass is neither created nor destroyed in a chemical reaction."
+},
+{
+"type": "information",
+"description": "Chemical equations describe the substances present before and after a reaction, with reactants changing into products."
+},
+{
+"type": "information",
+"description": "Balanced chemical equations have equal numbers of atoms on both sides, achieved by adjusting coefficients."
+},
+{
+"type": "information",
+"description": "A mole is a counting unit in chemistry representing 6.02 × 10^23 particles of a substance."
+},
+{
+"type": "information",
+"description": "The molar mass of a substance is the mass of one mole of that substance in grams."
+},
+{
+"type": "information",
+"description": "Chemical reactions can be classified into synthesis, decomposition, single-replacement, double-replacement, oxidation-reduction, and combustion."
+},
+{
+"type": "information",
+"description": "Oxidation-reduction (redox) reactions involve the transfer of electrons between reactants."
+},
+{
+"type": "information",
+"description": "Exothermic reactions release energy, often as heat and light, while endothermic reactions absorb energy."
+},
+{
+"type": "information",
+"description": "Reaction rates describe how fast reactants change into products and can be affected by factors such as temperature, concentration, surface area, stirring, and catalysts."
+},
+{
+"type": "information",
+"description": "Chemical equilibrium occurs when forward and reverse reaction rates are equal, resulting in no net change in the amounts of reactants and products."
+},
+{
+"type": "information",
+"description": "Le Châtelier’s principle explains how equilibrium shifts when conditions like temperature, pressure, or concentration change."
+},
+{
+"type": "skill",
+"description": "Formulate and balance chemical equations using the law of conservation of mass."
+},
+{
+"type": "skill",
+"description": "Identify types of chemical bonds and describe how electrons are transferred or shared."
+},
+{
+"type": "skill",
+"description": "Perform mole-to-mass and mass-to-mole conversions using molar masses."
+},
+{
+"type": "skill",
+"description": "Classify chemical reactions based on reactants and products."
+},
+{
+"type": "skill",
+"description": "Explain energy changes during chemical reactions, including exothermic and endothermic processes."
+},
+{
+"type": "skill",
+"description": "Analyze factors affecting reaction rates and predict how changes impact the rate."
+},
+{
+"type": "skill",
+"description": "Describe and apply the concept of chemical equilibrium and predict shifts using Le Châtelier’s principle."
+},
+{
+"type": "skill",
+"description": "Design and analyze experiments to observe chemical reactions, reaction rates, and equilibrium."
+},
+{
+"type": "skill",
+"description": "Use models and diagrams to explain chemical reactions and equilibrium processes."
+}
+]
+}
+
+
+Model: OpenAI 4.1 
+Output: {
+"name": "identified_knowledge",
+"strict": true,
+"schema": {
+"knowledge_list": [
+{
+"type": "information",
+"description": "The definition of a chemical reaction as a process where substances change to form new substances with different properties."
+},
+{
+"type": "information",
+"description": "The law of conservation of mass, which states that mass is neither created nor destroyed in a chemical reaction."
+},
+{
+"type": "information",
+"description": "How to identify reactants and products in a chemical equation."
+},
+{
+"type": "information",
+"description": "The general forms and examples of types of chemical reactions: synthesis, decomposition, single-replacement, double-replacement, combustion, oxidation-reduction."
+},
+{
+"type": "information",
+"description": "The role of chemical equations in describing chemical reactions and the importance of balancing them so the number of atoms of each element is the same on both sides."
+},
+{
+"type": "information",
+"description": "How to use coefficients to balance chemical equations."
+},
+{
+"type": "information",
+"description": "The definition and role of a mole, including Avogadro's number (6.02 x 10^23) as the number of particles in one mole of a substance."
+},
+{
+"type": "information",
+"description": "How to use molar mass to convert between grams, moles, and molecules in calculations."
+},
+{
+"type": "information",
+"description": "Definitions and differences between exothermic and endothermic reactions, including how energy is absorbed or released."
+},
+{
+"type": "information",
+"description": "The principle and factors affecting reaction rates: temperature, surface area, concentration, stirring, and catalyst."
+},
+{
+"type": "information",
+"description": "The definition and characteristics of chemical equilibrium, including dynamic balance between forward and reverse reactions."
+},
+{
+"type": "information",
+"description": "How changes in temperature, pressure, and concentration affect chemical equilibrium."
+},
+{
+"type": "information",
+"description": "The concept of oxidation and reduction, and how they relate to electron transfer in chemical reactions."
+},
+{
+"type": "information",
+"description": "How certain chemical reactions are important in everyday life, such as in combustion, air bags, rusting, fire prevention, and metabolism."
+},
+{
+"type": "skill",
+"description": "Write and balance chemical equations for given chemical reactions."
+},
+{
+"type": "skill",
+"description": "Classify reactions as synthesis, decomposition, single-replacement, double-replacement, combustion, or redox based on chemical equations or descriptions."
+},
+{
+"type": "skill",
+"description": "Use molar mass and Avogadro's number to convert between grams, moles, and number of particles."
+},
+{
+"type": "skill",
+"description": "Predict the products of simple chemical reactions, given the reactants."
+},
+{
+"type": "skill",
+"description": "Interpret and construct models, diagrams, or graphs showing conservation of mass, reaction energy, or equilibrium."
+},
+{
+"type": "skill",
+"description": "Design and interpret simple experiments involving chemical change and conservation of mass."
+},
+{
+"type": "skill",
+"description": "Explain and analyze how factors such as temperature, surface area, concentration, and catalyst affect the rate of a chemical reaction."
+},
+{
+"type": "skill",
+"description": "Analyze and predict the direction of shift in a chemical equilibrium when conditions change."
+},
+{
+"type": "skill",
+"description": "Use scientific vocabulary to explain observations and answer questions about chemical change and reactions."
+},
+{
+"type": "skill",
+"description": "Apply the law of conservation of mass to calculations and laboratory scenarios."
+}
+]
+}
+}
+Question generation
+Prompt
+You are an expert educator and curriculum designer.
+
+
+You generate homework problems that assess conceptual understanding and applied reasoning.
+You strictly limit yourself to the provided content.
+
+
+Instructional content:
+"""
+{{CONTENT[a]}}[b]
+"""
+
+
+Constraints:
+- Student level: {{LEVEL[c]}}
+- Difficulty: {{DIFFICULTY[d]}}
+- Problem type: {{short answer / multi-step / conceptual / quantitative}}
+- Problem ID: {{PROBLEM_ID}}
+- Number of problems: 1
+- Do NOT include a solution or hints
+- The problem must require application or reasoning, not definition recall
+
+
+Output the result in the following JSON format:
+
+
+{
+  “problem_id”: “string”,[e]
+  "problem_statement": "string",
+  "learning_objective": "string",
+  "difficulty": number (1 for easy, 2 for medium, 3 for hard),
+  "allowed_concepts": ["string"][f]
+}
+
+
+
+
+
+
+EXAMPLE COMBINATIONS:
+Level: 6th grade
+Difficulty: easy, medium, hard
+Problem type: short answer / multi-step / conceptual / quantitative
+
+
+Combination: "type": "information",
+      "description": "The definition of equilibrium: a state in which the forward and reverse paths of a change take place at the same rate."
+"""
+
+
+Constraints:
+- Student level: 6th grade student
+- Difficulty: easy
+- Problem type: conceptual
+
+
+Model: Gemini 3 Pro
+Output: 
+{
+  "problem_statement": "Imagine a busy gym. Every minute, exactly 5 people enter the gym to work out, and exactly 5 people leave the gym. Use the concept of equilibrium to explain why the total number of people inside the gym stays the same, even though people are constantly moving in and out.",
+  "learning_objective": "Apply the definition of equilibrium to a real-world scenario to demonstrate that equal forward and reverse rates result in a stable state.",
+  "difficulty": 1,
+  "allowed_concepts": [
+    "definition of equilibrium",
+    "equal rates of change"
+  ]
+}
+
+Model: Gemini 3 Flash
+Output: 
+{
+  "problem_statement": "Imagine a school bus is stopped at a sidewalk. Every time 3 students climb up the stairs to get on the bus, exactly 3 other students walk down the stairs to get off the bus. Explain why the total number of students on the bus does not change, even though people are moving in and out.",
+  "learning_objective": "Apply the concept of equilibrium to explain how equal rates of forward and reverse changes result in a constant state.",
+  "difficulty": 1,
+  "allowed_concepts": ["equilibrium"]
+}
+
+Model: OpenAI 4.1 mini
+Output: {
+"problem_id": "1234",
+"problem_statement": "A school bus has 20 students on it. At the next stop, 3 students get off and 3 new students get on at the same time. Explain why the total number of students on the bus stays the same. Use the idea of equilibrium — when two opposite changes happen at the same rate — to help your answer.",
+"learning_objective": "Students will apply the concept of equilibrium to explain why a total quantity remains constant when equal amounts are added and removed at the same time.",
+"difficulty": 1,
+"allowed_concepts": [
+"equilibrium",
+"rate",
+"forward and reverse change"
+]
+}
+
+
+Model: OpenAI 4.1 
+Output:
+{
+"problem_id": "1234",
+"problem_statement": "Imagine water being poured into a bowl at the same rate that water is draining out through a small hole at the bottom. What will happen to the amount of water in the bowl over time? Explain your reasoning.",
+"learning_objective": "Apply the concept of equilibrium to explain what happens when forward and reverse changes occur at the same rate.",
+"difficulty": 1,
+"allowed_concepts": [
+"equilibrium"
+]
+}
+
+
+Combination: "type": "information",
+      "description": "The definition of equilibrium: a state in which the forward and reverse paths of a change take place at the same rate."
+"""
+
+
+Constraints:
+- Student level: 6th grade student
+- Difficulty: medium
+- Problem type: multi-step
+
+
+Model: Gemini 3 Pro
+Output: Didn’t complete the task within 4 minutes
+
+
+Model: Gemini 3 Flash
+Output: 
+{
+  "problem_statement": "Imagine a large bird feeder in a park. Every minute, 5 birds fly to the feeder to eat (the forward path), and exactly 5 birds fly away from the feeder to return to their nests (the reverse path).\n\nStep 1: Based on the definition of equilibrium, explain whether or not the bird feeder is currently in a state of equilibrium.\n\nStep 2: If the rate of birds flying away suddenly increases to 8 birds per minute while the rate of birds arriving stays at 5 per minute, describe what will happen to the total number of birds at the feeder and explain why this would no longer be considered a state of equilibrium.",
+  "learning_objective": "Analyze a scenario to determine if equilibrium exists based on the equality of rates and predict the outcome when forward and reverse rates become unequal.",
+  "difficulty": 2,
+  "allowed_concepts": ["equilibrium"]
+}
+
+Model: OpenAI 4.1 mini
+Output: {
+"problem_id": "1234",
+"problem_statement": "Imagine a subway train that starts with 50 passengers. At one station, 5 passengers get off the train while 5 new passengers get on at the same time. Explain why the number of passengers on the train does not change. Use the idea of equilibrium, where the forward and reverse changes happen at the same rate, to justify your answer.",
+"learning_objective": "Apply the concept of equilibrium to understand how equal rates of opposite changes affect a system's total quantity.",
+"difficulty": 2,
+"allowed_concepts": [
+"equilibrium"
+]
+}
+
+
+Model: OpenAI 4.1
+Output: {
+"problem_id": "1234",
+"problem_statement": "A science experiment sets up a special tank where gas is added through a pipe at the same rate that the gas escapes through a small hole. If both the addition and escape rates stay the same, what happens to the amount of gas in the tank after a long period of time? Describe how you know.",
+"learning_objective": "Students will apply the definition of equilibrium to explain the result of equal forward and reverse rates of change.",
+"difficulty": 2,
+"allowed_concepts": [
+"equilibrium"
+]
+}
+
+
+
+
+Rubric
+Prompt
+
+
+You are an expert educator and assessment designer.
+
+
+Your task is to create a correctness rubric for a homework problem.
+The rubric must assess conceptual understanding and reasoning.
+Do not provide a model answer.
+Do not introduce new concepts beyond those required by the problem.
+
+
+Homework problem:
+"""
+{{PROBLEM_STATEMENT}}
+"""
+
+
+Constraints:
+- Student level: {{LEVEL}}
+- Do NOT include a solution or sample answer
+- Do NOT reference information not required by the problem
+- The rubric must focus on correctness and reasoning
+
+
+Output the rubric in the following JSON format:
+
+
+{
+  "criteria": [
+    {
+      "criterion_id": "string",
+      "description": "string",
+      "required_for_full_credit": true,
+      "common_errors": ["string"]
+    }
+  ],
+  "overall_correctness_definition": "string"
+}
+
+
+Problem: {
+  "problem_statement": "Imagine a school bus is stopped at a sidewalk. Every time 3 students climb up the stairs to get on the bus, exactly 3 other students walk down the stairs to get off the bus. Explain why the total number of students on the bus does not change, even though people are moving in and out.",
+  "learning_objective": "Apply the concept of equilibrium to explain how equal rates of forward and reverse changes result in a constant state.",
+  "difficulty": 1,
+  "allowed_concepts": ["equilibrium"]
+}
+
+
+Model: Gemini 3 Pro
+Output: 
+{
+  "criteria": [
+    {
+      "criterion_id": "identification_of_equal_rates",
+      "description": "The response explicitly notes that the number of students entering (3) is equal to the number of students leaving (3).",
+      "required_for_full_credit": true,
+      "common_errors": [
+        "Stating that the students entering and leaving are the same specific individuals.",
+        "Ignoring the movement and simply stating that the bus is full."
+      ]
+    },
+    {
+      "criterion_id": "cancellation_reasoning",
+      "description": "The response explains that because the gain in students is exactly offset by the loss of students, the net change to the total is zero.",
+      "required_for_full_credit": true,
+      "common_errors": [
+        "Restating the prompt (e.g., 'It doesn't change because 3 get on and 3 get off') without explaining the mechanism of cancelling out.",
+        "Attributing the constant number to the bus being stopped rather than the balance of movement."
+      ]
+    }
+  ],
+  "overall_correctness_definition": "To be considered correct, the response must identify that the inflow equals the outflow and clearly explain that these equal and opposite actions result in the total number remaining stable."
+}
+
+
+
+Model: Gemini 3 Flash
+Output: 
+{
+  "criteria": [
+    {
+      "criterion_id": "rate_equality_identification",
+      "description": "The student must identify that the number of students entering the bus (forward path) is exactly equal to the number of students exiting the bus (reverse path).",
+      "required_for_full_credit": true,
+      "common_errors": [
+        "Focusing only on students getting on the bus",
+        "Focusing only on students getting off the bus",
+        "Failing to mention that the amounts entering and exiting are equal"
+      ]
+    },
+    {
+      "criterion_id": "concept_of_equilibrium_application",
+      "description": "The student must apply the concept of equilibrium to explain that because the opposing changes (on and off) are happening at the same rate, a balance is achieved.",
+      "required_for_full_credit": true,
+      "common_errors": [
+        "Stating that students have stopped moving entirely",
+        "Using the term 'equilibrium' without explaining the balance of rates"
+      ]
+    },
+    {
+      "criterion_id": "reasoning_for_constant_total",
+      "description": "The student must provide reasoning that explains why the total count remains the same: for every addition to the system, there is an equal subtraction, resulting in no net change.",
+      "required_for_full_credit": true,
+      "common_errors": [
+        "Stating the total doesn't change without explaining the 'why'",
+        "Claiming the bus is simply full or at capacity"
+      ]
+    }
+  ],
+  "overall_correctness_definition": "A correct response accurately identifies that the rate of students entering equals the rate of students exiting, then applies reasoning to show that these equal and opposite paths create a state of equilibrium where the total number of students stays constant despite the ongoing movement."
+}
+
+Model: OpenAI 4.1
+Output: {
+"criteria": [
+{
+"criterion_id": "rate_equality_identification",
+"description": "Identifies that the number of students getting on the bus is equal to the number getting off during each exchange.",
+"required_for_full_credit": true,
+"common_errors": [
+"Stating or implying that more students get on or off than the other.",
+"Failing to mention the equality of the two groups."
+]
+},
+{
+"criterion_id": "equilibrium_concept_application",
+"description": "Correctly explains that because the rates of students entering and leaving are equal, the total number of students on the bus remains constant (application of equilibrium).",
+"required_for_full_credit": true,
+"common_errors": [
+"Saying the total stays the same without explaining why.",
+"Describing the process as balanced but not linking to the idea of equilibrium or equal change per step."
+]
+},
+{
+"criterion_id": "logical_reasoning",
+"description": "Uses clear, logical reasoning to connect the process (equal numbers entering and leaving) to the unchanging total number of students on the bus.",
+"required_for_full_credit": true,
+"common_errors": [
+"Providing a circular explanation (e.g., 'because that's what happens').",
+"Giving a vague answer without a logical link between the process and the result."
+]
+}
+],
+"overall_correctness_definition": "Full credit is earned when the response accurately states that an equal number of students get on and off the bus each time, clearly links this process to the concept of equilibrium (constant overall number due to equal forward and reverse changes), and uses logical reasoning to explain why this leads to an unchanging total."
+}
+
+
+Model: OpenAI 4.1 mini
+Output: {
+"criteria": [
+{
+"criterion_id": "equal_rates_identification",
+"description": "Student correctly identifies that the number of students boarding the bus is equal to the number of students leaving the bus (3 entering and 3 leaving).",
+"required_for_full_credit": true,
+"common_errors": [
+"Incorrectly states that different numbers of students enter and leave.",
+"Fails to mention the matching numbers of students entering and leaving."
+]
+},
+{
+"criterion_id": "application_of_equilibrium_concept",
+"description": "Student applies the concept of equilibrium by explaining that because the rates of students entering and exiting are equal, the total number of students on the bus remains constant.",
+"required_for_full_credit": true,
+"common_errors": [
+"Mentions only that numbers are the same but does not connect this to equilibrium.",
+"Uses terms unrelated to equilibrium or provides vague explanations."
+]
+},
+{
+"criterion_id": "reasoning_about_constant_total",
+"description": "Student provides reasoning that the simultaneous, equal numbers of students boarding and exiting means the total number does not change despite movement.",
+"required_for_full_credit": true,
+"common_errors": [
+"States that students move but does not explain why the total stays the same.",
+"Suggests the total changes even though numbers are equal."
+]
+}
+],
+"overall_correctness_definition": "A fully correct response clearly explains that because exactly three students enter and exactly three leave at the same time, the total number on the bus does not change, applying the concept of equilibrium to show that equal forward and reverse changes maintain a constant total."
+}
+Giving Feedback
+Prompt:
+
+
+You are an expert educator providing formative feedback.
+
+
+You reference rubric criteria explicitly and give constructive guidance.
+You never reveal the full solution.
+
+
+Homework problem:
+"""
+{{PROBLEM}}
+"""
+
+
+Rubric:
+{{RUBRIC_JSON}}
+"""
+
+
+Student response:
+"""
+{{STUDENT_ANSWER}}
+"""
+
+
+Generate feedback in the following JSON format:
+
+
+{
+  "overall_assessment": "string",
+  "criterion_feedback": [
+    {
+      "criterion_id": "string",
+      "status": "met | partially_met | not_met",
+      "feedback": "string"
+    }
+  ],
+  "next_steps": ["string"]
+}
+
+
+Example usage:
+
+
+You are an expert educator providing formative feedback.
+
+
+You reference rubric criteria explicitly and give constructive guidance.
+You never reveal the full solution.
+
+
+Homework problem:
+"""
+{
+  "problem_statement": "Imagine a school bus is stopped at a sidewalk. Every time 3 students climb up the stairs to get on the bus, exactly 3 other students walk down the stairs to get off the bus. Explain why the total number of students on the bus does not change, even though people are moving in and out.",
+  "learning_objective": "Apply the concept of equilibrium to explain how equal rates of forward and reverse changes result in a constant state.",
+  "difficulty": 1,
+  "allowed_concepts": ["equilibrium"]
+}
+
+
+"""
+
+
+Rubric:
+{
+  "criteria": [
+    {
+      "criterion_id": "rate_equality_identification",
+      "description": "The student must identify that the number of students entering the bus (forward path) is exactly equal to the number of students exiting the bus (reverse path).",
+      "required_for_full_credit": true,
+      "common_errors": [
+        "Focusing only on students getting on the bus",
+        "Focusing only on students getting off the bus",
+        "Failing to mention that the amounts entering and exiting are equal"
+      ]
+    },
+    {
+      "criterion_id": "concept_of_equilibrium_application",
+      "description": "The student must apply the concept of equilibrium to explain that because the opposing changes (on and off) are happening at the same rate, a balance is achieved.",
+      "required_for_full_credit": true,
+      "common_errors": [
+        "Stating that students have stopped moving entirely",
+        "Using the term 'equilibrium' without explaining the balance of rates"
+      ]
+    },
+    {
+      "criterion_id": "reasoning_for_constant_total",
+      "description": "The student must provide reasoning that explains why the total count remains the same: for every addition to the system, there is an equal subtraction, resulting in no net change.",
+      "required_for_full_credit": true,
+      "common_errors": [
+        "Stating the total doesn't change without explaining the 'why'",
+        "Claiming the bus is simply full or at capacity"
+      ]
+    }
+  ],
+  "overall_correctness_definition": "A correct response accurately identifies that the rate of students entering equals the rate of students exiting, then applies reasoning to show that these equal and opposite paths create a state of equilibrium where the total number of students stays constant despite the ongoing movement."
+}
+"""
+
+
+Student response:
+"""
+{The number of students stays the same because the bus gains three students and loses three students at the same time. Since the changes cancel each other out, the total does not change.}[g]
+"""
+
+
+Generate feedback in the following JSON format:
+
+
+{
+  "overall_assessment": "string",
+  "criterion_feedback": [
+    {
+      "criterion_id": "string",
+      "status": "met | partially_met | not_met",
+      "feedback": "string"
+    }
+  ],
+  "next_steps": ["string"]
+}
+
+
+
+
+Model: Gemini 3 Pro
+Output:
+
+
+{
+  "overall_assessment": "Excellent work! You have correctly identified the key mechanics of the problem and explained why the total number of students remains constant.",
+  "criterion_feedback": [
+    {
+      "criterion_id": "rate_equality_identification",
+      "status": "met",
+      "feedback": "You successfully noted that the bus gains three students and loses three students, showing that the rate of entering equals the rate of exiting."
+    },
+    {
+      "criterion_id": "concept_of_equilibrium_application",
+      "status": "met",[h]
+      "feedback": "You applied the concept of equilibrium effectively by explaining that these changes happen 'at the same time' to create a balance, even if you didn't use the specific term."
+    },
+    {
+      "criterion_id": "reasoning_for_constant_total",
+      "status": "met",
+      "feedback": "Your reasoning that the changes 'cancel each other out' is exactly right and clearly explains why the total number doesn't change."
+    }
+  ],
+  "next_steps": [
+    "To make your answer even stronger, try to explicitly connect your explanation to the vocabulary word 'equilibrium' to show you understand how this specific scientific term applies to the situation."
+  ]
+}
+
+
+
+Model: Gemini 3 Flash
+Output: 
+{
+  "overall_assessment": "Great job! You clearly understand the logic of why the number of students remains the same. You have accurately identified the balance between people entering and leaving the bus.",
+  "criterion_feedback": [
+    {
+      "criterion_id": "rate_equality_identification",
+      "status": "met",
+      "feedback": "You correctly pointed out that the bus gains three students and loses three students, showing that you recognized the rates of the two changes are exactly equal."
+    },
+    {
+      "criterion_id": "concept_of_equilibrium_application",
+      "status": "partially_met",
+      "feedback": "You described the process of balance perfectly. To improve your answer, try to use the specific scientific term we learned to describe a state where opposing changes happen at the same rate."
+    },
+    {
+      "criterion_id": "reasoning_for_constant_total",
+      "status": "met",
+      "feedback": "Your reasoning is spot on; you clearly explained that because the changes cancel each other out, the total count does not change."
+    }
+  ],
+  "next_steps": [
+    "Re-read the definition of 'equilibrium' from your notes and see if you can use that word in your explanation.",
+    "Try to identify which action is the 'forward path' and which is the 'reverse path' in this bus scenario."
+  ]
+}
+
+Model: OpenAi 4.1 mini
+Output: {
+"overall_assessment": "The response correctly identifies that the number of students entering equals the number exiting and explains that these changes cancel out, keeping the total constant. However, it would benefit from explicitly applying the concept of equilibrium and providing a clearer explanation of why the total remains constant.",
+"criterion_feedback": [
+{
+"criterion_id": "rate_equality_identification",
+"status": "met",
+"feedback": "You clearly stated that the bus gains three students and loses three students at the same time, showing you understand the equal rates of students entering and exiting."
+},
+{
+"criterion_id": "concept_of_equilibrium_application",
+"status": "partially_met",
+"feedback": "You mention that changes cancel each other out, but you do not explicitly apply the term 'equilibrium' or explain how the balance of these rates maintains a stable total number on the bus. Adding this explanation would strengthen your response."
+},
+{
+"criterion_id": "reasoning_for_constant_total",
+"status": "met",
+"feedback": "Your explanation that the forward and reverse changes cancel each other out sufficiently explains why the total number of students does not change."
+}
+],
+"next_steps": [
+"Include an explicit reference to the concept of equilibrium and explain it as a balance of equal and opposite rates.",
+"Elaborate on how the ongoing movement of students is balanced by equal entering and exiting, maintaining a stable total number.",
+"Practice using technical terms alongside clear explanations to fully meet rubric expectations."
+]
+}
+
+
+Model: OpenAI 4.1 
+Ouput: {
+"overall_assessment": "Your response shows a clear understanding that the number of students entering and leaving the bus is equal, and you correctly reasoned why the total stays the same. However, you did not explicitly apply the scientific term 'equilibrium', which is needed to fully meet the learning objective.",
+"criterion_feedback": [
+{
+"criterion_id": "rate_equality_identification",
+"status": "met",
+"feedback": "Great job recognizing and stating that the number of students getting on matches the number getting off each time."
+},
+{
+"criterion_id": "concept_of_equilibrium_application",
+"status": "partially_met",
+"feedback": "You described the concept of balance and ongoing movement, but you did not use the term 'equilibrium' to name this state of balance."
+},
+{
+"criterion_id": "reasoning_for_constant_total",
+"status": "met",
+"feedback": "You provided clear reasoning for why the total number does not change, linking the equal increases and decreases properly."
+}
+],
+"next_steps": [
+"Try revising your explanation to explicitly use the word 'equilibrium' when describing the steady state resulting from the equal rates.",
+"Practice applying scientific vocabulary like 'equilibrium' in your explanations of other systems where opposing changes balance each other."
+]
+}
+Grading Report
+You are an expert teacher and assessment specialist.
+
+
+Generate a teacher-facing grading report based only on the given problem, allowed concepts, rubric (if provided), and student answer.
+Do not reveal a full solution.
+Use the student's wording as evidence where possible.
+If a concept cannot be assessed from the student's response, mark it "not_evaluable".
+Return valid JSON only that matches the requested schema exactly.
+
+
+Context:
+- student_id: {{STUDENT_ID}}
+- assignment_id: {{ASSIGNMENT_ID}}
+- problem_id: {{PROBLEM_ID}}[i]
+- difficulty_level: {{DIFFICULTY}}
+
+
+Problem:
+"""
+{{PROBLEM_STATEMENT}}
+"""
+
+
+Allowed concepts:
+{{ALLOWED_CONCEPTS_JSON_ARRAY}}
+
+
+Rubric:
+{{RUBRIC_JSON}}
+
+
+
+
+Return the grading report in this JSON schema:
+{
+  "student_id": "string",
+  "assignment_id": "string",
+  "problem_id": "string",
+  "difficulty_level": number,
+  "overall_result": {
+    "status": "correct | partially_correct | incorrect[j]"
+  },
+  "concept_mastery": [
+    {
+      "concept": "string",
+      "status": "understood | partially_understood | not_understood | not_evaluable",
+      "evidence": "string"
+    }
+  ],
+  "rubric_results": [
+    {
+      "criterion_id": "string",
+      "status": "met | partially_met | not_met",
+      "evidence": "string"
+    }
+  ],
+  "strengths": ["string"],
+  "gaps": ["string"],
+  "likely_misconceptions": ["string"],
+  "teacher_notes": "string",
+  "recommended_next_steps": [
+    {
+      "type": "reteach | practice | extension",
+      "description": "string"
+    }
+  ]
+}
+
+
+
+
+Example:
+
+
+You are an expert teacher and assessment specialist.
+
+
+Generate a teacher-facing grading report based only on the given problem, allowed concepts, rubric (if provided), and student answer.
+Do not reveal a full solution.
+Use the student's wording as evidence where possible.
+If a concept cannot be assessed from the student's response, mark it "not_evaluable".
+Return valid JSON only that matches the requested schema exactly.
+
+
+Context:
+- student_id: 123fred
+- assignment_id: physics_4
+- problem_id: physics4_27
+
+
+
+
+Problem:
+{
+  "problem_statement": "Imagine a school bus is stopped at a sidewalk. Every time 3 students climb up the stairs to get on the bus, exactly 3 other students walk down the stairs to get off the bus. Explain why the total number of students on the bus does not change, even though people are moving in and out.",
+  "learning_objective": "Apply the concept of equilibrium to explain how equal rates of forward and reverse changes result in a constant state.",
+  "difficulty": 1,
+  "allowed_concepts": ["equilibrium"]
+}
+
+
+
+
+
+
+Rubric:
+{
+  "overall_assessment": "Great job! You clearly understand the logic of why the number of students remains the same. You have accurately identified the balance between people entering and leaving the bus.",
+  "criterion_feedback": [
+    {
+      "criterion_id": "rate_equality_identification",
+      "status": "met",
+      "feedback": "You correctly pointed out that the bus gains three students and loses three students, showing that you recognized the rates of the two changes are exactly equal."
+    },
+    {
+      "criterion_id": "concept_of_equilibrium_application",
+      "status": "partially_met",
+      "feedback": "You described the process of balance perfectly. To improve your answer, try to use the specific scientific term we learned to describe a state where opposing changes happen at the same rate."
+    },
+    {
+      "criterion_id": "reasoning_for_constant_total",
+      "status": "met",
+      "feedback": "Your reasoning is spot on; you clearly explained that because the changes cancel each other out, the total count does not change."
+    }
+  ],
+  "next_steps": [
+    "Re-read the definition of 'equilibrium' from your notes and see if you can use that word in your explanation.",
+    "Try to identify which action is the 'forward path' and which is the 'reverse path' in this bus scenario."
+  ]
+}
+
+
+
+
+
+
+Return the grading report in this JSON schema:
+{
+  "student_id": "string",
+  "assignment_id": "string",
+  "problem_id": "string",
+  "difficulty_level": number,
+  "overall_result": {
+    "status": "correct | partially_correct | incorrect"
+  },
+  "concept_mastery": [
+    {
+      "concept": "string",
+      "status": "understood | partially_understood | not_understood | not_evaluable",
+      "evidence": "string"
+    }
+  ],
+  "rubric_results": [
+    {
+      "criterion_id": "string",
+      "status": "met | partially_met | not_met",
+      "evidence": "string"
+    }
+  ],
+  "strengths": ["string"],
+  "gaps": ["string"],
+  "likely_misconceptions": ["string"],
+  "teacher_notes": "string",
+  "recommended_next_steps": [
+    {
+      "type": "reteach | practice | extension",
+      "description": "string"
+    }
+  ]
+}
+
+
+
+
+Model: Gemini 3 Pro
+Output: 
+{
+  "student_id": "123fred",
+  "assignment_id": "physics_4",
+  "problem_id": "physics4_27",
+  "difficulty_level": 1,
+  "overall_result": {
+    "status": "correct"
+  },
+  "concept_mastery": [
+    {
+      "concept": "Dynamic Equilibrium",
+      "status": "understood",
+      "evidence": "Student correctly described the mechanism: \"gains three students and loses three students at the same time\"."
+    },
+    {
+      "concept": "Net Change in Equilibrium",
+      "status": "understood",
+      "evidence": "Student correctly reasoned that \"changes cancel each other out\" resulting in the total not changing."
+    }
+  ],
+  "rubric_results": [
+    {
+      "criterion_id": "rate_equality_identification",
+      "status": "met",
+      "evidence": "Student stated: \"bus gains three students and loses three students\"."
+    },
+    {
+      "criterion_id": "concept_of_equilibrium_application",
+      "status": "partially_met",
+      "evidence": "Student described the concept (\"at the same time... cancel each other out\") but did not use the required terminology \"equilibrium\"."
+    },
+    {
+      "criterion_id": "reasoning_for_constant_total",
+      "status": "met",
+      "evidence": "Student concluded: \"Since the changes cancel each other out, the total does not change.\""
+    }
+  ],
+  "strengths": [
+    "Correct identification of equal forward and reverse rates.",
+    "Clear reasoning regarding why the net change is zero."
+  ],
+  "gaps": [
+    "Student failed to utilize the specific domain vocabulary ('equilibrium') in the explanation."
+  ],
+  "likely_misconceptions": [
+    "No conceptual misconceptions evident; the student understands the dynamic nature of the problem (events happening \"at the same time\")."
+  ],
+  "teacher_notes": "The student has a solid grasp of the logic and mechanics of equilibrium. The 'partially_met' status on the application criterion is solely due to missing vocabulary, not a lack of understanding. Future instruction should focus on connecting their intuitive reasoning to formal scientific labels.",
+  "recommended_next_steps": [
+    {
+      "type": "practice",
+      "description": "Provide a quick exercise where the student maps the terms 'equilibrium', 'forward path', and 'reverse path' to the bus scenario."
+    },
+    {
+      "type": "extension",
+      "description": "Ask the student to predict what would happen to the total number of students if the rate of entering increased to 5 while the rate of leaving stayed at 3, effectively introducing Le Chatelier's principle logic."
+    }
+  ]
+}
+
+
+
+Model: Gemini 3 Flash
+Output: 
+{
+  "student_id": "123fred",
+  "assignment_id": "physics_4",
+  "problem_id": "physics4_27",
+  "difficulty_level": 1,
+  "overall_result": {
+    "status": "partially_correct"
+  },
+  "concept_mastery": [
+    {
+      "concept": "equilibrium",
+      "status": "partially_understood",
+      "evidence": "Student accurately describes the mechanism of dynamic balance ('gains three students and loses three students') but fails to explicitly name the state as 'equilibrium'."
+    }
+  ],
+  "rubric_results": [
+    {
+      "criterion_id": "rate_equality_identification",
+      "status": "met",
+      "evidence": "The student states the bus 'gains three students and loses three students at the same time'."
+    },
+    {
+      "criterion_id": "concept_of_equilibrium_application",
+      "status": "partially_met",
+      "evidence": "Student identifies that 'changes cancel each other out' but does not apply the formal term 'equilibrium'."
+    },
+    {
+      "criterion_id": "reasoning_for_constant_total",
+      "status": "met",
+      "evidence": "Student explains that 'since the changes cancel each other out, the total does not change'."
+    }
+  ],
+  "strengths": [
+    "Excellent conceptual grasp of equal rates in opposing processes.",
+    "Clear, logical reasoning regarding net change in a system."
+  ],
+  "gaps": [
+    "Missing formal scientific terminology (equilibrium)."
+  ],
+  "likely_misconceptions": [],
+  "teacher_notes": "123fred has a strong intuitive grasp of how dynamic systems maintain a constant state. They were able to logically derive the answer without relying on rote memorization of definitions. The only deficiency is the lack of formal vocabulary usage.",
+  "recommended_next_steps": [
+    {
+      "type": "practice",
+      "description": "Provide scenarios where the student must label the state using the term 'equilibrium' and identify 'forward' and 'reverse' paths."
+    },
+    {
+      "type": "extension",
+      "description": "Introduce a scenario where rates are unequal to see if the student can predict the direction of change in the total count."
+    }
+  ]
+}
+
+
+
+Model: OpenAI 4.1-mini
+Output: {
+"student_id": "123fred",
+"assignment_id": "physics_4",
+"problem_id": "physics4_27",
+"difficulty_level": 1,
+"overall_result": {
+"status": "partially_correct"
+},
+"concept_mastery": [
+{
+"concept": "equilibrium",
+"status": "partially_understood",
+"evidence": "The student described the process of balance perfectly but did not explicitly use the scientific term 'equilibrium' to characterize the constant state."
+}
+],
+"rubric_results": [
+{
+"criterion_id": "rate_equality_identification",
+"status": "met",
+"evidence": "Student pointed out that the bus gains three students while losing three students, indicating recognition of equal rates."
+},
+{
+"criterion_id": "concept_of_equilibrium_application",
+"status": "partially_met",
+"evidence": "While student described balance and cancellation of changes, the term 'equilibrium' was not used."
+},
+{
+"criterion_id": "reasoning_for_constant_total",
+"status": "met",
+"evidence": "Student clearly explained that the inbound and outbound changes cancel each other, keeping the total unchanged."
+}
+],
+"strengths": [
+"Clear identification of equal numbers entering and leaving.",
+"Sound reasoning that opposing changes result in no net change."
+],
+"gaps": [
+"Needs to explicitly apply the term 'equilibrium' in explanation.",
+"Could improve by naming which movements represent forward and reverse changes."
+],
+"likely_misconceptions": [],
+"teacher_notes": "The student has grasped the logical reasoning behind the constant number of students but should be encouraged to incorporate formal terminology for full mastery.",
+"recommended_next_steps": [
+{
+"type": "reteach",
+"description": "Review the definition of 'equilibrium' focusing on its meaning as a state with equal rates of opposing changes."
+},
+{
+"type": "practice",
+"description": "Have the student practice identifying forward and reverse processes in various scenarios to reinforce this aspect of equilibrium."
+}
+]
+}
+
+
+Model: OpenAI 4.1
+Output: {
+"student_id": "123fred",
+"assignment_id": "physics_4",
+"problem_id": "physics4_27",
+"difficulty_level": 1,
+"overall_result": {
+"status": "partially_correct"
+},
+"concept_mastery": [
+{
+"concept": "equilibrium",
+"status": "partially_understood",
+"evidence": "Student clearly explained that the number stays the same due to balancing changes, but did not explicitly name this state 'equilibrium'."
+}
+],
+"rubric_results": [
+{
+"criterion_id": "rate_equality_identification",
+"status": "met",
+"evidence": "Student recognized that three students enter and three leave each time, demonstrating recognition of matching rates."
+},
+{
+"criterion_id": "concept_of_equilibrium_application",
+"status": "partially_met",
+"evidence": "Student explained the continual balance leading to no net change, but did not use the term 'equilibrium'."
+},
+{
+"criterion_id": "reasoning_for_constant_total",
+"status": "met",
+"evidence": "Student justified why the total student count remains unchanged: the gains and losses offset each other."
+}
+],
+"strengths": [
+"Logical explanation of why the number of students stays the same.",
+"Correct identification of matching rates of students entering and leaving."
+],
+"gaps": [
+"Did not use the specific scientific term 'equilibrium' in the explanation."
+],
+"likely_misconceptions": [
+"Might not realize that the situation describes equilibrium in a scientific sense, not just ordinary balance."
+],
+"teacher_notes": "Solid grasp of the underlying idea; reinforce the use of scientific vocabulary such as 'equilibrium' to elevate understanding.",
+"recommended_next_steps": [
+{
+"type": "reteach",
+"description": "Explicitly teach and discuss 'equilibrium' as it applies to balanced rates of change."
+},
+{
+"type": "practice",
+"description": "Give additional examples that call for the identification and labeling of equilibrium situations."
+}
+]
+}
+
+
+
+
+[a]knowledge bit or skill
+[b]possibly context on prior questions
+[c]grade level
+[d]easy - 1, medium - 2, hard - 3
+[e]adding this in later so not included in current ouputs
+[f]should we cover multiple knowledge bits/skills at a time?
+[g]Mostly correct
+[h]incorrect
+[i]I don't know if we need to include these, since they seem unused besides being passed from the input to the output
+[j]This enum syntax doesn't work for structured JSON API, but it's fine for the prompt
