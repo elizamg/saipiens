@@ -32,6 +32,8 @@ dist/
 .env
 .env.*
 *.local
+.venv
+venv
 
 # Logs
 npm-debug.log*
@@ -41,3 +43,12 @@ pnpm-debug.log*
 # OS / editor
 .DS_Store
 .vscode/
+
+# PyCache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Test Files
+chapter_3.pdf
