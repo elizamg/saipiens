@@ -1,0 +1,33 @@
+{
+  "type": "OBJECT",
+  "properties": {
+    "knowledge_list": {
+      "type": "ARRAY",
+      "description": "A list of information and skill knowledge.",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "type": {
+            "type": "STRING",
+            "enum": [
+              "information",
+              "skill"
+            ],
+            "description": "The type of knowledge."
+          },
+          "description": {
+            "type": "STRING",
+            "description": "A description of the skill or the piece of knowledge."
+          }
+        },
+        "required": [
+          "type",
+          "description"
+        ]
+      }
+    }
+  },
+  "required": [
+    "knowledge_list"
+  ]
+}
