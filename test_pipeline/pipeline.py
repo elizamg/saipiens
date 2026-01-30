@@ -7,11 +7,15 @@ from google import genai
 
 from utils.prompt import Prompt
 
+MODEL = "gemini-3-flash-preview"
+
 ENV_GEMINI_API_KEY = "SAIPIENS_GEMINI_API_KEY"
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 IDENTIFY_KNOWLEDGE_PROMPT_PATH = os.path.join(script_dir, "../prompts/identify_knowledge_prompt.txt")
 IDENTIFY_KNOWLEDGE_JSON_PATH = os.path.join(script_dir, "../prompts/identify_knowledge_schema.json")
+GENERATE_QUESTION_PROMPT_PATH = os.path.join(script_dir, "../prompts/generate_question_prompt.txt")
+GENERATE_QUESTION_JSON_PATH = os.path.join(script_dir, "../prompts/generate_question_schema.json")
 
 class Pipeline:
     def __init__(self):
@@ -24,6 +28,14 @@ class Pipeline:
         with open(IDENTIFY_KNOWLEDGE_JSON_PATH, 'r') as file:
             schema_json = file.read()
             self.identify_knowledge_schema = json.loads(schema_json)
+        
+        with open(GENERATE_QUESTION_PROMPT_PATH, 'r') as file:
+            raw_prompt = file.read()
+            self.generate_question_prompt = Prompt(raw_prompt)
+        
+        with open(GENERATE_QUESTION_JSON_PATH, 'r') as file:
+            schema_json = file.read()
+            self.generate_question_schema = json.loads(schema_json)
 
     def download_pdf(self, url, output_file_path):
         try:
@@ -60,7 +72,7 @@ class Pipeline:
     def identify_knowledge(self, uploaded_file):
         content = self.identify_knowledge_prompt.arguments_to_content(**{"TEXTBOOK_CHAPTER": uploaded_file})
         response = self.client.models.generate_content(
-            model="gemini-3-flash-preview",
+            model=MODEL,
             contents=content,
             config={
                 "response_mime_type": "application/json",
@@ -69,8 +81,17 @@ class Pipeline:
         )
         return response.parsed["knowledge_list"]
     
-    def generate_question(self, content, level, difficulty):
-        pass
+    def generate_question(self, content, level, difficulty, problem_type):
+        content = self.generate_question_prompt.arguments_to_content(**{"CONTENT": content, "LEVEL": level, "DIFFICULTY": difficulty, "PROBLEM_TYPE": problem_type})
+        response = self.client.models.generate_content(
+            model=MODEL,
+            contents=content,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": self.generate_question_schema,
+            }
+        )
+        return response.parsed["problem_statement"]
 
     def generate_rubric(self, problem_statement, level):
         pass
@@ -97,6 +118,15 @@ if __name__ == "__main__":
     identified_knowledge = pipeline.identify_knowledge(uploaded_chapter)
 
     pprint(identified_knowledge)
+    print("\n\n---\n\n")
+
+    # Generate a question from the first identified knowledge component
+    generated_problem = pipeline.generate_question(content=str(identified_knowledge[0]), level="7th grade", difficulty="medium", problem_type="short answer")
+
+    pprint(generated_problem)
+    print("\n\n---\n\n")
+
+
 
 
 

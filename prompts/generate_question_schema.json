@@ -1,0 +1,24 @@
+{
+    "type": "object",
+    "properties": {
+        "problem_statement": {
+            "type": "string",
+            "description": "A full, complete, written-out problem for a student to solve."
+        },
+        "learning_objective": {
+            "type": "string",
+            "description": "The specific skill or knowledge point the problem aims to teach."
+        },
+        "allowed_concepts": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "A list of specific theories, formulas, or frameworks permitted for use in the solution."
+        }
+    },
+    "required": [
+        "learning_objective",
+        "problem_statement"
+    ]
+}
