@@ -1,8 +1,54 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Node (ignore anywhere in repo)
+node_modules/
+dist/
+.cache/
+
+# Env
+.env
+.env.*
+*.local
+.venv
+venv
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+.vscode/
+
+# PyCache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-.venv
-venv
+# Test Files
 chapter_3.pdf
