@@ -1,14 +1,17 @@
 import os
 import time
 import requests
+import json
+from pprint import pprint
 from google import genai
 
-from test_pipeline.utils.prompt import Prompt
+from utils.prompt import Prompt
 
 ENV_GEMINI_API_KEY = "SAIPIENS_GEMINI_API_KEY"
 
-IDENTIFY_KNOWLEDGE_PROMPT_PATH = "../prompts/identify_knowledge_prompt.txt"
-IDENTIFY_KNOWLEDGE_JSON_PATH = "../prompts/identify_knowledge_schema.json"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+IDENTIFY_KNOWLEDGE_PROMPT_PATH = os.path.join(script_dir, "../prompts/identify_knowledge_prompt.txt")
+IDENTIFY_KNOWLEDGE_JSON_PATH = os.path.join(script_dir, "../prompts/identify_knowledge_schema.json")
 
 class Pipeline:
     def __init__(self):
@@ -20,8 +23,7 @@ class Pipeline:
         
         with open(IDENTIFY_KNOWLEDGE_JSON_PATH, 'r') as file:
             schema_json = file.read()
-            identify_knowledge_schema = genai.models.ResponseSchema.from_json(schema_json)
-            self.identify_knowledge_schema = identify_knowledge_schema
+            self.identify_knowledge_schema = json.loads(schema_json)
 
     def download_pdf(self, url, output_file_path):
         try:
@@ -56,7 +58,7 @@ class Pipeline:
         return pdf_file
 
     def identify_knowledge(self, uploaded_file):
-        content = self.identify_knowledge_prompt.arguments_to_content({"TEXTBOOK_CHAPTER": uploaded_file})
+        content = self.identify_knowledge_prompt.arguments_to_content(**{"TEXTBOOK_CHAPTER": uploaded_file})
         response = self.client.models.generate_content(
             model="gemini-3-flash-preview",
             contents=content,
@@ -65,7 +67,7 @@ class Pipeline:
                 "response_schema": self.identify_knowledge_schema,
             }
         )
-        return response.parsed
+        return response.parsed["knowledge_list"]
     
     def generate_question(self, content, level, difficulty):
         pass
@@ -93,6 +95,8 @@ if __name__ == "__main__":
 
     # Identify pieces of knowledge from the uploaded chapter
     identified_knowledge = pipeline.identify_knowledge(uploaded_chapter)
+
+    pprint(identified_knowledge)
 
 
 

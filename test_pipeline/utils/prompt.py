@@ -14,7 +14,7 @@ class Prompt:
         self.parameter_names = self.get_parameter_names()
 
     def arguments_to_content(self, must_have_all_parameters=True, **kwargs):
-        assert (not must_have_all_parameters) or set(kwargs.keys()) == set(self.parameter_names), "Not all parameters specified!"
+        assert (not must_have_all_parameters) or set(kwargs.keys()) == set(self.parameter_names), f"Not all parameters specified! Expected {self.parameter_names}, got {kwargs.keys()}"
 
         pattern = r"\{\{.*?\}\}"
         split_prompt = re.split(pattern, self.raw_prompt)
