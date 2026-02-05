@@ -1,5 +1,6 @@
 import React from "react";
 import { MAIN_GREEN, GRAY_900, GRAY_600, WHITE } from "../../theme/colors";
+import RatingStars from "../ui/RatingStars";
 import type { ChatMessage } from "../../types/domain";
 
 interface MessageBubbleProps {
@@ -8,22 +9,27 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isStudent = message.role === "student";
+  const isSystem = message.metadata?.isSystemMessage === true;
+  const isCompletion = message.metadata?.isCompletionMessage === true;
+  const earnedStars = message.metadata?.earnedStars;
 
   const containerStyles: React.CSSProperties = {
     display: "flex",
-    justifyContent: isStudent ? "flex-end" : "flex-start",
+    justifyContent: isSystem ? "center" : isStudent ? "flex-end" : "flex-start",
     marginBottom: 16,
   };
 
   const bubbleStyles: React.CSSProperties = {
-    maxWidth: "70%",
+    maxWidth: isSystem ? "90%" : "70%",
     padding: "12px 16px",
     borderRadius: 16,
-    backgroundColor: isStudent ? MAIN_GREEN : WHITE,
-    color: isStudent ? WHITE : GRAY_900,
-    boxShadow: isStudent ? "none" : "0 1px 3px rgba(0, 0, 0, 0.1)",
-    borderTopRightRadius: isStudent ? 4 : 16,
-    borderTopLeftRadius: isStudent ? 16 : 4,
+    backgroundColor: isSystem ? "#f0fdf4" : isStudent ? MAIN_GREEN : WHITE,
+    color: isSystem ? GRAY_900 : isStudent ? WHITE : GRAY_900,
+    boxShadow: isSystem ? "none" : isStudent ? "none" : "0 1px 3px rgba(0, 0, 0, 0.1)",
+    borderTopRightRadius: isStudent && !isSystem ? 4 : 16,
+    borderTopLeftRadius: isStudent && !isSystem ? 16 : 4,
+    textAlign: isSystem ? "center" : "left",
+    fontWeight: isSystem ? 600 : 400,
   };
 
   const contentStyles: React.CSSProperties = {
@@ -56,7 +62,14 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div style={containerStyles}>
       <div style={bubbleStyles}>
-        <div style={contentStyles}>{message.content}</div>
+        {isCompletion && earnedStars != null ? (
+          <div style={{ ...contentStyles, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <RatingStars rating={earnedStars as 0 | 1 | 2 | 3} size={20} />
+            <span>{message.content}</span>
+          </div>
+        ) : (
+          <div style={contentStyles}>{message.content}</div>
+        )}
         {message.attachments && message.attachments.length > 0 && (
           <div style={attachmentContainerStyles}>
             {message.attachments.map((attachment, index) =>

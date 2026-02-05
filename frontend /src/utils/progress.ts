@@ -1,5 +1,6 @@
 import type {
   Objective,
+  Question,
   StudentObjectiveProgress,
   UnitProgress,
   EarnedStars,
@@ -75,4 +76,29 @@ export function getEarnedStars(
   progressMap: Record<string, StudentObjectiveProgress>
 ): EarnedStars {
   return progressMap[objectiveId]?.earnedStars ?? 0;
+}
+
+/**
+ * Get earned stars for a single question (0 or question.difficultyStars when completed).
+ * Derived from objective progress: question is completed when objective.earnedStars >= question.difficultyStars.
+ */
+export function getQuestionEarnedStars(
+  question: Question,
+  progressMap: Record<string, StudentObjectiveProgress>
+): EarnedStars {
+  const progress = progressMap[question.objectiveId];
+  const objectiveStars = progress?.earnedStars ?? 0;
+  return objectiveStars >= question.difficultyStars
+    ? (question.difficultyStars as EarnedStars)
+    : 0;
+}
+
+/**
+ * Whether the question is completed (earnedStars === 3 for that question's level).
+ */
+export function isQuestionCompleted(
+  question: Question,
+  progressMap: Record<string, StudentObjectiveProgress>
+): boolean {
+  return getQuestionEarnedStars(question, progressMap) === question.difficultyStars;
 }

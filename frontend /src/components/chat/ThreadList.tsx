@@ -1,19 +1,32 @@
 import RatingStars from "../ui/RatingStars";
 import ProgressBar from "../ui/ProgressBar";
 import { GRAY_900, GRAY_500, MAIN_GREEN, TRANSPARENT_GREEN, WHITE } from "../../theme/colors";
-import type { ThreadWithProgress, UnitProgress } from "../../types/domain";
+import type {
+  ThreadWithProgress,
+  UnitProgress,
+  Question,
+  StudentObjectiveProgress,
+} from "../../types/domain";
 
 interface ThreadListProps {
   threads: ThreadWithProgress[];
+  questionsByThread: Record<string, Question[]>;
+  progressMap: Record<string, StudentObjectiveProgress>;
   selectedThreadId?: string;
+  selectedQuestionId?: string;
   onSelectThread: (threadId: string) => void;
+  onSelectQuestion: (threadId: string, questionId: string) => void;
   unitProgress?: UnitProgress;
 }
 
 export default function ThreadList({
   threads,
+  questionsByThread,
+  progressMap,
   selectedThreadId,
+  selectedQuestionId,
   onSelectThread,
+  onSelectQuestion,
   unitProgress,
 }: ThreadListProps) {
   const containerStyles: React.CSSProperties = {
@@ -55,7 +68,6 @@ export default function ThreadList({
     padding: "8px 0",
   };
 
-  // Group threads by kind
   const knowledgeThreads = threads.filter((t) => t.kind === "knowledge");
   const skillThreads = threads.filter((t) => t.kind === "skill");
 
@@ -63,7 +75,7 @@ export default function ThreadList({
     <div style={containerStyles}>
       <div style={headerStyles}>
         <div style={headerTopStyles}>
-          <h3 style={titleStyles}>Threads</h3>
+          <h3 style={titleStyles}>Questions</h3>
           {unitProgress && (
             <span style={progressLabelStyles}>
               {unitProgress.completedObjectives}/{unitProgress.totalObjectives}
@@ -125,8 +137,8 @@ function ThreadGroup({
         <ThreadItem
           key={thread.id}
           thread={thread}
-          isSelected={thread.id === selectedThreadId}
-          onClick={() => onSelectThread(thread.id)}
+          isThreadSelected={thread.id === selectedThreadId}
+          onSelectThread={() => onSelectThread(thread.id)}
         />
       ))}
     </div>
@@ -135,45 +147,44 @@ function ThreadGroup({
 
 interface ThreadItemProps {
   thread: ThreadWithProgress;
-  isSelected: boolean;
-  onClick: () => void;
+  isThreadSelected: boolean;
+  onSelectThread: () => void;
 }
 
-function ThreadItem({ thread, isSelected, onClick }: ThreadItemProps) {
-  const itemStyles: React.CSSProperties = {
+function ThreadItem({
+  thread,
+  isThreadSelected,
+  onSelectThread,
+}: ThreadItemProps) {
+  const threadRowStyles: React.CSSProperties = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "12px 16px",
+    padding: "10px 16px",
     cursor: "pointer",
-    backgroundColor: isSelected ? TRANSPARENT_GREEN : "transparent",
-    borderLeft: isSelected ? `3px solid ${MAIN_GREEN}` : "3px solid transparent",
-    transition: "background-color 0.15s ease",
+    backgroundColor: isThreadSelected ? TRANSPARENT_GREEN : "transparent",
+    borderLeft: isThreadSelected ? `3px solid ${MAIN_GREEN}` : "3px solid transparent",
   };
 
-  const titleStyles: React.CSSProperties = {
+  const threadTitleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 14,
-    fontWeight: isSelected ? 600 : 400,
+    fontWeight: isThreadSelected ? 600 : 500,
     color: GRAY_900,
   };
 
   return (
     <div
-      style={itemStyles}
-      onClick={onClick}
+      style={threadRowStyles}
+      onClick={onSelectThread}
       onMouseEnter={(e) => {
-        if (!isSelected) {
-          e.currentTarget.style.backgroundColor = "#f9fafb";
-        }
+        if (!isThreadSelected) e.currentTarget.style.backgroundColor = "#f9fafb";
       }}
       onMouseLeave={(e) => {
-        if (!isSelected) {
-          e.currentTarget.style.backgroundColor = "transparent";
-        }
+        if (!isThreadSelected) e.currentTarget.style.backgroundColor = "transparent";
       }}
     >
-      <span style={titleStyles}>{thread.title}</span>
+      <span style={threadTitleStyles}>{thread.title}</span>
       <RatingStars rating={thread.earnedStars} size={14} />
     </div>
   );
