@@ -4,9 +4,10 @@ import { MAIN_GREEN, WHITE, GRAY_300 } from "../../theme/colors";
 interface ChatComposerProps {
   onSend: (content: string) => void;
   disabled?: boolean;
+  placeholder?: string;
 }
 
-export default function ChatComposer({ onSend, disabled = false }: ChatComposerProps) {
+export default function ChatComposer({ onSend, disabled = false, placeholder = "Type a message..." }: ChatComposerProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -78,7 +79,7 @@ export default function ChatComposer({ onSend, disabled = false }: ChatComposerP
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Type a message..."
+        placeholder={placeholder}
         style={textareaStyles}
         disabled={disabled}
         rows={1}
