@@ -1,7 +1,12 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import verticleLogo from "../assets/verticle-logo.png";
+import Button from "../components/ui/Button";
+import { MAIN_GREEN, WHITE } from "../theme/colors";
 
 export default function LandingPage() {
+  const navigate = useNavigate();
+
   return (
     <main style={styles.page}>
       <div style={styles.container}>
@@ -17,9 +22,13 @@ export default function LandingPage() {
           with <span style={styles.green}>SAIPIENS</span>.
         </h1>
 
-        <button style={styles.cta} type="button">
-          Get started today!
-        </button>
+        <Button
+          variant="primary"
+          onClick={() => navigate("/signup")}
+          style={{ padding: "16px 48px", fontSize: 18 }}
+        >
+          Get Started
+        </Button>
       </div>
     </main>
   );
@@ -29,7 +38,7 @@ const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
     width: "100%",
-    background: "#ffffff",
+    background: WHITE,
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
@@ -59,15 +68,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#0B0B0B",
   },
   green: {
-    color: "#7ED321", // tweak to match your exact brand green
-  },
-  cta: {
-    border: "none",
-    background: "transparent",
-    color: "#7ED321",
-    fontSize: 20,
-    fontWeight: 700,
-    cursor: "pointer",
-    padding: 0,
+    color: MAIN_GREEN,
   },
 };
