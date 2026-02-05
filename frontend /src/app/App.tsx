@@ -1,5 +1,5 @@
-import LandingPage from "../pages/Landing.tsx";
+import AppRoutes from "../routes/AppRoutes";
 
 export default function App() {
-  return <LandingPage />;
+  return <AppRoutes />;
 }
