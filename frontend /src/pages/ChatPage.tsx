@@ -4,7 +4,6 @@ import ThreadList from "../components/chat/ThreadList";
 import MessageList from "../components/chat/MessageList";
 import ChatComposer from "../components/chat/ChatComposer";
 import DifficultyStars from "../components/ui/DifficultyStars";
-import RatingStars from "../components/ui/RatingStars";
 import {
   getCurrentStudent,
   getCourse,
@@ -16,7 +15,7 @@ import {
   listMessages,
   sendMessage,
 } from "../services/api";
-import { getQuestionEarnedStars, isQuestionCompleted } from "../utils/progress";
+import { isQuestionCompleted } from "../utils/progress";
 import { WHITE, GRAY_900, GRAY_500, GRAY_600, MAIN_GREEN, GRAY_300 } from "../theme/colors";
 import type {
   Student,
@@ -29,18 +28,22 @@ import type {
   StudentObjectiveProgress,
 } from "../types/domain";
 
-const COMPLETION_SYSTEM_MESSAGE_CONTENT = "⭐⭐⭐ Excellent — 3 stars! Great work.";
+const COMPLETION_MESSAGE_TEXT = "Excellent — Great work.";
 
 /** Synthetic completion message appended when question is completed and not already in thread. */
-function makeCompletionMessage(questionId: string, threadId: string): ChatMessage {
+function makeCompletionMessage(
+  questionId: string,
+  threadId: string,
+  earnedStars: 1 | 2 | 3
+): ChatMessage {
   return {
     id: `completion_${questionId}`,
     threadId,
     questionId,
     role: "tutor",
-    content: COMPLETION_SYSTEM_MESSAGE_CONTENT,
+    content: COMPLETION_MESSAGE_TEXT,
     createdAt: new Date().toISOString(),
-    metadata: { isSystemMessage: true },
+    metadata: { isSystemMessage: true, earnedStars, isCompletionMessage: true },
   };
 }
 
@@ -86,9 +89,6 @@ export default function ChatPage() {
   const currentQuestionCompleted = currentQuestion
     ? isQuestionCompleted(currentQuestion, progressMap)
     : false;
-  const currentQuestionEarnedStars = currentQuestion
-    ? getQuestionEarnedStars(currentQuestion, progressMap)
-    : 0;
   const canGoNext = currentQuestionCompleted && currentQuestionIndex >= 0 && currentQuestionIndex < questionsForThread.length - 1;
   const canGoPrev = currentQuestionIndex > 0;
   const hasNextQuestion = currentQuestionIndex >= 0 && currentQuestionIndex < questionsForThread.length - 1;
@@ -275,11 +275,10 @@ export default function ChatPage() {
   const displayMessages = useMemo(() => {
     if (!currentQuestion || !selectedThreadId) return messages;
     if (!currentQuestionCompleted) return messages;
-    const hasCompletion = messages.some(
-      (m) => m.metadata?.isSystemMessage && m.content === COMPLETION_SYSTEM_MESSAGE_CONTENT
-    );
+    const hasCompletion = messages.some((m) => m.metadata?.isCompletionMessage === true);
     if (hasCompletion) return messages;
-    return [...messages, makeCompletionMessage(currentQuestion.id, selectedThreadId)];
+    const stars = currentQuestion.difficultyStars as 1 | 2 | 3;
+    return [...messages, makeCompletionMessage(currentQuestion.id, selectedThreadId, stars)];
   }, [messages, currentQuestion, currentQuestionCompleted, selectedThreadId]);
 
   const containerStyles: React.CSSProperties = {
@@ -499,10 +498,6 @@ export default function ChatPage() {
           </div>
           {selectedThread && currentQuestion && (
             <div style={starsRowStyles}>
-              <div style={starsGroupStyles}>
-                <span style={starsLabelStyles}>Progress (this question):</span>
-                <RatingStars rating={currentQuestionEarnedStars} size={16} />
-              </div>
               <div style={starsGroupStyles}>
                 <span style={starsLabelStyles}>Difficulty:</span>
                 <DifficultyStars difficulty={currentQuestion.difficultyStars} size={16} label="" />
