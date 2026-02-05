@@ -92,7 +92,9 @@ export async function getObjective(objectiveId: string): Promise<Objective | und
 
 export async function listQuestionsForObjective(objectiveId: string): Promise<Question[]> {
   await delay(50);
-  return questions.filter((q) => q.objectiveId === objectiveId);
+  return questions
+    .filter((q) => q.objectiveId === objectiveId)
+    .sort((a, b) => a.difficultyStars - b.difficultyStars);
 }
 
 export async function getQuestion(questionId: string): Promise<Question | undefined> {
@@ -236,21 +238,30 @@ export async function getThreadWithProgress(
 
 // ============ CHAT MESSAGES ============
 
-export async function listMessages(threadId: string): Promise<ChatMessage[]> {
+export async function listMessages(
+  threadId: string,
+  questionId?: string
+): Promise<ChatMessage[]> {
   await delay(50);
   return chatMessages
-    .filter((msg) => msg.threadId === threadId)
+    .filter(
+      (msg) =>
+        msg.threadId === threadId &&
+        (questionId == null || msg.questionId === questionId)
+    )
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }
 
 export async function sendMessage(
   threadId: string,
-  content: string
+  content: string,
+  questionId?: string
 ): Promise<ChatMessage> {
   await delay(100);
   const newMessage: ChatMessage = {
     id: `msg_${Date.now()}`,
     threadId,
+    questionId,
     role: "student",
     content,
     createdAt: new Date().toISOString(),

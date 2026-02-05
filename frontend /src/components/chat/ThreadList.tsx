@@ -1,19 +1,34 @@
 import RatingStars from "../ui/RatingStars";
 import ProgressBar from "../ui/ProgressBar";
+import { getQuestionEarnedStars } from "../../utils/progress";
 import { GRAY_900, GRAY_500, MAIN_GREEN, TRANSPARENT_GREEN, WHITE } from "../../theme/colors";
-import type { ThreadWithProgress, UnitProgress } from "../../types/domain";
+import type {
+  ThreadWithProgress,
+  UnitProgress,
+  Question,
+  StudentObjectiveProgress,
+  EarnedStars,
+} from "../../types/domain";
 
 interface ThreadListProps {
   threads: ThreadWithProgress[];
+  questionsByThread: Record<string, Question[]>;
+  progressMap: Record<string, StudentObjectiveProgress>;
   selectedThreadId?: string;
+  selectedQuestionId?: string;
   onSelectThread: (threadId: string) => void;
+  onSelectQuestion: (threadId: string, questionId: string) => void;
   unitProgress?: UnitProgress;
 }
 
 export default function ThreadList({
   threads,
+  questionsByThread,
+  progressMap,
   selectedThreadId,
+  selectedQuestionId,
   onSelectThread,
+  onSelectQuestion,
   unitProgress,
 }: ThreadListProps) {
   const containerStyles: React.CSSProperties = {
@@ -55,7 +70,6 @@ export default function ThreadList({
     padding: "8px 0",
   };
 
-  // Group threads by kind
   const knowledgeThreads = threads.filter((t) => t.kind === "knowledge");
   const skillThreads = threads.filter((t) => t.kind === "skill");
 
@@ -63,7 +77,7 @@ export default function ThreadList({
     <div style={containerStyles}>
       <div style={headerStyles}>
         <div style={headerTopStyles}>
-          <h3 style={titleStyles}>Threads</h3>
+          <h3 style={titleStyles}>Questions</h3>
           {unitProgress && (
             <span style={progressLabelStyles}>
               {unitProgress.completedObjectives}/{unitProgress.totalObjectives}
@@ -79,16 +93,24 @@ export default function ThreadList({
           <ThreadGroup
             label="Knowledge"
             threads={knowledgeThreads}
+            questionsByThread={questionsByThread}
+            progressMap={progressMap}
             selectedThreadId={selectedThreadId}
+            selectedQuestionId={selectedQuestionId}
             onSelectThread={onSelectThread}
+            onSelectQuestion={onSelectQuestion}
           />
         )}
         {skillThreads.length > 0 && (
           <ThreadGroup
             label="Skill"
             threads={skillThreads}
+            questionsByThread={questionsByThread}
+            progressMap={progressMap}
             selectedThreadId={selectedThreadId}
+            selectedQuestionId={selectedQuestionId}
             onSelectThread={onSelectThread}
+            onSelectQuestion={onSelectQuestion}
           />
         )}
       </div>
@@ -99,15 +121,23 @@ export default function ThreadList({
 interface ThreadGroupProps {
   label: string;
   threads: ThreadWithProgress[];
+  questionsByThread: Record<string, Question[]>;
+  progressMap: Record<string, StudentObjectiveProgress>;
   selectedThreadId?: string;
+  selectedQuestionId?: string;
   onSelectThread: (threadId: string) => void;
+  onSelectQuestion: (threadId: string, questionId: string) => void;
 }
 
 function ThreadGroup({
   label,
   threads,
+  questionsByThread,
+  progressMap,
   selectedThreadId,
+  selectedQuestionId,
   onSelectThread,
+  onSelectQuestion,
 }: ThreadGroupProps) {
   const groupLabelStyles: React.CSSProperties = {
     padding: "12px 16px 8px",
@@ -121,39 +151,118 @@ function ThreadGroup({
   return (
     <div>
       <div style={groupLabelStyles}>{label}</div>
-      {threads.map((thread) => (
-        <ThreadItem
-          key={thread.id}
-          thread={thread}
-          isSelected={thread.id === selectedThreadId}
-          onClick={() => onSelectThread(thread.id)}
-        />
-      ))}
+      {threads.map((thread) => {
+        const questions = questionsByThread[thread.id] ?? [];
+        return (
+          <ThreadItem
+            key={thread.id}
+            thread={thread}
+            questions={questions}
+            progressMap={progressMap}
+            isThreadSelected={thread.id === selectedThreadId}
+            selectedQuestionId={selectedQuestionId}
+            onSelectThread={() => onSelectThread(thread.id)}
+            onSelectQuestion={(questionId) => onSelectQuestion(thread.id, questionId)}
+          />
+        );
+      })}
     </div>
   );
 }
 
 interface ThreadItemProps {
   thread: ThreadWithProgress;
+  questions: Question[];
+  progressMap: Record<string, StudentObjectiveProgress>;
+  isThreadSelected: boolean;
+  selectedQuestionId?: string;
+  onSelectThread: () => void;
+  onSelectQuestion: (questionId: string) => void;
+}
+
+function ThreadItem({
+  thread,
+  questions,
+  progressMap,
+  isThreadSelected,
+  selectedQuestionId,
+  onSelectThread,
+  onSelectQuestion,
+}: ThreadItemProps) {
+  const threadRowStyles: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 16px 6px",
+    cursor: "pointer",
+    backgroundColor: isThreadSelected ? TRANSPARENT_GREEN : "transparent",
+    borderLeft: isThreadSelected ? `3px solid ${MAIN_GREEN}` : "3px solid transparent",
+  };
+
+  const threadTitleStyles: React.CSSProperties = {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: isThreadSelected ? 600 : 500,
+    color: GRAY_900,
+  };
+
+  const questionListStyles: React.CSSProperties = {
+    paddingLeft: 12,
+    paddingBottom: 4,
+  };
+
+  return (
+    <div>
+      <div
+        style={threadRowStyles}
+        onClick={onSelectThread}
+        onMouseEnter={(e) => {
+          if (!isThreadSelected) e.currentTarget.style.backgroundColor = "#f9fafb";
+        }}
+        onMouseLeave={(e) => {
+          if (!isThreadSelected) e.currentTarget.style.backgroundColor = "transparent";
+        }}
+      >
+        <span style={threadTitleStyles}>{thread.title}</span>
+        <RatingStars rating={thread.earnedStars} size={14} />
+      </div>
+      <div style={questionListStyles}>
+        {questions.map((q) => (
+          <QuestionItem
+            key={q.id}
+            question={q}
+            earnedStars={getQuestionEarnedStars(q, progressMap)}
+            isSelected={q.id === selectedQuestionId}
+            onClick={() => onSelectQuestion(q.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface QuestionItemProps {
+  question: Question;
+  earnedStars: EarnedStars;
   isSelected: boolean;
   onClick: () => void;
 }
 
-function ThreadItem({ thread, isSelected, onClick }: ThreadItemProps) {
+function QuestionItem({ question, earnedStars, isSelected, onClick }: QuestionItemProps) {
   const itemStyles: React.CSSProperties = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "12px 16px",
+    padding: "6px 12px 6px 16px",
     cursor: "pointer",
     backgroundColor: isSelected ? TRANSPARENT_GREEN : "transparent",
-    borderLeft: isSelected ? `3px solid ${MAIN_GREEN}` : "3px solid transparent",
-    transition: "background-color 0.15s ease",
+    borderRadius: 6,
+    marginLeft: 4,
+    borderLeft: isSelected ? `2px solid ${MAIN_GREEN}` : "2px solid transparent",
   };
 
-  const titleStyles: React.CSSProperties = {
-    margin: 0,
-    fontSize: 14,
+  const labelStyles: React.CSSProperties = {
+    fontSize: 13,
     fontWeight: isSelected ? 600 : 400,
     color: GRAY_900,
   };
@@ -163,18 +272,14 @@ function ThreadItem({ thread, isSelected, onClick }: ThreadItemProps) {
       style={itemStyles}
       onClick={onClick}
       onMouseEnter={(e) => {
-        if (!isSelected) {
-          e.currentTarget.style.backgroundColor = "#f9fafb";
-        }
+        if (!isSelected) e.currentTarget.style.backgroundColor = "#f9fafb";
       }}
       onMouseLeave={(e) => {
-        if (!isSelected) {
-          e.currentTarget.style.backgroundColor = "transparent";
-        }
+        if (!isSelected) e.currentTarget.style.backgroundColor = "transparent";
       }}
     >
-      <span style={titleStyles}>{thread.title}</span>
-      <RatingStars rating={thread.earnedStars} size={14} />
+      <span style={labelStyles}>{question.difficultyStars}-star</span>
+      <RatingStars rating={earnedStars} size={12} />
     </div>
   );
 }

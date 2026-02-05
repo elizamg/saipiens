@@ -122,12 +122,14 @@ export interface ChatMessageAttachment {
 
 export interface ChatMessageMetadata {
   isFeedback?: boolean;
-  isSystemMessage?: boolean; // For progress messages like "Moving to next question"
+  isSystemMessage?: boolean; // e.g. "⭐⭐⭐ Excellent — 3 stars! Great work."
 }
 
 export interface ChatMessage {
   id: string;
   threadId: string;
+  /** When set, message belongs to this question's scoped chat (1:1 per question). */
+  questionId?: string;
   role: MessageRole;
   content: string;
   createdAt: string;
