@@ -1,5 +1,6 @@
 import React from "react";
 import { MAIN_GREEN, GRAY_900, GRAY_600, WHITE } from "../../theme/colors";
+import RatingStars from "../ui/RatingStars";
 import type { ChatMessage } from "../../types/domain";
 
 interface MessageBubbleProps {
@@ -9,6 +10,8 @@ interface MessageBubbleProps {
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isStudent = message.role === "student";
   const isSystem = message.metadata?.isSystemMessage === true;
+  const isCompletion = message.metadata?.isCompletionMessage === true;
+  const earnedStars = message.metadata?.earnedStars;
 
   const containerStyles: React.CSSProperties = {
     display: "flex",
@@ -59,7 +62,14 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div style={containerStyles}>
       <div style={bubbleStyles}>
-        <div style={contentStyles}>{message.content}</div>
+        {isCompletion && earnedStars != null ? (
+          <div style={{ ...contentStyles, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <RatingStars rating={earnedStars as 0 | 1 | 2 | 3} size={20} />
+            <span>{message.content}</span>
+          </div>
+        ) : (
+          <div style={contentStyles}>{message.content}</div>
+        )}
         {message.attachments && message.attachments.length > 0 && (
           <div style={attachmentContainerStyles}>
             {message.attachments.map((attachment, index) =>

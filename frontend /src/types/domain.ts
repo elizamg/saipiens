@@ -122,7 +122,10 @@ export interface ChatMessageAttachment {
 
 export interface ChatMessageMetadata {
   isFeedback?: boolean;
-  isSystemMessage?: boolean; // e.g. "⭐⭐⭐ Excellent — 3 stars! Great work."
+  isSystemMessage?: boolean;
+  /** For completion messages: stars earned (matches question difficulty). */
+  earnedStars?: number;
+  isCompletionMessage?: boolean;
 }
 
 export interface ChatMessage {

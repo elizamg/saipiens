@@ -210,7 +210,6 @@ export const chatMessages: ChatMessage[] = [
   { id: "msg_8k1_3", threadId: "thr_8_k1", questionId: "q_8k1_d2", role: "student", content: "The field lines form concentric circles around the wire. Direction follows the right-hand rule.", createdAt: "2024-01-15T09:30:00Z" },
   { id: "msg_8k1_4", threadId: "thr_8_k1", questionId: "q_8k1_d2", role: "tutor", content: "Excellent! 2 stars. One more to master this topic.", createdAt: "2024-01-15T09:35:00Z" },
   { id: "msg_8k1_5", threadId: "thr_8_k1", questionId: "q_8k1_d3", role: "student", content: "Point thumb in current direction, fingers curl in field direction. Field strength B ∝ 1/r, decreasing with distance.", createdAt: "2024-01-15T10:15:00Z" },
-  { id: "msg_8k1_6", threadId: "thr_8_k1", questionId: "q_8k1_d3", role: "tutor", content: "Perfect! You've earned all 3 stars. Great work!", createdAt: "2024-01-15T10:30:00Z", metadata: { isSystemMessage: true } },
 
   // Thread 8_k2 - PARTIAL (2 stars, working on 3-star question)
   { id: "msg_8k2_1", threadId: "thr_8_k2", questionId: "q_8k2_d1", role: "student", content: "A magnet made by passing electric current through a coil of wire.", createdAt: "2024-01-15T10:40:00Z" },
