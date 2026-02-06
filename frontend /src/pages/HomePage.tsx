@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import WelcomeBanner from "../components/dashboard/WelcomeBanner";
 import EnrolledCourses from "../components/dashboard/EnrolledCourses";
@@ -15,6 +16,8 @@ import {
 import type { Student, Course, Instructor, Award, FeedbackItem, Unit } from "../types/domain";
 
 export default function HomePage() {
+  const location = useLocation();
+  const activePath = location.pathname === "/courses" ? "/courses" : "/home";
   const [student, setStudent] = useState<Student | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [coursesMap, setCoursesMap] = useState<Record<string, Course>>({});
@@ -76,7 +79,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <AppShell student={student} activePath="/home">
+    <AppShell student={student} activePath={activePath}>
       {!loading && student ? (
         <>
           <WelcomeBanner student={student} />

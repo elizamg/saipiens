@@ -68,8 +68,9 @@ export default function ThreadList({
     padding: "8px 0",
   };
 
-  const knowledgeThreads = threads.filter((t) => t.kind === "knowledge");
-  const skillThreads = threads.filter((t) => t.kind === "skill");
+  const inProgressThreads = threads.filter((t) => t.earnedStars > 0 && t.earnedStars < 3);
+  const todoThreads = threads.filter((t) => t.earnedStars === 0);
+  const completedThreads = threads.filter((t) => t.earnedStars === 3);
 
   return (
     <div style={containerStyles}>
@@ -87,18 +88,26 @@ export default function ThreadList({
         )}
       </div>
       <div style={listStyles}>
-        {knowledgeThreads.length > 0 && (
+        {inProgressThreads.length > 0 && (
           <ThreadGroup
-            label="Knowledge"
-            threads={knowledgeThreads}
+            label="In progress"
+            threads={inProgressThreads}
             selectedThreadId={selectedThreadId}
             onSelectThread={onSelectThread}
           />
         )}
-        {skillThreads.length > 0 && (
+        {todoThreads.length > 0 && (
           <ThreadGroup
-            label="Skill"
-            threads={skillThreads}
+            label="Todo"
+            threads={todoThreads}
+            selectedThreadId={selectedThreadId}
+            onSelectThread={onSelectThread}
+          />
+        )}
+        {completedThreads.length > 0 && (
+          <ThreadGroup
+            label="Completed"
+            threads={completedThreads}
             selectedThreadId={selectedThreadId}
             onSelectThread={onSelectThread}
           />

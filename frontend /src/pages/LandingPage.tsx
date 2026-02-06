@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import verticleLogo from "../assets/verticle-logo.png";
 import Button from "../components/ui/Button";
+import TintedImage from "../components/ui/TintedImage";
 import { MAIN_GREEN, WHITE } from "../theme/colors";
 
 export default function LandingPage() {
@@ -10,9 +11,11 @@ export default function LandingPage() {
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-        <img
+        <TintedImage
           src={verticleLogo}
+          color={MAIN_GREEN}
           alt="SAIPIENS vertical logo"
+          width={220}
           style={styles.logo}
         />
 
