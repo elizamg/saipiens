@@ -1,10 +1,13 @@
 import React from "react";
 import { MAIN_GREEN, WHITE } from "../../theme/colors";
+import TintedImage from "./TintedImage";
 
 interface AvatarProps {
   src?: string;
   name: string;
   size?: number;
+  /** When set, the image is shown as a single color (recolorable). Good for logos/icons. */
+  tintColor?: string;
   style?: React.CSSProperties;
 }
 
@@ -20,6 +23,7 @@ export default function Avatar({
   src,
   name,
   size = 40,
+  tintColor,
   style,
 }: AvatarProps) {
   const containerStyles: React.CSSProperties = {
@@ -39,6 +43,23 @@ export default function Avatar({
   };
 
   if (src) {
+    if (tintColor) {
+      return (
+        <div style={containerStyles}>
+          <TintedImage
+            src={src}
+            color={tintColor}
+            alt={name}
+            width={size}
+            height={size}
+            style={{
+              width: "100%",
+              height: "100%",
+            }}
+          />
+        </div>
+      );
+    }
     return (
       <div style={containerStyles}>
         <img

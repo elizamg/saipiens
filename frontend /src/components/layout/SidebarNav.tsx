@@ -1,7 +1,8 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { MAIN_GREEN, DARKER_GREEN, WHITE, TRANSPARENT_GREEN } from "../../theme/colors";
-import verticleLogo from "../../assets/verticle-logo.png";
+import { MAIN_GREEN, WHITE, TRANSPARENT_GREEN } from "../../theme/colors";
+import whiteTreeLogo from "../../assets/white-tree.png";
+import TintedImage from "../ui/TintedImage";
 
 interface NavItem {
   label: string;
@@ -62,7 +63,7 @@ export default function SidebarNav({ activePath }: SidebarNavProps) {
 
   const sidebarStyles: React.CSSProperties = {
     width: 240,
-    background: `linear-gradient(180deg, ${MAIN_GREEN} 0%, ${DARKER_GREEN} 100%)`,
+    background: MAIN_GREEN,
     padding: "24px 16px",
     display: "flex",
     flexDirection: "column",
@@ -100,7 +101,13 @@ export default function SidebarNav({ activePath }: SidebarNavProps) {
   return (
     <nav style={sidebarStyles}>
       <div style={logoContainerStyles}>
-        <img src={verticleLogo} alt="SAIPIENS" style={logoStyles} />
+        <TintedImage
+          src={whiteTreeLogo}
+          color={WHITE}
+          alt="SAIPIENS"
+          width={80}
+          style={logoStyles}
+        />
       </div>
       {navItems.map((item) => (
         <button

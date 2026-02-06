@@ -1,5 +1,5 @@
 import React from "react";
-import { WHITE_GREEN_GRADIENT, GRAY_900, GRAY_600 } from "../../theme/colors";
+import { GREEN_GRADIENT_VERTICAL, WHITE } from "../../theme/colors";
 import type { Student } from "../../types/domain";
 
 interface WelcomeBannerProps {
@@ -10,7 +10,7 @@ export default function WelcomeBanner({ student }: WelcomeBannerProps) {
   const firstName = student.name.split(" ")[0];
 
   const bannerStyles: React.CSSProperties = {
-    background: WHITE_GREEN_GRADIENT,
+    background: GREEN_GRADIENT_VERTICAL,
     borderRadius: 16,
     padding: "32px 40px",
     marginBottom: 32,
@@ -20,14 +20,15 @@ export default function WelcomeBanner({ student }: WelcomeBannerProps) {
     margin: 0,
     fontSize: 32,
     fontWeight: 700,
-    color: GRAY_900,
+    color: WHITE,
     marginBottom: 8,
+    textShadow: "0 1px 2px rgba(0,0,0,0.1)",
   };
 
   const subtitleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 16,
-    color: GRAY_600,
+    color: "rgba(255, 255, 255, 0.9)",
   };
 
   return (
