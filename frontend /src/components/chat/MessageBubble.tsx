@@ -9,9 +9,9 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isStudent = message.role === "student";
-  const isSystem = message.metadata?.isSystemMessage === true;
-  const isCompletion = message.metadata?.isCompletionMessage === true;
   const earnedStars = message.metadata?.earnedStars;
+  const isStarFeedback = earnedStars != null && (message.metadata?.isSystemMessage === true || message.role === "tutor");
+  const isSystem = message.metadata?.isSystemMessage === true || isStarFeedback;
 
   const containerStyles: React.CSSProperties = {
     display: "flex",
@@ -62,10 +62,10 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div style={containerStyles}>
       <div style={bubbleStyles}>
-        {isCompletion && earnedStars != null ? (
+        {isStarFeedback ? (
           <div style={{ ...contentStyles, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
             <RatingStars rating={earnedStars as 0 | 1 | 2 | 3} size={20} />
-            <span>{message.content}</span>
+            <span>Excellent — Great work.</span>
           </div>
         ) : (
           <div style={contentStyles}>{message.content}</div>

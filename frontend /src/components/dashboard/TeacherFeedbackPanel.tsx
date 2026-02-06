@@ -1,7 +1,7 @@
 import React from "react";
 import Card from "../ui/Card";
 import Avatar from "../ui/Avatar";
-import { GRAY_900, GRAY_600, MAIN_GREEN } from "../../theme/colors";
+import { GRAY_900, GRAY_600, GRAY_700, MAIN_GREEN } from "../../theme/colors";
 import type { FeedbackItem, Unit, Instructor } from "../../types/domain";
 import samProfileUrl from "../../assets/sam_profile.png";
 
@@ -160,6 +160,7 @@ function FeedbackCard({ feedback, unitTitle, instructor }: FeedbackCardProps) {
                 src={samProfileUrl}
                 name="Sam"
                 size={32}
+                tintColor={GRAY_700}
               />
               <span style={sourceNameStyles}>Sam</span>
             </>

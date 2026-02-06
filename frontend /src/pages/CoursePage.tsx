@@ -5,6 +5,7 @@ import ActiveUnits from "../components/course/ActiveUnits";
 import AwardsGrid from "../components/dashboard/AwardsGrid";
 import TeacherFeedbackPanel from "../components/dashboard/TeacherFeedbackPanel";
 import Avatar from "../components/ui/Avatar";
+import TintedImage from "../components/ui/TintedImage";
 import {
   getCurrentStudent,
   getCourse,
@@ -14,8 +15,15 @@ import {
   listFeedbackForCourse,
   getUnitProgress,
 } from "../services/api";
-import { GRAY_900, GRAY_500 } from "../theme/colors";
+import { GRAY_900, GRAY_500, MAIN_GREEN } from "../theme/colors";
 import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress } from "../types/domain";
+import historyLogo from "../assets/history-logo.png";
+import scienceLogo from "../assets/science-logo.png";
+
+const courseIconMap: Record<string, string> = {
+  history: historyLogo,
+  science: scienceLogo,
+};
 
 export default function CoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -85,8 +93,17 @@ export default function CoursePage() {
   };
 
   const iconStyles: React.CSSProperties = {
+    width: 48,
+    height: 48,
+    objectFit: "contain",
+  };
+
+  const emojiIconStyles: React.CSSProperties = {
     fontSize: 40,
   };
+
+  const courseIconSrc = course?.icon ? courseIconMap[course.icon] : null;
+  const courseIconIsEmoji = course?.icon && !courseIconSrc;
 
   const titleStyles: React.CSSProperties = {
     margin: 0,
@@ -112,11 +129,26 @@ export default function CoursePage() {
 
   return (
     <AppShell student={student} activePath="/courses">
-      {!loading && student && course ? (
+      {loading ? (
+        <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Loading…</div>
+      ) : !course ? (
+        <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Course not found.</div>
+      ) : student ? (
         <>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              {course.icon && <span style={iconStyles}>{course.icon}</span>}
+              {course.icon &&
+                (courseIconSrc ? (
+                  <TintedImage
+                    src={courseIconSrc}
+                    color={MAIN_GREEN}
+                    width={40}
+                    height={40}
+                    style={iconStyles}
+                  />
+                ) : courseIconIsEmoji ? (
+                  <span style={emojiIconStyles}>{course.icon}</span>
+                ) : null)}
               <h1 style={titleStyles}>{course.title}</h1>
             </div>
             <div style={instructorRowStyles}>

@@ -1,4 +1,5 @@
 import Card from "../ui/Card";
+import TintedImage from "../ui/TintedImage";
 import { GRAY_900, GRAY_500, MAIN_GREEN } from "../../theme/colors";
 import { getAwardIcon } from "../../utils/awardIcons";
 import type { Award } from "../../types/domain";
@@ -51,9 +52,12 @@ export default function AwardCard({ award, courseName }: AwardCardProps) {
   return (
     <Card padding={16}>
       <div style={contentStyles}>
-        <img
+        <TintedImage
           src={getAwardIcon(award.iconKey)}
+          color={MAIN_GREEN}
           alt={award.title}
+          width={64}
+          height={64}
           style={iconStyles}
         />
         <h4 style={titleStyles}>{award.title}</h4>

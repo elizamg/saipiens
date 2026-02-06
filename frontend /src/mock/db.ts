@@ -46,14 +46,14 @@ export const courses: Course[] = [
   {
     id: "crs_1",
     title: "American History",
-    icon: "📜",
+    icon: "history",
     instructorIds: ["ins_1"],
     enrolledStudentIds: ["stu_1"],
   },
   {
     id: "crs_2",
     title: "Physics 7",
-    icon: "⚛️",
+    icon: "science",
     instructorIds: ["ins_2", "ins_3"],
     enrolledStudentIds: ["stu_1"],
   },
@@ -161,8 +161,8 @@ export const questions: Question[] = [
 export const studentObjectiveProgress: StudentObjectiveProgress[] = [
   // Unit 6 - ALL COMPLETED (3 stars each)
   { studentId: "stu_1", objectiveId: "obj_6_k1", earnedStars: 3, currentQuestionId: "q_6k1_d3", updatedAt: "2024-01-10T15:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_6_k2", earnedStars: 3, currentQuestionId: "q_6k2_d3", updatedAt: "2024-01-11T14:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_6_s1", earnedStars: 3, currentQuestionId: "q_6s1_d3", updatedAt: "2024-01-12T16:00:00Z" },
+  { studentId: "stu_1", objectiveId: "obj_6_k2", earnedStars: 0, currentQuestionId: "q_6k2_d1", updatedAt: "2024-01-11T14:00:00Z" }, // No messages yet
+  { studentId: "stu_1", objectiveId: "obj_6_s1", earnedStars: 0, currentQuestionId: "q_6s1_d1", updatedAt: "2024-01-12T16:00:00Z" }, // No messages yet
 
   // Unit 8 - MIXED PROGRESS
   { studentId: "stu_1", objectiveId: "obj_8_k1", earnedStars: 3, currentQuestionId: "q_8k1_d3", updatedAt: "2024-01-15T10:30:00Z" }, // Completed
@@ -196,26 +196,25 @@ export const chatMessages: ChatMessage[] = [
 
   // Thread 6_k1 - Completed all 3 questions (2 messages per question)
   { id: "msg_6k1_1", threadId: "thr_6_k1", questionId: "q_6k1_d1", role: "student", content: "Energy cannot be created or destroyed, only transferred.", createdAt: "2024-01-10T13:10:00Z" },
-  { id: "msg_6k1_2", threadId: "thr_6_k1", questionId: "q_6k1_d1", role: "tutor", content: "Correct! You've earned 1 star. Moving to the next question.", createdAt: "2024-01-10T13:15:00Z" },
+  { id: "msg_6k1_2", threadId: "thr_6_k1", questionId: "q_6k1_d1", role: "tutor", content: "Excellent — Great work.", createdAt: "2024-01-10T13:15:00Z", metadata: { isSystemMessage: true, earnedStars: 1 } },
   { id: "msg_6k1_3", threadId: "thr_6_k1", questionId: "q_6k1_d2", role: "student", content: "In adiabatic processes, Q=0, so ΔU = -W. All energy change comes from work.", createdAt: "2024-01-10T13:30:00Z" },
-  { id: "msg_6k1_4", threadId: "thr_6_k1", questionId: "q_6k1_d2", role: "tutor", content: "Excellent! 2 stars earned. Ready for the final challenge.", createdAt: "2024-01-10T13:35:00Z" },
+  { id: "msg_6k1_4", threadId: "thr_6_k1", questionId: "q_6k1_d2", role: "tutor", content: "Excellent — Great work.", createdAt: "2024-01-10T13:35:00Z", metadata: { isSystemMessage: true, earnedStars: 2 } },
   { id: "msg_6k1_5", threadId: "thr_6_k1", questionId: "q_6k1_d3", role: "student", content: "For isothermal: ΔU=0, so Q=W. W = ∫PdV = ∫(nRT/V)dV = nRT·ln(V₂/V₁)", createdAt: "2024-01-10T14:30:00Z" },
-  { id: "msg_6k1_6", threadId: "thr_6_k1", questionId: "q_6k1_d3", role: "tutor", content: "Perfect derivation! You've mastered this topic with 3 stars. Great work!", createdAt: "2024-01-10T15:00:00Z", metadata: { isSystemMessage: true } },
 
   // ========== Unit 8 Messages (mixed progress) ==========
 
   // Thread 8_k1 - COMPLETED (3 stars)
   { id: "msg_8k1_1", threadId: "thr_8_k1", questionId: "q_8k1_d1", role: "student", content: "Electric current flowing through the wire creates the magnetic field.", createdAt: "2024-01-15T09:10:00Z" },
-  { id: "msg_8k1_2", threadId: "thr_8_k1", questionId: "q_8k1_d1", role: "tutor", content: "Correct! 1 star earned. Moving to the next question.", createdAt: "2024-01-15T09:15:00Z" },
+  { id: "msg_8k1_2", threadId: "thr_8_k1", questionId: "q_8k1_d1", role: "tutor", content: "Excellent — Great work.", createdAt: "2024-01-15T09:15:00Z", metadata: { isSystemMessage: true, earnedStars: 1 } },
   { id: "msg_8k1_3", threadId: "thr_8_k1", questionId: "q_8k1_d2", role: "student", content: "The field lines form concentric circles around the wire. Direction follows the right-hand rule.", createdAt: "2024-01-15T09:30:00Z" },
-  { id: "msg_8k1_4", threadId: "thr_8_k1", questionId: "q_8k1_d2", role: "tutor", content: "Excellent! 2 stars. One more to master this topic.", createdAt: "2024-01-15T09:35:00Z" },
+  { id: "msg_8k1_4", threadId: "thr_8_k1", questionId: "q_8k1_d2", role: "tutor", content: "Excellent — Great work.", createdAt: "2024-01-15T09:35:00Z", metadata: { isSystemMessage: true, earnedStars: 2 } },
   { id: "msg_8k1_5", threadId: "thr_8_k1", questionId: "q_8k1_d3", role: "student", content: "Point thumb in current direction, fingers curl in field direction. Field strength B ∝ 1/r, decreasing with distance.", createdAt: "2024-01-15T10:15:00Z" },
 
   // Thread 8_k2 - PARTIAL (2 stars, working on 3-star question)
   { id: "msg_8k2_1", threadId: "thr_8_k2", questionId: "q_8k2_d1", role: "student", content: "A magnet made by passing electric current through a coil of wire.", createdAt: "2024-01-15T10:40:00Z" },
-  { id: "msg_8k2_2", threadId: "thr_8_k2", questionId: "q_8k2_d1", role: "tutor", content: "Correct! 1 star earned. Moving to the next question.", createdAt: "2024-01-15T10:45:00Z" },
+  { id: "msg_8k2_2", threadId: "thr_8_k2", questionId: "q_8k2_d1", role: "tutor", content: "Excellent — Great work.", createdAt: "2024-01-15T10:45:00Z", metadata: { isSystemMessage: true, earnedStars: 1 } },
   { id: "msg_8k2_3", threadId: "thr_8_k2", questionId: "q_8k2_d2", role: "student", content: "Increase the current, and add more coil turns.", createdAt: "2024-01-15T10:55:00Z" },
-  { id: "msg_8k2_4", threadId: "thr_8_k2", questionId: "q_8k2_d2", role: "tutor", content: "Great! 2 stars. Ready for the challenge question.", createdAt: "2024-01-15T11:00:00Z" },
+  { id: "msg_8k2_4", threadId: "thr_8_k2", questionId: "q_8k2_d2", role: "tutor", content: "Excellent — Great work.", createdAt: "2024-01-15T11:00:00Z", metadata: { isSystemMessage: true, earnedStars: 2 } },
   { id: "msg_8k2_5", threadId: "thr_8_k2", questionId: "q_8k2_d3", role: "student", content: "Current, number of turns, and core material all affect strength. For the derivation...", createdAt: "2024-01-15T11:10:00Z" },
   { id: "msg_8k2_6", threadId: "thr_8_k2", questionId: "q_8k2_d3", role: "tutor", content: "Good start! You mentioned the factors correctly. Can you complete the derivation using Ampère's law?", createdAt: "2024-01-15T11:15:00Z" },
 
@@ -223,11 +222,10 @@ export const chatMessages: ChatMessage[] = [
 
   // Thread 8_s1 - COMPLETED (3 stars)
   { id: "msg_8s1_1", threadId: "thr_8_s1", questionId: "q_8s1_d1", role: "student", content: "Stronger at 1cm because field decreases with distance.", createdAt: "2024-01-15T11:40:00Z" },
-  { id: "msg_8s1_2", threadId: "thr_8_s1", questionId: "q_8s1_d1", role: "tutor", content: "Correct! 1 star. Moving to the next question.", createdAt: "2024-01-15T11:45:00Z" },
+  { id: "msg_8s1_2", threadId: "thr_8_s1", questionId: "q_8s1_d1", role: "tutor", content: "Excellent — Great work.", createdAt: "2024-01-15T11:45:00Z", metadata: { isSystemMessage: true, earnedStars: 1 } },
   { id: "msg_8s1_3", threadId: "thr_8_s1", questionId: "q_8s1_d2", role: "student", content: "B = μ₀I/(2πr) = (4π × 10⁻⁷ × 2)/(2π × 0.05) = 8 × 10⁻⁶ T = 8 μT", createdAt: "2024-01-15T11:55:00Z" },
-  { id: "msg_8s1_4", threadId: "thr_8_s1", questionId: "q_8s1_d2", role: "tutor", content: "Perfect calculation! 2 stars.", createdAt: "2024-01-15T12:00:00Z" },
+  { id: "msg_8s1_4", threadId: "thr_8_s1", questionId: "q_8s1_d2", role: "tutor", content: "Excellent — Great work.", createdAt: "2024-01-15T12:00:00Z", metadata: { isSystemMessage: true, earnedStars: 2 } },
   { id: "msg_8s1_5", threadId: "thr_8_s1", questionId: "q_8s1_d3", role: "student", content: "Each wire creates B = μ₀I/(2πr) at midpoint. r=5cm. Fields add (opposite currents). B_total = 2 × (4π×10⁻⁷×5)/(2π×0.05) = 4×10⁻⁵ T = 40 μT", createdAt: "2024-01-15T12:10:00Z" },
-  { id: "msg_8s1_6", threadId: "thr_8_s1", questionId: "q_8s1_d3", role: "tutor", content: "Excellent! You correctly identified that fields add and calculated perfectly. 3 stars - great work!", createdAt: "2024-01-15T12:15:00Z", metadata: { isSystemMessage: true } },
 
   // Thread 8_s2 - NOT STARTED (0 stars) - no messages yet, question shown in header
 ];

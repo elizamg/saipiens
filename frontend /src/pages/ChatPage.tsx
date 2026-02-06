@@ -271,14 +271,14 @@ export default function ChatPage() {
     [selectedThreadId, selectedQuestionId]
   );
 
-  // Messages to display: real messages + optional synthetic completion message
+  // Messages to display: real messages + optional synthetic completion (only for 3-star; 1/2-star use mock tutor message)
   const displayMessages = useMemo(() => {
     if (!currentQuestion || !selectedThreadId) return messages;
     if (!currentQuestionCompleted) return messages;
+    if (currentQuestion.difficultyStars !== 3) return messages;
     const hasCompletion = messages.some((m) => m.metadata?.isCompletionMessage === true);
     if (hasCompletion) return messages;
-    const stars = currentQuestion.difficultyStars as 1 | 2 | 3;
-    return [...messages, makeCompletionMessage(currentQuestion.id, selectedThreadId, stars)];
+    return [...messages, makeCompletionMessage(currentQuestion.id, selectedThreadId, 3)];
   }, [messages, currentQuestion, currentQuestionCompleted, selectedThreadId]);
 
   const containerStyles: React.CSSProperties = {
