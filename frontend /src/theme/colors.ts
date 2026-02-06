@@ -1,14 +1,18 @@
-// Solid Colors
-export const MAIN_GREEN = "rgb(141, 211, 74)";
-export const LIGHTER_GREEN = "rgb(186, 232, 141)";
-export const DARKER_GREEN = "rgb(104, 176, 48)";
-export const TRANSPARENT_GREEN = "rgba(141, 211, 74, 0.15)";
+// Color palette: ["#8fd694","#7dba84","#77ad78","#6f8f72","#504b43"]
+export const LIGHTER_GREEN = "#8fd694";
+export const MAIN_GREEN = "#7dba84";
+export const MID_GREEN = "#77ad78";
+export const DARKER_GREEN = "#6f8f72";
+export const DARK_ACCENT = "#504b43";
+export const TRANSPARENT_GREEN = "rgba(125, 186, 132, 0.15)";
 
 // Style Colors
 export const BLUE_MAIN = "rgb(59, 130, 246)";
-export const GREEN_GRADIENT = "linear-gradient(90deg, rgb(141, 211, 74), rgb(104, 176, 48))";
-export const RADIAL_GREEN = "radial-gradient(circle, rgb(186, 232, 141), rgb(141, 211, 74))";
-export const WHITE_GREEN_GRADIENT = "linear-gradient(180deg, #ffffff, rgb(186, 232, 141))";
+export const GREEN_GRADIENT = "linear-gradient(90deg, #8fd694, #6f8f72)";
+/** Vertical: light green (top) to darker green (bottom). Greens only, no brown. Use for welcome banner. */
+export const GREEN_GRADIENT_VERTICAL = "linear-gradient(180deg, #8fd694 0%, #7dba84 33%, #77ad78 66%, #6f8f72 100%)";
+export const RADIAL_GREEN = "radial-gradient(circle, #8fd694, #7dba84)";
+export const WHITE_GREEN_GRADIENT = "linear-gradient(180deg, #ffffff, #8fd694)";
 
 // Neutral Colors
 export const WHITE = "#ffffff";

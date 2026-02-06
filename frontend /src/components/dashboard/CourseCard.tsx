@@ -3,8 +3,16 @@ import { useNavigate } from "react-router-dom";
 import Card from "../ui/Card";
 import Button from "../ui/Button";
 import Avatar from "../ui/Avatar";
-import { GRAY_900, GRAY_500 } from "../../theme/colors";
+import TintedImage from "../ui/TintedImage";
+import { GRAY_900, GRAY_500, MAIN_GREEN } from "../../theme/colors";
 import type { Course, Instructor } from "../../types/domain";
+import historyLogo from "../../assets/history-logo.png";
+import scienceLogo from "../../assets/science-logo.png";
+
+const courseIconMap: Record<string, string> = {
+  history: historyLogo,
+  science: scienceLogo,
+};
 
 interface CourseCardProps {
   course: Course;
@@ -22,8 +30,17 @@ export default function CourseCard({ course, instructors }: CourseCardProps) {
   };
 
   const iconStyles: React.CSSProperties = {
+    width: 40,
+    height: 40,
+    objectFit: "contain",
+  };
+
+  const emojiIconStyles: React.CSSProperties = {
     fontSize: 32,
   };
+
+  const iconSrc = course.icon ? courseIconMap[course.icon] : null;
+  const isEmoji = course.icon && !iconSrc;
 
   const titleStyles: React.CSSProperties = {
     margin: 0,
@@ -51,7 +68,18 @@ export default function CourseCard({ course, instructors }: CourseCardProps) {
   return (
     <Card>
       <div style={headerStyles}>
-        {course.icon && <span style={iconStyles}>{course.icon}</span>}
+        {course.icon &&
+          (iconSrc ? (
+            <TintedImage
+              src={iconSrc}
+              color={MAIN_GREEN}
+              width={40}
+              height={40}
+              style={iconStyles}
+            />
+          ) : isEmoji ? (
+            <span style={emojiIconStyles}>{course.icon}</span>
+          ) : null)}
         <h3 style={titleStyles}>{course.title}</h3>
       </div>
       <div style={instructorSectionStyles}>

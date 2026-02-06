@@ -194,14 +194,20 @@ export async function listChatThreadsForUnit(params: {
     questionMap[q.id] = q;
   });
 
+  // Never show completed (earnedStars > 0) if thread has no student messages
+  const hasStudentMessages = (threadId: string) =>
+    chatMessages.some((m) => m.threadId === threadId && m.role === "student");
+
   return unitThreads.map((thread) => {
     const progress = progressMap[thread.objectiveId];
     const currentQuestionId = progress?.currentQuestionId || "";
     const currentQuestion = questionMap[currentQuestionId];
+    const rawStars = getEarnedStars(thread.objectiveId, progressMap);
+    const earnedStars = hasStudentMessages(thread.id) ? rawStars : 0;
 
     return {
       ...thread,
-      earnedStars: getEarnedStars(thread.objectiveId, progressMap),
+      earnedStars,
       currentDifficultyStars: currentQuestion?.difficultyStars ?? 1,
       currentQuestionId,
     };
@@ -227,10 +233,15 @@ export async function getThreadWithProgress(
 
   const currentQuestionId = progress?.currentQuestionId || "";
   const currentQuestion = questions.find((q) => q.id === currentQuestionId);
+  const rawStars = progress?.earnedStars ?? 0;
+  const hasStudent = chatMessages.some(
+    (m) => m.threadId === threadId && m.role === "student"
+  );
+  const earnedStars = hasStudent ? rawStars : 0;
 
   return {
     ...thread,
-    earnedStars: progress?.earnedStars ?? 0,
+    earnedStars,
     currentDifficultyStars: currentQuestion?.difficultyStars ?? 1,
     currentQuestionId,
   };

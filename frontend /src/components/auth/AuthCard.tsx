@@ -1,4 +1,5 @@
 import React from "react";
+import TintedImage from "../ui/TintedImage";
 import { WHITE, GRAY_900 } from "../../theme/colors";
 import verticleLogo from "../../assets/verticle-logo.png";
 
@@ -44,7 +45,13 @@ export default function AuthCard({ title, children, footer }: AuthCardProps) {
 
   return (
     <div style={cardStyles}>
-      <img src={verticleLogo} alt="SAIPIENS logo" style={logoStyles} />
+      <TintedImage
+        src={verticleLogo}
+        color={GRAY_900}
+        alt="SAIPIENS logo"
+        width={100}
+        style={logoStyles}
+      />
       <h1 style={headingStyles}>{title}</h1>
       <div style={formStyles}>{children}</div>
       {footer}
