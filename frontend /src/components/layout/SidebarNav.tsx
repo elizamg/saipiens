@@ -68,6 +68,10 @@ export default function SidebarNav({ activePath }: SidebarNavProps) {
     display: "flex",
     flexDirection: "column",
     gap: 8,
+    position: "sticky",
+    top: 0,
+    height: "100vh",
+    overflowY: "auto",
   };
 
   const logoContainerStyles: React.CSSProperties = {
@@ -77,7 +81,7 @@ export default function SidebarNav({ activePath }: SidebarNavProps) {
   };
 
   const logoStyles: React.CSSProperties = {
-    width: 80,
+    width: 160,
     height: "auto",
   };
 
@@ -105,7 +109,7 @@ export default function SidebarNav({ activePath }: SidebarNavProps) {
           src={whiteTreeLogo}
           color={WHITE}
           alt="SAIPIENS"
-          width={80}
+          width={160}
           style={logoStyles}
         />
       </div>
