@@ -13,7 +13,8 @@ interface AppShellProps {
 export default function AppShell({ children, student, activePath }: AppShellProps) {
   const containerStyles: React.CSSProperties = {
     display: "flex",
-    minHeight: "100vh",
+    height: "100vh",
+    overflow: "hidden",
   };
 
   const mainStyles: React.CSSProperties = {
@@ -21,6 +22,7 @@ export default function AppShell({ children, student, activePath }: AppShellProp
     display: "flex",
     flexDirection: "column",
     backgroundColor: GRAY_50,
+    minWidth: 0,
   };
 
   const contentStyles: React.CSSProperties = {
