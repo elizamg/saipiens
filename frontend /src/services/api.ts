@@ -6,7 +6,7 @@ import {
   awards,
   feedbackItems,
   objectives,
-  questions,
+  itemStages,
   studentObjectiveProgress,
   chatThreads,
   chatMessages,
@@ -20,12 +20,14 @@ import type {
   Award,
   FeedbackItem,
   Objective,
-  Question,
-  StudentObjectiveProgress,
+  ItemStage,
+  StudentObjectiveProgress as ProgressType,
   ChatThread,
   ChatMessage,
   ThreadWithProgress,
   UnitProgress,
+  StageType,
+  EarnedStars,
 } from "../types/domain";
 import { computeUnitProgress, buildProgressMap, getEarnedStars } from "../utils/progress";
 
@@ -76,7 +78,7 @@ export async function getUnit(unitId: string): Promise<Unit | undefined> {
   return units.find((unit) => unit.id === unitId);
 }
 
-// ============ OBJECTIVES ============
+// ============ OBJECTIVES (SIDEBAR ITEMS) ============
 
 export async function listObjectives(unitId: string): Promise<Objective[]> {
   await delay(50);
@@ -88,18 +90,18 @@ export async function getObjective(objectiveId: string): Promise<Objective | und
   return objectives.find((obj) => obj.id === objectiveId);
 }
 
-// ============ QUESTIONS ============
+// ============ ITEM STAGES ============
 
-export async function listQuestionsForObjective(objectiveId: string): Promise<Question[]> {
+export async function listItemStages(itemId: string): Promise<ItemStage[]> {
   await delay(50);
-  return questions
-    .filter((q) => q.objectiveId === objectiveId)
-    .sort((a, b) => a.difficultyStars - b.difficultyStars);
+  return itemStages
+    .filter((s) => s.itemId === itemId)
+    .sort((a, b) => a.order - b.order);
 }
 
-export async function getQuestion(questionId: string): Promise<Question | undefined> {
+export async function getStage(stageId: string): Promise<ItemStage | undefined> {
   await delay(50);
-  return questions.find((q) => q.id === questionId);
+  return itemStages.find((s) => s.id === stageId);
 }
 
 // ============ STUDENT PROGRESS ============
@@ -107,7 +109,7 @@ export async function getQuestion(questionId: string): Promise<Question | undefi
 export async function getStudentObjectiveProgress(
   studentId: string,
   objectiveId: string
-): Promise<StudentObjectiveProgress | undefined> {
+): Promise<ProgressType | undefined> {
   await delay(50);
   return studentObjectiveProgress.find(
     (p) => p.studentId === studentId && p.objectiveId === objectiveId
@@ -117,7 +119,7 @@ export async function getStudentObjectiveProgress(
 export async function listStudentProgressForUnit(
   studentId: string,
   unitId: string
-): Promise<StudentObjectiveProgress[]> {
+): Promise<ProgressType[]> {
   await delay(50);
   const unitObjectiveIds = objectives
     .filter((obj) => obj.unitId === unitId)
@@ -138,6 +140,63 @@ export async function getUnitProgress(
   );
   const progressMap = buildProgressMap(progressList);
   return computeUnitProgress(unitId, unitObjectives, progressMap);
+}
+
+/**
+ * Advance a student's progress on an objective to the next stage.
+ * Increments earnedStars and moves currentStageType forward.
+ */
+export async function advanceStage(
+  studentId: string,
+  itemId: string
+): Promise<ProgressType> {
+  await delay(100);
+
+  const NEXT_STAGE: Record<StageType, StageType | null> = {
+    begin: "walkthrough",
+    walkthrough: "challenge",
+    challenge: null,
+  };
+
+  const STAGE_STARS: Record<StageType, EarnedStars> = {
+    begin: 1,
+    walkthrough: 2,
+    challenge: 3,
+  };
+
+  const idx = studentObjectiveProgress.findIndex(
+    (p) => p.studentId === studentId && p.objectiveId === itemId
+  );
+
+  if (idx === -1) {
+    // Create initial progress (begin completed)
+    const newProgress: ProgressType = {
+      studentId,
+      objectiveId: itemId,
+      earnedStars: 1,
+      currentStageType: "walkthrough",
+      updatedAt: new Date().toISOString(),
+    };
+    studentObjectiveProgress.push(newProgress);
+    return newProgress;
+  }
+
+  const current = studentObjectiveProgress[idx];
+  const currentStars = STAGE_STARS[current.currentStageType];
+  const next = NEXT_STAGE[current.currentStageType];
+
+  // Award stars for completing current stage
+  const updatedStars = Math.max(current.earnedStars, currentStars) as EarnedStars;
+
+  const updated: ProgressType = {
+    ...current,
+    earnedStars: updatedStars,
+    currentStageType: next ?? current.currentStageType,
+    updatedAt: new Date().toISOString(),
+  };
+
+  studentObjectiveProgress[idx] = updated;
+  return updated;
 }
 
 // ============ AWARDS ============
@@ -182,34 +241,43 @@ export async function listChatThreadsForUnit(params: {
     (thread) => thread.courseId === params.courseId && thread.unitId === params.unitId
   );
 
-  // Get progress for each thread's objective
   const progressList = studentObjectiveProgress.filter(
     (p) => p.studentId === params.studentId
   );
   const progressMap = buildProgressMap(progressList);
 
-  // Build question map for difficulty stars
-  const questionMap: Record<string, Question> = {};
-  questions.forEach((q) => {
-    questionMap[q.id] = q;
+  // Build objective order map
+  const objectiveMap: Record<string, Objective> = {};
+  objectives.forEach((obj) => {
+    objectiveMap[obj.id] = obj;
   });
 
-  // Never show completed (earnedStars > 0) if thread has no student messages
+  // Build stage map for looking up current stage IDs
+  const stagesByItem: Record<string, ItemStage[]> = {};
+  itemStages.forEach((s) => {
+    if (!stagesByItem[s.itemId]) stagesByItem[s.itemId] = [];
+    stagesByItem[s.itemId].push(s);
+  });
+
   const hasStudentMessages = (threadId: string) =>
     chatMessages.some((m) => m.threadId === threadId && m.role === "student");
 
   return unitThreads.map((thread) => {
     const progress = progressMap[thread.objectiveId];
-    const currentQuestionId = progress?.currentQuestionId || "";
-    const currentQuestion = questionMap[currentQuestionId];
+    const objective = objectiveMap[thread.objectiveId];
     const rawStars = getEarnedStars(thread.objectiveId, progressMap);
     const earnedStars = hasStudentMessages(thread.id) ? rawStars : 0;
+
+    const currentStageType: StageType = progress?.currentStageType ?? "begin";
+    const stages = stagesByItem[thread.objectiveId] ?? [];
+    const currentStage = stages.find((s) => s.stageType === currentStageType);
 
     return {
       ...thread,
       earnedStars,
-      currentDifficultyStars: currentQuestion?.difficultyStars ?? 1,
-      currentQuestionId,
+      currentStageType,
+      currentStageId: currentStage?.id ?? "",
+      order: objective?.order ?? 0,
     };
   });
 }
@@ -231,19 +299,23 @@ export async function getThreadWithProgress(
     (p) => p.studentId === studentId && p.objectiveId === thread.objectiveId
   );
 
-  const currentQuestionId = progress?.currentQuestionId || "";
-  const currentQuestion = questions.find((q) => q.id === currentQuestionId);
+  const objective = objectives.find((obj) => obj.id === thread.objectiveId);
   const rawStars = progress?.earnedStars ?? 0;
   const hasStudent = chatMessages.some(
     (m) => m.threadId === threadId && m.role === "student"
   );
   const earnedStars = hasStudent ? rawStars : 0;
 
+  const currentStageType: StageType = progress?.currentStageType ?? "begin";
+  const stages = itemStages.filter((s) => s.itemId === thread.objectiveId);
+  const currentStage = stages.find((s) => s.stageType === currentStageType);
+
   return {
     ...thread,
     earnedStars,
-    currentDifficultyStars: currentQuestion?.difficultyStars ?? 1,
-    currentQuestionId,
+    currentStageType,
+    currentStageId: currentStage?.id ?? "",
+    order: objective?.order ?? 0,
   };
 }
 
@@ -251,14 +323,14 @@ export async function getThreadWithProgress(
 
 export async function listMessages(
   threadId: string,
-  questionId?: string
+  stageId?: string
 ): Promise<ChatMessage[]> {
   await delay(50);
   return chatMessages
     .filter(
       (msg) =>
         msg.threadId === threadId &&
-        (questionId == null || msg.questionId === questionId)
+        (stageId == null || msg.stageId === stageId)
     )
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }
@@ -266,13 +338,13 @@ export async function listMessages(
 export async function sendMessage(
   threadId: string,
   content: string,
-  questionId?: string
+  stageId?: string
 ): Promise<ChatMessage> {
   await delay(100);
   const newMessage: ChatMessage = {
     id: `msg_${Date.now()}`,
     threadId,
-    questionId,
+    stageId,
     role: "student",
     content,
     createdAt: new Date().toISOString(),
