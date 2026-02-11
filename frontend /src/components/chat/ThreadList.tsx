@@ -1,34 +1,49 @@
+import { useState } from "react";
 import RatingStars from "../ui/RatingStars";
 import ProgressBar from "../ui/ProgressBar";
-import { GRAY_900, GRAY_500, MAIN_GREEN, TRANSPARENT_GREEN, WHITE } from "../../theme/colors";
+import { GRAY_900, GRAY_400, GRAY_500, MAIN_GREEN, TRANSPARENT_GREEN, WHITE } from "../../theme/colors";
 import type {
   ThreadWithProgress,
   UnitProgress,
-  Question,
-  StudentObjectiveProgress,
+  ObjectiveKind,
 } from "../../types/domain";
 
 interface ThreadListProps {
   threads: ThreadWithProgress[];
-  questionsByThread: Record<string, Question[]>;
-  progressMap: Record<string, StudentObjectiveProgress>;
   selectedThreadId?: string;
-  selectedQuestionId?: string;
   onSelectThread: (threadId: string) => void;
-  onSelectQuestion: (threadId: string, questionId: string) => void;
   unitProgress?: UnitProgress;
 }
 
+const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
+
+const SECTION_LABELS: Record<ObjectiveKind, string> = {
+  knowledge: "Knowledge",
+  skill: "Skills",
+  capstone: "Capstone",
+};
+
 export default function ThreadList({
   threads,
-  questionsByThread,
-  progressMap,
   selectedThreadId,
-  selectedQuestionId,
   onSelectThread,
-  onSelectQuestion,
   unitProgress,
 }: ThreadListProps) {
+  const [collapsed, setCollapsed] = useState<Record<ObjectiveKind, boolean>>({
+    knowledge: false,
+    skill: false,
+    capstone: false,
+  });
+
+  const toggleSection = (kind: ObjectiveKind) => {
+    setCollapsed((prev) => ({ ...prev, [kind]: !prev[kind] }));
+  };
+
+  const threadsByKind = (kind: ObjectiveKind) =>
+    threads
+      .filter((t) => t.kind === kind)
+      .sort((a, b) => a.order - b.order);
+
   const containerStyles: React.CSSProperties = {
     width: 280,
     backgroundColor: WHITE,
@@ -68,10 +83,6 @@ export default function ThreadList({
     padding: "8px 0",
   };
 
-  const inProgressThreads = threads.filter((t) => t.earnedStars > 0 && t.earnedStars < 3);
-  const todoThreads = threads.filter((t) => t.earnedStars === 0);
-  const completedThreads = threads.filter((t) => t.earnedStars === 3);
-
   return (
     <div style={containerStyles}>
       <div style={headerStyles}>
@@ -88,68 +99,89 @@ export default function ThreadList({
         )}
       </div>
       <div style={listStyles}>
-        {inProgressThreads.length > 0 && (
-          <ThreadGroup
-            label="In progress"
-            threads={inProgressThreads}
-            selectedThreadId={selectedThreadId}
-            onSelectThread={onSelectThread}
-          />
-        )}
-        {todoThreads.length > 0 && (
-          <ThreadGroup
-            label="Todo"
-            threads={todoThreads}
-            selectedThreadId={selectedThreadId}
-            onSelectThread={onSelectThread}
-          />
-        )}
-        {completedThreads.length > 0 && (
-          <ThreadGroup
-            label="Completed"
-            threads={completedThreads}
-            selectedThreadId={selectedThreadId}
-            onSelectThread={onSelectThread}
-          />
-        )}
+        {SECTION_ORDER.map((kind) => {
+          const sectionThreads = threadsByKind(kind);
+          if (sectionThreads.length === 0) return null;
+          return (
+            <SectionGroup
+              key={kind}
+              kind={kind}
+              label={SECTION_LABELS[kind]}
+              threads={sectionThreads}
+              isCollapsed={collapsed[kind]}
+              onToggle={() => toggleSection(kind)}
+              selectedThreadId={selectedThreadId}
+              onSelectThread={onSelectThread}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
-interface ThreadGroupProps {
+interface SectionGroupProps {
+  kind: ObjectiveKind;
   label: string;
   threads: ThreadWithProgress[];
+  isCollapsed: boolean;
+  onToggle: () => void;
   selectedThreadId?: string;
   onSelectThread: (threadId: string) => void;
 }
 
-function ThreadGroup({
+function SectionGroup({
   label,
   threads,
+  isCollapsed,
+  onToggle,
   selectedThreadId,
   onSelectThread,
-}: ThreadGroupProps) {
-  const groupLabelStyles: React.CSSProperties = {
+}: SectionGroupProps) {
+  const sectionHeaderStyles: React.CSSProperties = {
     padding: "12px 16px 8px",
     fontSize: 12,
     fontWeight: 600,
     color: GRAY_500,
     textTransform: "uppercase",
     letterSpacing: "0.5px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    userSelect: "none",
+  };
+
+  const chevronStyles: React.CSSProperties = {
+    transition: "transform 0.15s ease",
+    transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
   };
 
   return (
     <div>
-      <div style={groupLabelStyles}>{label}</div>
-      {threads.map((thread) => (
-        <ThreadItem
-          key={thread.id}
-          thread={thread}
-          isThreadSelected={thread.id === selectedThreadId}
-          onSelectThread={() => onSelectThread(thread.id)}
-        />
-      ))}
+      <div style={sectionHeaderStyles} onClick={onToggle}>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          style={chevronStyles}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+        {label}
+      </div>
+      {!isCollapsed &&
+        threads.map((thread) => (
+          <ThreadItem
+            key={thread.id}
+            thread={thread}
+            isThreadSelected={thread.id === selectedThreadId}
+            onSelectThread={() => onSelectThread(thread.id)}
+          />
+        ))}
     </div>
   );
 }
@@ -165,6 +197,8 @@ function ThreadItem({
   isThreadSelected,
   onSelectThread,
 }: ThreadItemProps) {
+  const isCompletedKnowledge = thread.kind === "knowledge" && thread.earnedStars === 3;
+
   const threadRowStyles: React.CSSProperties = {
     display: "flex",
     alignItems: "center",
@@ -173,13 +207,14 @@ function ThreadItem({
     cursor: "pointer",
     backgroundColor: isThreadSelected ? TRANSPARENT_GREEN : "transparent",
     borderLeft: isThreadSelected ? `3px solid ${MAIN_GREEN}` : "3px solid transparent",
+    opacity: isCompletedKnowledge ? 0.5 : 1,
   };
 
   const threadTitleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 14,
     fontWeight: isThreadSelected ? 600 : 500,
-    color: GRAY_900,
+    color: isCompletedKnowledge ? GRAY_400 : GRAY_900,
   };
 
   return (
