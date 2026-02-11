@@ -3,6 +3,12 @@ import { MAIN_GREEN, GRAY_900, GRAY_600, WHITE } from "../../theme/colors";
 import RatingStars from "../ui/RatingStars";
 import type { ChatMessage } from "../../types/domain";
 
+const STAR_LABELS: Record<number, string> = {
+  1: "Begin complete",
+  2: "Walkthrough complete",
+  3: "Challenge complete!",
+};
+
 interface MessageBubbleProps {
   message: ChatMessage;
 }
@@ -65,7 +71,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {isStarFeedback ? (
           <div style={{ ...contentStyles, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
             <RatingStars rating={earnedStars as 0 | 1 | 2 | 3} size={20} />
-            <span>Excellent — Great work.</span>
+            <span>{STAR_LABELS[earnedStars as number] ?? message.content}</span>
           </div>
         ) : (
           <div style={contentStyles}>{message.content}</div>

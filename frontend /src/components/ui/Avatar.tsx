@@ -8,6 +8,8 @@ interface AvatarProps {
   size?: number;
   /** When set, the image is shown as a single color (recolorable). Good for logos/icons. */
   tintColor?: string;
+  /** Scale the image within the circular container (1 = full size). */
+  imageScale?: number;
   style?: React.CSSProperties;
 }
 
@@ -24,8 +26,10 @@ export default function Avatar({
   name,
   size = 40,
   tintColor,
+  imageScale = 1,
   style,
 }: AvatarProps) {
+  const clampedScale = Math.min(Math.max(imageScale, 0.1), 1);
   const containerStyles: React.CSSProperties = {
     width: size,
     height: size,
@@ -53,8 +57,9 @@ export default function Avatar({
             width={size}
             height={size}
             style={{
-              width: "100%",
-              height: "100%",
+              width: `${clampedScale * 100}%`,
+              height: `${clampedScale * 100}%`,
+              objectFit: "contain",
             }}
           />
         </div>
@@ -66,9 +71,9 @@ export default function Avatar({
           src={src}
           alt={name}
           style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
+            width: `${clampedScale * 100}%`,
+            height: `${clampedScale * 100}%`,
+            objectFit: "contain",
           }}
         />
       </div>

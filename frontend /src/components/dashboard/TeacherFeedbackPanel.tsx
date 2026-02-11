@@ -1,9 +1,9 @@
 import React from "react";
 import Card from "../ui/Card";
 import Avatar from "../ui/Avatar";
-import { GRAY_900, GRAY_600, GRAY_700, MAIN_GREEN } from "../../theme/colors";
+import { GRAY_900, GRAY_600, MAIN_GREEN } from "../../theme/colors";
 import type { FeedbackItem, Unit, Instructor } from "../../types/domain";
-import samProfileUrl from "../../assets/sam_profile.png";
+import whiteTreeLogo from "../../assets/white-tree.png";
 
 interface TeacherFeedbackPanelProps {
   feedbackItems: FeedbackItem[];
@@ -157,10 +157,10 @@ function FeedbackCard({ feedback, unitTitle, instructor }: FeedbackCardProps) {
           {isFromSam ? (
             <>
               <Avatar
-                src={samProfileUrl}
-                name="Sam"
+                src={whiteTreeLogo}
+                name="SAIPIENS"
                 size={32}
-                tintColor={GRAY_700}
+                imageScale={0.8}
               />
               <span style={sourceNameStyles}>Sam</span>
             </>

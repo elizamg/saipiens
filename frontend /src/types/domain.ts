@@ -54,60 +54,62 @@ export interface FeedbackItem {
   instructorId?: string;
 }
 
-// ============ Objective & Question Types ============
+// ============ Objective (Sidebar Item) & Stage Types ============
 
-export type ObjectiveKind = "knowledge" | "skill";
+export type ObjectiveKind = "knowledge" | "skill" | "capstone";
 
 /**
- * An Objective represents a Knowledge or Skill section within a Unit.
- * Each objective can have multiple questions at different difficulty levels.
+ * An Objective represents a Knowledge, Skill, or Capstone item within a Unit.
+ * Each objective has 3 stages: begin, walkthrough, challenge.
  */
 export interface Objective {
   id: string;
   unitId: string;
   kind: ObjectiveKind;
-  title: string; // e.g., "Knowledge 1", "Skill 2"
+  title: string;
+  order: number;
 }
 
-export type DifficultyStars = 1 | 2 | 3;
+export type StageType = "begin" | "walkthrough" | "challenge";
 export type EarnedStars = 0 | 1 | 2 | 3;
 
 /**
- * A Question belongs to an Objective and has a specific difficulty.
- * Students progress through questions of increasing difficulty.
+ * An ItemStage is a sub-question within an Objective.
+ * Each objective has exactly 3 stages: begin (1), walkthrough (2), challenge (3).
+ * Stars represent progress milestones, NOT difficulty.
  */
-export interface Question {
+export interface ItemStage {
   id: string;
-  objectiveId: string;
-  difficultyStars: DifficultyStars;
+  itemId: string;
+  stageType: StageType;
+  order: number;
   prompt: string;
 }
 
 /**
  * Tracks a student's progress on an Objective.
- * earnedStars = highest difficulty question answered correctly (0-3)
- * currentQuestionId = the question currently being worked on
+ * earnedStars: 0=not started, 1=begin done, 2=walkthrough done, 3=challenge done
+ * currentStageType: the stage currently being worked on
  */
 export interface StudentObjectiveProgress {
   studentId: string;
   objectiveId: string;
   earnedStars: EarnedStars;
-  currentQuestionId: string;
+  currentStageType: StageType;
   updatedAt: string;
 }
 
 // ============ Chat Types ============
 
 /**
- * A ChatThread corresponds to one Objective (Knowledge/Skill section).
- * Contains conversation about the current question being worked on.
+ * A ChatThread corresponds to one Objective (Knowledge/Skill/Capstone item).
  */
 export interface ChatThread {
   id: string;
   unitId: string;
   courseId: string;
   objectiveId: string;
-  title: string; // mirrors objective.title
+  title: string;
   kind: ObjectiveKind;
   lastMessageAt: string;
 }
@@ -123,7 +125,7 @@ export interface ChatMessageAttachment {
 export interface ChatMessageMetadata {
   isFeedback?: boolean;
   isSystemMessage?: boolean;
-  /** For completion messages: stars earned (matches question difficulty). */
+  /** Progress milestone stars earned at this point. */
   earnedStars?: number;
   isCompletionMessage?: boolean;
 }
@@ -131,8 +133,8 @@ export interface ChatMessageMetadata {
 export interface ChatMessage {
   id: string;
   threadId: string;
-  /** When set, message belongs to this question's scoped chat (1:1 per question). */
-  questionId?: string;
+  /** When set, message belongs to this stage's scoped chat. */
+  stageId?: string;
   role: MessageRole;
   content: string;
   createdAt: string;
@@ -145,12 +147,13 @@ export interface ChatMessage {
 export interface UnitProgress {
   unitId: string;
   totalObjectives: number;
-  completedObjectives: number; // objectives with earnedStars === 3
+  completedObjectives: number;
   progressPercent: number;
 }
 
 export interface ThreadWithProgress extends ChatThread {
   earnedStars: EarnedStars;
-  currentDifficultyStars: DifficultyStars;
-  currentQuestionId: string;
+  currentStageType: StageType;
+  currentStageId: string;
+  order: number;
 }
