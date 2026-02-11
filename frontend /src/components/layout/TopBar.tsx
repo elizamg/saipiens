@@ -17,6 +17,9 @@ export default function TopBar({ student }: TopBarProps) {
     justifyContent: "flex-end",
     padding: "0 24px",
     gap: 16,
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
   };
 
   const bellButtonStyles: React.CSSProperties = {

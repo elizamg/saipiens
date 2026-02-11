@@ -23,7 +23,7 @@ export default function AuthCard({ title, children, footer }: AuthCardProps) {
   };
 
   const logoStyles: React.CSSProperties = {
-    width: 100,
+    width: 160,
     height: "auto",
     marginBottom: 24,
   };

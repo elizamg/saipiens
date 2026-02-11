@@ -3,19 +3,19 @@ import { useParams, useSearchParams } from "react-router-dom";
 import ThreadList from "../components/chat/ThreadList";
 import MessageList from "../components/chat/MessageList";
 import ChatComposer from "../components/chat/ChatComposer";
-import DifficultyStars from "../components/ui/DifficultyStars";
 import {
   getCurrentStudent,
   getCourse,
   getUnit,
   getUnitProgress,
   listChatThreadsForUnit,
-  listQuestionsForObjective,
-  getQuestion,
+  listItemStages,
+  getStage,
   listMessages,
   sendMessage,
+  advanceStage,
 } from "../services/api";
-import { isQuestionCompleted } from "../utils/progress";
+import { isStageCompleted, stageLabel } from "../utils/progress";
 import { WHITE, GRAY_900, GRAY_500, GRAY_600, MAIN_GREEN, GRAY_300 } from "../theme/colors";
 import type {
   Student,
@@ -24,28 +24,36 @@ import type {
   ThreadWithProgress,
   ChatMessage,
   UnitProgress,
-  Question,
-  StudentObjectiveProgress,
+  ItemStage,
+  EarnedStars,
+  StageType,
 } from "../types/domain";
 
-const COMPLETION_MESSAGE_TEXT = "Excellent — Great work.";
-
-/** Synthetic completion message appended when question is completed and not already in thread. */
+/** Synthetic completion message appended when a stage is completed. */
 function makeCompletionMessage(
-  questionId: string,
+  stageId: string,
   threadId: string,
+  stageType: StageType,
   earnedStars: 1 | 2 | 3
 ): ChatMessage {
+  const labels: Record<StageType, string> = {
+    begin: "\u2b50 Begin complete",
+    walkthrough: "\u2b50\u2b50 Walkthrough complete",
+    challenge: "\u2b50\u2b50\u2b50 Challenge complete!",
+  };
   return {
-    id: `completion_${questionId}`,
+    id: `completion_${stageId}`,
     threadId,
-    questionId,
+    stageId,
     role: "tutor",
-    content: COMPLETION_MESSAGE_TEXT,
+    content: labels[stageType],
     createdAt: new Date().toISOString(),
     metadata: { isSystemMessage: true, earnedStars, isCompletionMessage: true },
   };
 }
+
+/** Navigable stages are walkthrough and challenge (skip begin). */
+const NAVIGABLE_STAGES: StageType[] = ["walkthrough", "challenge"];
 
 export default function ChatPage() {
   const { courseId, unitId } = useParams<{ courseId: string; unitId: string }>();
@@ -55,45 +63,58 @@ export default function ChatPage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [unit, setUnit] = useState<Unit | null>(null);
   const [threads, setThreads] = useState<ThreadWithProgress[]>([]);
-  const [questionsByThread, setQuestionsByThread] = useState<Record<string, Question[]>>({});
+  const [stagesByThread, setStagesByThread] = useState<Record<string, ItemStage[]>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [unitProgress, setUnitProgress] = useState<UnitProgress | null>(null);
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [currentStage, setCurrentStage] = useState<ItemStage | null>(null);
   const [loading, setLoading] = useState(true);
 
   const selectedThreadId = searchParams.get("thread") || undefined;
-  const selectedQuestionId = searchParams.get("question") || undefined;
+  const selectedStageId = searchParams.get("stage") || undefined;
   const selectedThread = threads.find((t) => t.id === selectedThreadId);
-  const questionsForThread = selectedThreadId ? questionsByThread[selectedThreadId] ?? [] : [];
 
-  // Progress map from threads (objectiveId -> progress-like) for per-question earned stars
-  const progressMap = useMemo((): Record<string, StudentObjectiveProgress> => {
-    const map: Record<string, StudentObjectiveProgress> = {};
-    threads.forEach((t) => {
-      map[t.objectiveId] = {
-        studentId: student?.id ?? "",
-        objectiveId: t.objectiveId,
-        earnedStars: t.earnedStars,
-        currentQuestionId: t.currentQuestionId,
-        updatedAt: "",
-      };
-    });
-    return map;
-  }, [threads, student?.id]);
-
-  const currentQuestionIndex = useMemo(() => {
-    if (!selectedQuestionId || questionsForThread.length === 0) return -1;
-    return questionsForThread.findIndex((q) => q.id === selectedQuestionId);
-  }, [selectedQuestionId, questionsForThread]);
-
-  const currentQuestionCompleted = currentQuestion
-    ? isQuestionCompleted(currentQuestion, progressMap)
+  const currentEarnedStars: EarnedStars = selectedThread?.earnedStars ?? 0;
+  const currentStageCompleted = currentStage
+    ? isStageCompleted(currentStage.stageType, currentEarnedStars)
     : false;
-  const canGoNext = currentQuestionCompleted && currentQuestionIndex >= 0 && currentQuestionIndex < questionsForThread.length - 1;
-  const canGoPrev = currentQuestionIndex > 0;
-  const hasNextQuestion = currentQuestionIndex >= 0 && currentQuestionIndex < questionsForThread.length - 1;
 
-  // Load initial data (threads, unit, course, progress)
+  // Determine what CTA to show after completion
+  const nextStageTypeMap: Record<StageType, StageType | null> = {
+    begin: "walkthrough",
+    walkthrough: "challenge",
+    challenge: null,
+  };
+
+  const hasNextStage = currentStage
+    ? nextStageTypeMap[currentStage.stageType] !== null
+    : false;
+
+  // Navigation between walkthrough <-> challenge
+  const navigableStages = useMemo(() => {
+    if (!selectedThreadId) return [];
+    const allStages = stagesByThread[selectedThreadId] ?? [];
+    return allStages.filter((s) => NAVIGABLE_STAGES.includes(s.stageType));
+  }, [selectedThreadId, stagesByThread]);
+
+  const currentNavIndex = useMemo(() => {
+    if (!currentStage) return -1;
+    return navigableStages.findIndex((s) => s.id === currentStage.id);
+  }, [currentStage, navigableStages]);
+
+  // Can navigate back (challenge -> walkthrough) to review
+  const canGoPrev = currentNavIndex > 0;
+  // Can navigate forward (walkthrough -> challenge) only if walkthrough is completed
+  const canGoNext = currentNavIndex >= 0
+    && currentNavIndex < navigableStages.length - 1
+    && currentStage != null
+    && isStageCompleted(currentStage.stageType, currentEarnedStars);
+
+  // Show arrows only when on walkthrough or challenge stages
+  const showStageArrows = currentStage != null
+    && NAVIGABLE_STAGES.includes(currentStage.stageType)
+    && navigableStages.length > 1;
+
+  // Load initial data
   useEffect(() => {
     async function loadData() {
       if (!courseId || !unitId) return;
@@ -115,32 +136,22 @@ export default function ChatPage() {
         setUnitProgress(progressData);
 
         const threadParam = searchParams.get("thread");
-        const questionParam = searchParams.get("question");
+        const stageParam = searchParams.get("stage");
         if (threadsData.length > 0) {
           if (!threadParam) {
             const first = threadsData[0];
-            const questions = await listQuestionsForObjective(first.objectiveId);
-            const firstQuestionId = (first.currentQuestionId && questions.some((q) => q.id === first.currentQuestionId))
-              ? first.currentQuestionId
-              : questions[0]?.id;
             setSearchParams(
-              { thread: first.id, ...(firstQuestionId ? { question: firstQuestionId } : {}) },
+              { thread: first.id, ...(first.currentStageId ? { stage: first.currentStageId } : {}) },
               { replace: true }
             );
-          } else if (threadParam && !questionParam) {
+          } else if (threadParam && !stageParam) {
             const thread = threadsData.find((t) => t.id === threadParam);
-            if (thread) {
-              const questions = await listQuestionsForObjective(thread.objectiveId);
-              const defaultQuestionId = (thread.currentQuestionId && questions.some((q) => q.id === thread.currentQuestionId))
-                ? thread.currentQuestionId
-                : questions[0]?.id;
-              if (defaultQuestionId) {
-                setSearchParams((prev) => {
-                  const next = new URLSearchParams(prev);
-                  next.set("question", defaultQuestionId);
-                  return next;
-                }, { replace: true });
-              }
+            if (thread?.currentStageId) {
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("stage", thread.currentStageId);
+                return next;
+              }, { replace: true });
             }
           }
         }
@@ -154,132 +165,151 @@ export default function ChatPage() {
     loadData();
   }, [courseId, unitId]);
 
-  // Load questions for each thread (so sidebar can show all questions)
+  // Load stages for each thread
   useEffect(() => {
     let cancelled = false;
-    async function loadQuestions() {
-      const next: Record<string, Question[]> = {};
+    async function loadStages() {
+      const next: Record<string, ItemStage[]> = {};
       for (const thread of threads) {
-        const list = await listQuestionsForObjective(thread.objectiveId);
+        const list = await listItemStages(thread.objectiveId);
         if (!cancelled) next[thread.id] = list;
       }
-      if (!cancelled) setQuestionsByThread(next);
+      if (!cancelled) setStagesByThread(next);
     }
-    loadQuestions();
+    loadStages();
     return () => {
       cancelled = true;
     };
   }, [threads]);
 
-  // When thread changes, default question if missing
+  // Default stage when thread changes
   useEffect(() => {
-    if (!selectedThreadId || questionsForThread.length === 0) return;
-    const questionParam = searchParams.get("question");
-    if (questionParam && questionsForThread.some((q) => q.id === questionParam)) return;
+    if (!selectedThreadId) return;
+    const stageParam = searchParams.get("stage");
     const thread = threads.find((t) => t.id === selectedThreadId);
-    const defaultQuestionId = (thread?.currentQuestionId && questionsForThread.some((q) => q.id === thread.currentQuestionId))
-      ? thread.currentQuestionId
-      : questionsForThread[0]?.id;
-    if (defaultQuestionId && defaultQuestionId !== questionParam) {
+    if (!thread) return;
+
+    const threadStages = stagesByThread[selectedThreadId] ?? [];
+    if (stageParam && threadStages.some((s) => s.id === stageParam)) return;
+
+    if (thread.currentStageId && thread.currentStageId !== stageParam) {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
-        next.set("question", defaultQuestionId);
+        next.set("stage", thread.currentStageId);
         return next;
       }, { replace: true });
     }
-  }, [selectedThreadId, questionsForThread, threads]);
+  }, [selectedThreadId, stagesByThread, threads]);
 
-  // Load messages and current question when thread + question change
+  // Load messages and current stage when thread + stage change
   useEffect(() => {
     async function loadThreadData() {
       if (!selectedThreadId) {
         setMessages([]);
-        setCurrentQuestion(null);
+        setCurrentStage(null);
         return;
       }
-      if (!selectedQuestionId) {
+      if (!selectedStageId) {
         setMessages([]);
-        setCurrentQuestion(null);
+        setCurrentStage(null);
         return;
       }
-
-      const thread = threads.find((t) => t.id === selectedThreadId);
-      if (!thread) return;
 
       try {
-        const [messagesData, questionData] = await Promise.all([
-          listMessages(selectedThreadId, selectedQuestionId),
-          getQuestion(selectedQuestionId),
+        const [messagesData, stageData] = await Promise.all([
+          listMessages(selectedThreadId, selectedStageId),
+          getStage(selectedStageId),
         ]);
         setMessages(messagesData);
-        setCurrentQuestion(questionData || null);
+        setCurrentStage(stageData || null);
       } catch (error) {
         console.error("Error loading thread data:", error);
       }
     }
 
     loadThreadData();
-  }, [selectedThreadId, selectedQuestionId, threads]);
-
-  const handleSelectQuestion = useCallback(
-    (threadId: string, questionId: string) => {
-      setSearchParams({ thread: threadId, question: questionId }, { replace: true });
-    },
-    [setSearchParams]
-  );
+  }, [selectedThreadId, selectedStageId, threads]);
 
   const handleSelectThread = useCallback(
     (threadId: string) => {
-      const qList = questionsByThread[threadId];
       const thread = threads.find((t) => t.id === threadId);
-      const defaultQuestionId =
-        thread?.currentQuestionId && qList?.some((q) => q.id === thread.currentQuestionId)
-          ? thread.currentQuestionId
-          : qList?.[0]?.id;
-      if (defaultQuestionId) {
-        setSearchParams({ thread: threadId, question: defaultQuestionId }, { replace: true });
+      const defaultStageId = thread?.currentStageId;
+      if (defaultStageId) {
+        setSearchParams({ thread: threadId, stage: defaultStageId }, { replace: true });
       } else {
         setSearchParams({ thread: threadId }, { replace: true });
       }
     },
-    [threads, questionsByThread, setSearchParams]
+    [threads, setSearchParams]
   );
-
-  const handlePrevQuestion = useCallback(() => {
-    if (!canGoPrev || questionsForThread.length === 0) return;
-    const prevQuestion = questionsForThread[currentQuestionIndex - 1];
-    setSearchParams({ thread: selectedThreadId!, question: prevQuestion.id }, { replace: true });
-  }, [canGoPrev, currentQuestionIndex, questionsForThread, selectedThreadId, setSearchParams]);
-
-  const handleNextQuestion = useCallback(() => {
-    if (!canGoNext || questionsForThread.length === 0) return;
-    const nextQuestion = questionsForThread[currentQuestionIndex + 1];
-    setSearchParams({ thread: selectedThreadId!, question: nextQuestion.id }, { replace: true });
-  }, [canGoNext, currentQuestionIndex, questionsForThread, selectedThreadId, setSearchParams]);
 
   const handleSendMessage = useCallback(
     async (content: string) => {
-      if (!selectedThreadId || !selectedQuestionId) return;
+      if (!selectedThreadId || !selectedStageId || !student || !selectedThread || !currentStage) return;
 
       try {
-        const newMessage = await sendMessage(selectedThreadId, content, selectedQuestionId);
+        const newMessage = await sendMessage(selectedThreadId, content, selectedStageId);
         setMessages((prev) => [...prev, newMessage]);
+
+        // Auto-advance for begin stage: first student message completes it
+        if (currentStage.stageType === "begin" && !isStageCompleted("begin", currentEarnedStars)) {
+          await advanceStage(student.id, selectedThread.objectiveId);
+
+          const completionMsg = makeCompletionMessage(selectedStageId, selectedThreadId, "begin", 1);
+          setMessages((prev) => [...prev, completionMsg]);
+
+          if (courseId && unitId) {
+            const [updatedThreads, updatedUnitProgress] = await Promise.all([
+              listChatThreadsForUnit({ courseId, unitId, studentId: student.id }),
+              getUnitProgress(student.id, unitId),
+            ]);
+            setThreads(updatedThreads);
+            setUnitProgress(updatedUnitProgress);
+          }
+        }
       } catch (error) {
         console.error("Error sending message:", error);
       }
     },
-    [selectedThreadId, selectedQuestionId]
+    [selectedThreadId, selectedStageId, student, selectedThread, currentStage, currentEarnedStars, courseId, unitId]
   );
 
-  // Messages to display: real messages + optional synthetic completion (only for 3-star; 1/2-star use mock tutor message)
+  const handleAdvanceToNextStage = useCallback(async () => {
+    if (!selectedThread || !currentStage) return;
+
+    const nextType = nextStageTypeMap[currentStage.stageType];
+    if (!nextType) return;
+
+    const threadStages = stagesByThread[selectedThread.id] ?? [];
+    const nextStage = threadStages.find((s) => s.stageType === nextType);
+    if (!nextStage) return;
+
+    setSearchParams({ thread: selectedThread.id, stage: nextStage.id }, { replace: true });
+  }, [selectedThread, currentStage, stagesByThread, setSearchParams]);
+
+  const handlePrevStage = useCallback(() => {
+    if (!canGoPrev || !selectedThreadId) return;
+    const prevStage = navigableStages[currentNavIndex - 1];
+    setSearchParams({ thread: selectedThreadId, stage: prevStage.id }, { replace: true });
+  }, [canGoPrev, currentNavIndex, navigableStages, selectedThreadId, setSearchParams]);
+
+  const handleNextStage = useCallback(() => {
+    if (!canGoNext || !selectedThreadId) return;
+    const nextStage = navigableStages[currentNavIndex + 1];
+    setSearchParams({ thread: selectedThreadId, stage: nextStage.id }, { replace: true });
+  }, [canGoNext, currentNavIndex, navigableStages, selectedThreadId, setSearchParams]);
+
+  // Messages to display: real messages + optional synthetic completion for challenge
   const displayMessages = useMemo(() => {
-    if (!currentQuestion || !selectedThreadId) return messages;
-    if (!currentQuestionCompleted) return messages;
-    if (currentQuestion.difficultyStars !== 3) return messages;
+    if (!currentStage || !selectedThreadId) return messages;
+    if (!currentStageCompleted) return messages;
+    if (currentStage.stageType !== "challenge") return messages;
     const hasCompletion = messages.some((m) => m.metadata?.isCompletionMessage === true);
     if (hasCompletion) return messages;
-    return [...messages, makeCompletionMessage(currentQuestion.id, selectedThreadId, 3)];
-  }, [messages, currentQuestion, currentQuestionCompleted, selectedThreadId]);
+    return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, "challenge", 3)];
+  }, [messages, currentStage, currentStageCompleted, selectedThreadId]);
+
+  // ============ Styles ============
 
   const containerStyles: React.CSSProperties = {
     display: "flex",
@@ -318,17 +348,17 @@ export default function ChatPage() {
     gap: 16,
   };
 
+  const titleWithNavStyles: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  };
+
   const titleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 18,
     fontWeight: 600,
     color: GRAY_900,
-  };
-
-  const navStyles: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
   };
 
   const navButtonStyles = (disabled: boolean): React.CSSProperties => ({
@@ -344,28 +374,21 @@ export default function ChatPage() {
     cursor: disabled ? "not-allowed" : "pointer",
   });
 
-  const questionIndicatorStyles: React.CSSProperties = {
+  const stageIndicatorStyles: React.CSSProperties = {
     fontSize: 13,
     color: GRAY_500,
     fontWeight: 500,
   };
 
-  const starsRowStyles: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 24,
-  };
-
-  const starsGroupStyles: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-  };
-
-  const starsLabelStyles: React.CSSProperties = {
+  const stageBadgeStyles: React.CSSProperties = {
     fontSize: 12,
-    color: GRAY_500,
-    fontWeight: 500,
+    fontWeight: 600,
+    color: MAIN_GREEN,
+    backgroundColor: "rgba(125, 186, 132, 0.15)",
+    padding: "4px 10px",
+    borderRadius: 12,
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
   };
 
   const questionPromptStyles: React.CSSProperties = {
@@ -404,7 +427,7 @@ export default function ChatPage() {
     minHeight: 0,
   };
 
-  const nextQuestionCtaStyles: React.CSSProperties = {
+  const ctaBarStyles: React.CSSProperties = {
     padding: "16px 24px",
     borderTop: `1px solid ${GRAY_300}`,
     backgroundColor: WHITE,
@@ -414,7 +437,7 @@ export default function ChatPage() {
     gap: 12,
   };
 
-  const nextQuestionButtonStyles: React.CSSProperties = {
+  const ctaButtonStyles: React.CSSProperties = {
     padding: "10px 20px",
     borderRadius: 8,
     border: "none",
@@ -425,7 +448,7 @@ export default function ChatPage() {
     cursor: "pointer",
   };
 
-  const objectiveCompleteStyles: React.CSSProperties = {
+  const completedLabelStyles: React.CSSProperties = {
     fontSize: 14,
     color: GRAY_500,
     fontWeight: 500,
@@ -435,7 +458,7 @@ export default function ChatPage() {
     return (
       <div style={containerStyles}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          Loading…
+          Loading...
         </div>
       </div>
     );
@@ -445,12 +468,8 @@ export default function ChatPage() {
     <div style={containerStyles}>
       <ThreadList
         threads={threads}
-        questionsByThread={questionsByThread}
-        progressMap={progressMap}
         selectedThreadId={selectedThreadId}
-        selectedQuestionId={selectedQuestionId}
         onSelectThread={handleSelectThread}
-        onSelectQuestion={handleSelectQuestion}
         unitProgress={unitProgress || undefined}
       />
       <main style={mainStyles}>
@@ -463,77 +482,84 @@ export default function ChatPage() {
             </span>
           </div>
           <div style={titleRowStyles}>
-            <div style={navStyles}>
-              <button
-                type="button"
-                style={navButtonStyles(!canGoPrev)}
-                onClick={handlePrevQuestion}
-                disabled={!canGoPrev}
-                aria-label="Previous question"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-              </button>
+            <div style={titleWithNavStyles}>
+              {showStageArrows && (
+                <button
+                  type="button"
+                  style={navButtonStyles(!canGoPrev)}
+                  onClick={handlePrevStage}
+                  disabled={!canGoPrev}
+                  aria-label="Previous stage"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+              )}
               <h1 style={titleStyles}>
-                {selectedThread ? selectedThread.title : "Select a thread"}
+                {selectedThread ? selectedThread.title : "Select an item"}
               </h1>
-              <button
-                type="button"
-                style={navButtonStyles(!canGoNext)}
-                onClick={handleNextQuestion}
-                disabled={!canGoNext}
-                aria-label="Next question"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
+              {showStageArrows && (
+                <button
+                  type="button"
+                  style={navButtonStyles(!canGoNext)}
+                  onClick={handleNextStage}
+                  disabled={!canGoNext}
+                  aria-label="Next stage"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              )}
             </div>
-            {questionsForThread.length > 0 && selectedQuestionId && (
-              <span style={questionIndicatorStyles}>
-                Question {currentQuestionIndex + 1} / {questionsForThread.length}
-              </span>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {showStageArrows && (
+                <span style={stageIndicatorStyles}>
+                  {currentNavIndex + 1} / {navigableStages.length}
+                </span>
+              )}
+              {currentStage && (
+                <span style={stageBadgeStyles}>
+                  {stageLabel(currentStage.stageType)}
+                </span>
+              )}
+            </div>
           </div>
-          {selectedThread && currentQuestion && (
-            <div style={starsRowStyles}>
-              <div style={starsGroupStyles}>
-                <span style={starsLabelStyles}>Difficulty:</span>
-                <DifficultyStars difficulty={currentQuestion.difficultyStars} size={16} label="" />
-              </div>
-            </div>
-          )}
-          {currentQuestion && (
+          {currentStage && (
             <div style={questionPromptStyles}>
               <div style={promptHeaderStyles}>
-                <span style={promptLabelStyles}>Current Question ({currentQuestion.difficultyStars}-star)</span>
+                <span style={promptLabelStyles}>
+                  Current Question
+                </span>
               </div>
-              <p style={promptTextStyles}>{currentQuestion.prompt}</p>
+              <p style={promptTextStyles}>{currentStage.prompt}</p>
             </div>
           )}
         </header>
         <div style={chatAreaStyles}>
           <MessageList messages={displayMessages} />
-          {currentQuestionCompleted && (
-            <div style={nextQuestionCtaStyles}>
-              {hasNextQuestion ? (
+          {currentStageCompleted && (
+            <div style={ctaBarStyles}>
+              {hasNextStage ? (
                 <button
                   type="button"
-                  style={nextQuestionButtonStyles}
-                  onClick={handleNextQuestion}
+                  style={ctaButtonStyles}
+                  onClick={handleAdvanceToNextStage}
                 >
-                  Next Question →
+                  {currentStage?.stageType === "begin"
+                    ? "Start Walkthrough \u2192"
+                    : "Start Challenge \u2192"}
                 </button>
               ) : (
-                <span style={objectiveCompleteStyles}>Objective complete</span>
+                <span style={completedLabelStyles}>Completed</span>
               )}
             </div>
           )}
           <ChatComposer
             onSend={handleSendMessage}
-            disabled={!selectedThreadId || !selectedQuestionId || currentQuestionCompleted}
-            placeholder={currentQuestionCompleted ? "Completed" : undefined}
+            disabled={!selectedThreadId || !selectedStageId || currentStageCompleted}
+            placeholder={currentStageCompleted ? "Stage completed" : undefined}
           />
         </div>
       </main>
