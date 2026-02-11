@@ -6,10 +6,10 @@ This document describes what the **frontend expects the backend to provide**: AP
 
 ## 1. Overview
 
-- **Auth**: The app assumes a **current student** (or teacher, for teacher views). The frontend needs a way to resolve “current user” (e.g. session, JWT) and to fetch that user’s profile.
+- **Auth**: The app assumes a **current student** (or teacher, for teacher views). The frontend needs a way to resolve "current user" (e.g. session, JWT) and to fetch that user's profile.
 - **Data flow**: The frontend currently uses `src/services/api.ts` and `src/types/domain.ts`. Backend responses should match these types (or be easily mappable).
 - **Computed vs raw**: Some types are **computed** on the frontend (e.g. `UnitProgress`, `ThreadWithProgress`). The backend may either:
-  - Send the raw entities and let the frontend compute these, or  
+  - Send the raw entities and let the frontend compute these, or
   - Expose endpoints that return these shapes directly (recommended for consistency and less client logic).
 
 ---
@@ -31,14 +31,14 @@ All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00
 |------|--------|--------|
 | **Course** | `id`, `title`, `icon?`, `instructorIds: string[]`, `enrolledStudentIds: string[]` | |
 | **Unit** | `id`, `courseId`, `title`, `status` | `status`: `"active"` \| `"completed"` \| `"locked"` |
-| **Objective** | `id`, `unitId`, `kind`, `title` | `kind`: `"knowledge"` \| `"skill"`. One per Knowledge/Skill section. |
-| **Question** | `id`, `objectiveId`, `difficultyStars`, `prompt` | `difficultyStars`: `1` \| `2` \| `3`. Sorted by difficulty in UI. |
+| **Objective** | `id`, `unitId`, `kind`, `title`, `order` | `kind`: `"knowledge"` \| `"skill"` \| `"capstone"`. `order` is a number used for sorting objectives within a unit. |
+| **ItemStage** | `id`, `itemId`, `stageType`, `order`, `prompt` | `itemId` is the parent objective's `id`. `stageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. Each objective has exactly 3 stages. `order` determines display order (1, 2, 3). `prompt` is the stage's question text. |
 
 ### 2.3 Progress
 
 | Type | Fields | Notes |
 |------|--------|--------|
-| **StudentObjectiveProgress** | `studentId`, `objectiveId`, `earnedStars`, `currentQuestionId`, `updatedAt` | `earnedStars`: `0` \| `1` \| `2` \| `3` = highest difficulty completed. |
+| **StudentObjectiveProgress** | `studentId`, `objectiveId`, `earnedStars`, `currentStageType`, `updatedAt` | `earnedStars`: `0` \| `1` \| `2` \| `3`. Stars map to completed stages: 1 = begin done, 2 = walkthrough done, 3 = challenge done. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"` = the stage currently being worked on. |
 | **UnitProgress** (computed) | `unitId`, `totalObjectives`, `completedObjectives`, `progressPercent` | `completedObjectives` = count of objectives with `earnedStars === 3`. |
 
 ### 2.4 Awards & Feedback
@@ -52,10 +52,11 @@ All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00
 
 | Type | Fields | Notes |
 |------|--------|--------|
-| **ChatThread** | `id`, `unitId`, `courseId`, `objectiveId`, `title`, `kind`, `lastMessageAt` | One thread per objective. `kind`: `"knowledge"` \| `"skill"`. |
-| **ThreadWithProgress** (computed) | ChatThread + `earnedStars`, `currentDifficultyStars`, `currentQuestionId` | Used in unit chat view. |
-| **ChatMessage** | `id`, `threadId`, `questionId?`, `role`, `content`, `createdAt`, `attachments?`, `metadata?` | `role`: `"student"` \| `"tutor"`. `metadata`: `{ isFeedback?: boolean; isSystemMessage?: boolean }`. Question prompts are **not** stored as messages; they come from **Question**. |
+| **ChatThread** | `id`, `unitId`, `courseId`, `objectiveId`, `title`, `kind`, `lastMessageAt` | One thread per objective. `kind`: `"knowledge"` \| `"skill"` \| `"capstone"`. |
+| **ThreadWithProgress** (computed) | ChatThread + `earnedStars`, `currentStageType`, `currentStageId`, `order` | Used in unit chat view. `earnedStars`: `0`–`3`. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. `currentStageId`: the `id` of the current `ItemStage`. `order`: from the parent objective. |
+| **ChatMessage** | `id`, `threadId`, `stageId?`, `role`, `content`, `createdAt`, `attachments?`, `metadata?` | `role`: `"student"` \| `"tutor"`. `stageId` scopes the message to a specific stage. Stage prompts are **not** stored as messages; they come from **ItemStage**. |
 | **ChatMessageAttachment** | `type` (`"image"` \| `"file"`), `url`, `name?` | Optional on messages. |
+| **ChatMessageMetadata** | `isFeedback?`, `isSystemMessage?`, `earnedStars?`, `isCompletionMessage?` | All fields optional booleans, except `earnedStars` which is a number. |
 
 ---
 
@@ -69,7 +70,7 @@ The frontend currently calls the following. The backend should provide equivalen
 |---------------|---------------------------|
 | `getCurrentStudent()` | Return the **current student** (from session/JWT). Response: **Student**. |
 
-If you support teachers, a similar `getCurrentTeacher()` (or role-aware “current user”) may be needed later.
+If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current user") may be needed later.
 
 ### 3.2 Student
 
@@ -95,14 +96,14 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware “curre
 | `listUnits(courseId)` | All units for the course. Response: **Unit[]**. |
 | `getUnit(unitId)` | One unit by id. Response: **Unit** or 404. |
 
-### 3.6 Objectives & Questions
+### 3.6 Objectives & Stages
 
 | Frontend call | Expected backend behavior |
 |---------------|---------------------------|
 | `listObjectives(unitId)` | All objectives for the unit. Response: **Objective[]**. |
 | `getObjective(objectiveId)` | One objective. Response: **Objective** or 404. |
-| `listQuestionsForObjective(objectiveId)` | All questions for the objective, **sorted by difficultyStars ascending**. Response: **Question[]**. |
-| `getQuestion(questionId)` | One question. Response: **Question** or 404. |
+| `listItemStages(itemId)` | All stages for the objective (identified by `itemId` = objective id), **sorted by `order` ascending**. Response: **ItemStage[]**. |
+| `getStage(stageId)` | One stage by id. Response: **ItemStage** or 404. |
 
 ### 3.7 Student Progress
 
@@ -111,6 +112,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware “curre
 | `getStudentObjectiveProgress(studentId, objectiveId)` | Progress for that objective. Response: **StudentObjectiveProgress** or 404/undefined. |
 | `listStudentProgressForUnit(studentId, unitId)` | All objective progress for that student in that unit. Response: **StudentObjectiveProgress[]**. |
 | `getUnitProgress(studentId, unitId)` | Aggregated progress for the unit. Response: **UnitProgress** (can be computed server-side from objectives + progress). |
+| `advanceStage(studentId, itemId)` | Advance the student's progress on the objective to the next stage. Increments `earnedStars` and moves `currentStageType` forward (begin → walkthrough → challenge). If no progress exists, creates it with `earnedStars: 1` and `currentStageType: "walkthrough"`. Response: **StudentObjectiveProgress**. |
 
 ### 3.8 Awards
 
@@ -132,14 +134,14 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware “curre
 |---------------|---------------------------|
 | `listChatThreadsForUnit({ courseId, unitId, studentId })` | All threads for that unit, with progress for that student. Response: **ThreadWithProgress[]**. |
 | `getThread(threadId)` | One thread. Response: **ChatThread** or 404. |
-| `getThreadWithProgress(threadId, studentId)` | One thread plus earned stars and current question. Response: **ThreadWithProgress** or 404. |
+| `getThreadWithProgress(threadId, studentId)` | One thread plus earned stars, current stage type, current stage id, and order. Response: **ThreadWithProgress** or 404. |
 
 ### 3.11 Chat Messages
 
 | Frontend call | Expected backend behavior |
 |---------------|---------------------------|
-| `listMessages(threadId, questionId?)` | Messages in the thread; if `questionId` is provided, filter to that question. **Sorted by `createdAt` ascending.** Response: **ChatMessage[]**. |
-| `sendMessage(threadId, content, questionId?)` | Create a student message; backend should persist it and (if applicable) trigger tutor/AI reply. Response: **ChatMessage** (the created message). |
+| `listMessages(threadId, stageId?)` | Messages in the thread; if `stageId` is provided, filter to that stage. **Sorted by `createdAt` ascending.** Response: **ChatMessage[]**. |
+| `sendMessage(threadId, content, stageId?)` | Create a student message; backend should persist it and (if applicable) trigger tutor/AI reply. Response: **ChatMessage** (the created message). |
 
 ---
 
@@ -156,16 +158,22 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware “curre
 
 ### 4.3 Real-time (Chat)
 
-- The UI does not yet assume WebSockets or SSE. Polling or “load messages after send” is acceptable. If the backend adds real-time delivery of new tutor messages, the frontend can be extended to subscribe.
+- The UI does not yet assume WebSockets or SSE. Polling or "load messages after send" is acceptable. If the backend adds real-time delivery of new tutor messages, the frontend can be extended to subscribe.
 
-### 4.4 Question prompts vs chat messages
+### 4.4 Stage prompts vs chat messages
 
-- **Question text** is stored only on **Question** (e.g. `prompt`). It is shown in the chat header as the “current question,” not as a chat message.
-- **Chat messages** are student answers, tutor replies, and optional system messages (e.g. “3 stars earned”). The backend should not store the question prompt as a message.
+- **Stage prompt text** is stored only on **ItemStage** (the `prompt` field). It is shown in the chat as the "current stage prompt," not as a chat message.
+- **Chat messages** are student answers, tutor replies, and optional system messages (e.g. "3 stars earned"). The backend should not store the stage prompt as a message.
 
 ### 4.5 Thread–objective relationship
 
-- One **ChatThread** per **Objective** (per unit/course). Threads are tied to `objectiveId`; listing threads for a unit is effectively listing threads for that unit’s objectives (with progress).
+- One **ChatThread** per **Objective** (per unit/course). Threads are tied to `objectiveId`; listing threads for a unit is effectively listing threads for that unit's objectives (with progress).
+
+### 4.6 Stage progression model
+
+- Each **Objective** has exactly 3 **ItemStages**: begin (1 star), walkthrough (2 stars), challenge (3 stars).
+- Stars represent **progress milestones**, not difficulty. Completing each stage awards stars cumulatively.
+- Progression is linear: begin → walkthrough → challenge. A student cannot skip stages.
 
 ---
 
@@ -175,11 +183,11 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware “curre
 - [ ] **Courses**: List by student, get by id.
 - [ ] **Instructors**: List by ids.
 - [ ] **Units**: List by course, get by id.
-- [ ] **Objectives**: List by unit, get by id.
-- [ ] **Questions**: List by objective (sorted by difficulty), get by id.
-- [ ] **Progress**: Per-objective and per-unit progress for a student; support **UnitProgress** (computed or stored).
+- [ ] **Objectives**: List by unit, get by id. Include `order` field for sorting.
+- [ ] **ItemStages**: List by objective (sorted by order), get by id. Each objective has exactly 3 stages (begin, walkthrough, challenge) with a `prompt`.
+- [ ] **Progress**: Per-objective and per-unit progress for a student; support **UnitProgress** (computed or stored). Support **advanceStage** to move a student forward.
 - [ ] **Awards**: List by student; optionally by student + course.
 - [ ] **Feedback**: List by student; list by course.
-- [ ] **Chat**: Threads for unit (with progress); get thread (with optional progress); list messages (optional filter by question); send message and return created **ChatMessage**.
+- [ ] **Chat**: Threads for unit (with progress); get thread (with optional progress); list messages (optional filter by stage); send message and return created **ChatMessage**.
 
 Once these are implemented and responses match (or are mapped to) the types in `frontend/src/types/domain.ts`, the frontend can switch from `mock/db` to the real backend with minimal changes to UI code.
