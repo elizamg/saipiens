@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import verticleLogo from "../assets/verticle-logo.png";
 import Button from "../components/ui/Button";
 import TintedImage from "../components/ui/TintedImage";
-import { MAIN_GREEN, WHITE } from "../theme/colors";
+import { PRIMARY, WHITE } from "../theme/colors";
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -13,7 +13,7 @@ export default function LandingPage() {
       <div style={styles.container}>
         <TintedImage
           src={verticleLogo}
-          color={MAIN_GREEN}
+          color={PRIMARY}
           alt="SAIPIENS vertical logo"
           width={220}
           style={styles.logo}
@@ -71,6 +71,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#0B0B0B",
   },
   green: {
-    color: MAIN_GREEN,
+    color: PRIMARY,
   },
 };

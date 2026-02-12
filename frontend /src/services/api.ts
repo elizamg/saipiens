@@ -11,6 +11,7 @@ import {
   chatThreads,
   chatMessages,
   studentAwards,
+  agent,
 } from "../mock/db";
 import type {
   Student,
@@ -27,12 +28,20 @@ import type {
   ThreadWithProgress,
   UnitProgress,
   StageType,
-  EarnedStars,
+  ProgressState,
+  Agent,
 } from "../types/domain";
-import { computeUnitProgress, buildProgressMap, getEarnedStars } from "../utils/progress";
+import { computeUnitProgress, buildProgressMap, getProgressState } from "../utils/progress";
 
 // Simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ============ AGENT ============
+
+export async function getAgent(): Promise<Agent> {
+  await delay(50);
+  return agent;
+}
 
 // ============ STUDENT ============
 
@@ -144,7 +153,7 @@ export async function getUnitProgress(
 
 /**
  * Advance a student's progress on an objective to the next stage.
- * Increments earnedStars and moves currentStageType forward.
+ * Updates progressState and moves currentStageType forward.
  */
 export async function advanceStage(
   studentId: string,
@@ -158,10 +167,10 @@ export async function advanceStage(
     challenge: null,
   };
 
-  const STAGE_STARS: Record<StageType, EarnedStars> = {
-    begin: 1,
-    walkthrough: 2,
-    challenge: 3,
+  const STAGE_PROGRESS: Record<StageType, ProgressState> = {
+    begin: "not_started",
+    walkthrough: "walkthrough_complete",
+    challenge: "challenge_complete",
   };
 
   const idx = studentObjectiveProgress.findIndex(
@@ -169,11 +178,12 @@ export async function advanceStage(
   );
 
   if (idx === -1) {
-    // Create initial progress (begin completed)
+    // Create initial progress (begin completed → move to walkthrough, but progress stays not_started
+    // until student sends their first walkthrough message)
     const newProgress: ProgressType = {
       studentId,
       objectiveId: itemId,
-      earnedStars: 1,
+      progressState: "not_started",
       currentStageType: "walkthrough",
       updatedAt: new Date().toISOString(),
     };
@@ -182,15 +192,12 @@ export async function advanceStage(
   }
 
   const current = studentObjectiveProgress[idx];
-  const currentStars = STAGE_STARS[current.currentStageType];
+  const nextProgressState = STAGE_PROGRESS[current.currentStageType];
   const next = NEXT_STAGE[current.currentStageType];
-
-  // Award stars for completing current stage
-  const updatedStars = Math.max(current.earnedStars, currentStars) as EarnedStars;
 
   const updated: ProgressType = {
     ...current,
-    earnedStars: updatedStars,
+    progressState: nextProgressState,
     currentStageType: next ?? current.currentStageType,
     updatedAt: new Date().toISOString(),
   };
@@ -263,18 +270,17 @@ export async function listChatThreadsForUnit(params: {
     chatMessages.some((m) => m.threadId === threadId && m.role === "student");
 
   return unitThreads.map((thread) => {
-    const progress = progressMap[thread.objectiveId];
     const objective = objectiveMap[thread.objectiveId];
-    const rawStars = getEarnedStars(thread.objectiveId, progressMap);
-    const earnedStars = hasStudentMessages(thread.id) ? rawStars : 0;
+    const rawProgressState = getProgressState(thread.objectiveId, progressMap);
+    const progressState: ProgressState = hasStudentMessages(thread.id) ? rawProgressState : "not_started";
 
-    const currentStageType: StageType = progress?.currentStageType ?? "begin";
+    const currentStageType: StageType = progressMap[thread.objectiveId]?.currentStageType ?? "begin";
     const stages = stagesByItem[thread.objectiveId] ?? [];
     const currentStage = stages.find((s) => s.stageType === currentStageType);
 
     return {
       ...thread,
-      earnedStars,
+      progressState,
       currentStageType,
       currentStageId: currentStage?.id ?? "",
       order: objective?.order ?? 0,
@@ -300,11 +306,11 @@ export async function getThreadWithProgress(
   );
 
   const objective = objectives.find((obj) => obj.id === thread.objectiveId);
-  const rawStars = progress?.earnedStars ?? 0;
+  const rawProgressState = progress?.progressState ?? "not_started";
   const hasStudent = chatMessages.some(
     (m) => m.threadId === threadId && m.role === "student"
   );
-  const earnedStars = hasStudent ? rawStars : 0;
+  const progressState: ProgressState = hasStudent ? rawProgressState : "not_started";
 
   const currentStageType: StageType = progress?.currentStageType ?? "begin";
   const stages = itemStages.filter((s) => s.itemId === thread.objectiveId);
@@ -312,7 +318,7 @@ export async function getThreadWithProgress(
 
   return {
     ...thread,
-    earnedStars,
+    progressState,
     currentStageType,
     currentStageId: currentStage?.id ?? "",
     order: objective?.order ?? 0,
@@ -350,5 +356,33 @@ export async function sendMessage(
     createdAt: new Date().toISOString(),
   };
   chatMessages.push(newMessage);
+
+  // Update progress when student sends first message in a new stage
+  if (stageId) {
+    const stage = itemStages.find((s) => s.id === stageId);
+    const thread = chatThreads.find((t) => t.id === threadId);
+    if (stage && thread) {
+      const progressIdx = studentObjectiveProgress.findIndex(
+        (p) => p.objectiveId === thread.objectiveId
+      );
+      if (progressIdx !== -1) {
+        const progress = studentObjectiveProgress[progressIdx];
+        if (stage.stageType === "walkthrough" && progress.progressState === "not_started") {
+          studentObjectiveProgress[progressIdx] = {
+            ...progress,
+            progressState: "walkthrough_started",
+            updatedAt: new Date().toISOString(),
+          };
+        } else if (stage.stageType === "challenge" && progress.progressState === "walkthrough_complete") {
+          studentObjectiveProgress[progressIdx] = {
+            ...progress,
+            progressState: "challenge_started",
+            updatedAt: new Date().toISOString(),
+          };
+        }
+      }
+    }
+  }
+
   return newMessage;
 }

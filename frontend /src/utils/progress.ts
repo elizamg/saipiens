@@ -2,45 +2,47 @@ import type {
   Objective,
   StudentObjectiveProgress,
   UnitProgress,
-  EarnedStars,
+  ProgressState,
   StageType,
 } from "../types/domain";
 
 /**
- * Check if an objective is completed (earnedStars === 3)
+ * Check if an objective is completed (challenge_complete)
  */
-export function isObjectiveCompleted(earnedStars: EarnedStars): boolean {
-  return earnedStars === 3;
+export function isObjectiveCompleted(progressState: ProgressState): boolean {
+  return progressState === "challenge_complete";
 }
 
 /**
- * Check if a specific stage is completed based on earned stars.
- * begin: completed when earnedStars >= 1
- * walkthrough: completed when earnedStars >= 2
- * challenge: completed when earnedStars >= 3
+ * Check if a specific stage is completed based on progress state.
+ * begin: completed when progressState is not "not_started"
+ * walkthrough: completed when progressState is "walkthrough_complete", "challenge_started", or "challenge_complete"
+ * challenge: completed when progressState is "challenge_complete"
  */
-export function isStageCompleted(stageType: StageType, earnedStars: EarnedStars): boolean {
+export function isStageCompleted(stageType: StageType, progressState: ProgressState): boolean {
   switch (stageType) {
     case "begin":
-      return earnedStars >= 1;
+      return progressState !== "not_started";
     case "walkthrough":
-      return earnedStars >= 2;
+      return progressState === "walkthrough_complete"
+        || progressState === "challenge_started"
+        || progressState === "challenge_complete";
     case "challenge":
-      return earnedStars >= 3;
+      return progressState === "challenge_complete";
   }
 }
 
 /**
- * Get the star count associated with completing a given stage type.
+ * Get the progress state after completing a given stage type.
  */
-export function stageTypeToStars(stageType: StageType): 1 | 2 | 3 {
+export function stageTypeToProgressState(stageType: StageType): ProgressState {
   switch (stageType) {
     case "begin":
-      return 1;
+      return "walkthrough_started";
     case "walkthrough":
-      return 2;
+      return "walkthrough_complete";
     case "challenge":
-      return 3;
+      return "challenge_complete";
   }
 }
 
@@ -80,7 +82,7 @@ export function computeUnitProgress(
 
   const completedObjectives = unitObjectives.filter((obj) => {
     const progress = progressMap[obj.id];
-    return progress && isObjectiveCompleted(progress.earnedStars);
+    return progress && isObjectiveCompleted(progress.progressState);
   }).length;
 
   const progressPercent = Math.round((completedObjectives / totalObjectives) * 100);
@@ -114,13 +116,13 @@ export function buildProgressMap(
 }
 
 /**
- * Get earned stars for an objective, defaulting to 0
+ * Get progress state for an objective, defaulting to "not_started"
  */
-export function getEarnedStars(
+export function getProgressState(
   objectiveId: string,
   progressMap: Record<string, StudentObjectiveProgress>
-): EarnedStars {
-  return progressMap[objectiveId]?.earnedStars ?? 0;
+): ProgressState {
+  return progressMap[objectiveId]?.progressState ?? "not_started";
 }
 
 /**

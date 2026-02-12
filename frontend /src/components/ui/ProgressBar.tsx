@@ -1,4 +1,4 @@
-import { MAIN_GREEN, GRAY_200 } from "../../theme/colors";
+import { SUCCESS_GREEN, GRAY_200 } from "../../theme/colors";
 
 interface ProgressBarProps {
   percent: number;
@@ -30,7 +30,7 @@ export default function ProgressBar({
   const fillStyles: React.CSSProperties = {
     width: `${clampedPercent}%`,
     height: "100%",
-    backgroundColor: MAIN_GREEN,
+    backgroundColor: SUCCESS_GREEN,
     borderRadius: height / 2,
     transition: "width 0.3s ease",
   };
@@ -38,7 +38,7 @@ export default function ProgressBar({
   const labelStyles: React.CSSProperties = {
     fontSize: 12,
     fontWeight: 500,
-    color: MAIN_GREEN,
+    color: SUCCESS_GREEN,
     minWidth: 36,
     textAlign: "right",
   };

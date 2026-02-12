@@ -11,6 +11,13 @@ export interface Instructor {
   avatarUrl?: string;
 }
 
+/** The AI tutor agent identity. */
+export interface Agent {
+  id: string;
+  name: string;
+  avatarUrl: string;
+}
+
 export interface Course {
   id: string;
   title: string;
@@ -71,12 +78,21 @@ export interface Objective {
 }
 
 export type StageType = "begin" | "walkthrough" | "challenge";
-export type EarnedStars = 0 | 1 | 2 | 3;
+
+/**
+ * 5-state progress model replacing the old 0-3 star system.
+ */
+export type ProgressState =
+  | "not_started"
+  | "walkthrough_started"
+  | "walkthrough_complete"
+  | "challenge_started"
+  | "challenge_complete";
 
 /**
  * An ItemStage is a sub-question within an Objective.
  * Each objective has exactly 3 stages: begin (1), walkthrough (2), challenge (3).
- * Stars represent progress milestones, NOT difficulty.
+ * `suggestedQuestions` is only populated for walkthrough stages.
  */
 export interface ItemStage {
   id: string;
@@ -84,17 +100,19 @@ export interface ItemStage {
   stageType: StageType;
   order: number;
   prompt: string;
+  /** Backend-driven pill suggestions; only present on walkthrough stages. */
+  suggestedQuestions?: string[];
 }
 
 /**
  * Tracks a student's progress on an Objective.
- * earnedStars: 0=not started, 1=begin done, 2=walkthrough done, 3=challenge done
- * currentStageType: the stage currently being worked on
+ * progressState maps to the 5-state circle indicator.
+ * currentStageType: the stage currently being worked on.
  */
 export interface StudentObjectiveProgress {
   studentId: string;
   objectiveId: string;
-  earnedStars: EarnedStars;
+  progressState: ProgressState;
   currentStageType: StageType;
   updatedAt: string;
 }
@@ -125,8 +143,8 @@ export interface ChatMessageAttachment {
 export interface ChatMessageMetadata {
   isFeedback?: boolean;
   isSystemMessage?: boolean;
-  /** Progress milestone stars earned at this point. */
-  earnedStars?: number;
+  /** Progress state reached at this message. */
+  progressState?: ProgressState;
   isCompletionMessage?: boolean;
 }
 
@@ -152,7 +170,7 @@ export interface UnitProgress {
 }
 
 export interface ThreadWithProgress extends ChatThread {
-  earnedStars: EarnedStars;
+  progressState: ProgressState;
   currentStageType: StageType;
   currentStageId: string;
   order: number;

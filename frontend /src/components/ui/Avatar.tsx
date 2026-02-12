@@ -1,5 +1,5 @@
 import React from "react";
-import { MAIN_GREEN, WHITE } from "../../theme/colors";
+import { PRIMARY, WHITE } from "../../theme/colors";
 import TintedImage from "./TintedImage";
 
 interface AvatarProps {
@@ -38,7 +38,7 @@ export default function Avatar({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: MAIN_GREEN,
+    backgroundColor: PRIMARY,
     color: WHITE,
     fontSize: size * 0.4,
     fontWeight: 600,

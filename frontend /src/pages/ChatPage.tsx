@@ -14,9 +14,10 @@ import {
   listMessages,
   sendMessage,
   advanceStage,
+  getAgent,
 } from "../services/api";
 import { isStageCompleted, stageLabel } from "../utils/progress";
-import { WHITE, GRAY_900, GRAY_500, GRAY_600, MAIN_GREEN, GRAY_300 } from "../theme/colors";
+import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, SUCCESS_GREEN } from "../theme/colors";
 import type {
   Student,
   Course,
@@ -25,8 +26,9 @@ import type {
   ChatMessage,
   UnitProgress,
   ItemStage,
-  EarnedStars,
+  ProgressState,
   StageType,
+  Agent,
 } from "../types/domain";
 
 /** Synthetic completion message appended when a stage is completed. */
@@ -34,12 +36,12 @@ function makeCompletionMessage(
   stageId: string,
   threadId: string,
   stageType: StageType,
-  earnedStars: 1 | 2 | 3
+  progressState: ProgressState
 ): ChatMessage {
   const labels: Record<StageType, string> = {
-    begin: "\u2b50 Begin complete",
-    walkthrough: "\u2b50\u2b50 Walkthrough complete",
-    challenge: "\u2b50\u2b50\u2b50 Challenge complete!",
+    begin: "Walkthrough started",
+    walkthrough: "Walkthrough complete",
+    challenge: "Challenge complete!",
   };
   return {
     id: `completion_${stageId}`,
@@ -48,7 +50,7 @@ function makeCompletionMessage(
     role: "tutor",
     content: labels[stageType],
     createdAt: new Date().toISOString(),
-    metadata: { isSystemMessage: true, earnedStars, isCompletionMessage: true },
+    metadata: { isSystemMessage: true, progressState, isCompletionMessage: true },
   };
 }
 
@@ -67,15 +69,16 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [unitProgress, setUnitProgress] = useState<UnitProgress | null>(null);
   const [currentStage, setCurrentStage] = useState<ItemStage | null>(null);
+  const [agentData, setAgentData] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
 
   const selectedThreadId = searchParams.get("thread") || undefined;
   const selectedStageId = searchParams.get("stage") || undefined;
   const selectedThread = threads.find((t) => t.id === selectedThreadId);
 
-  const currentEarnedStars: EarnedStars = selectedThread?.earnedStars ?? 0;
+  const currentProgressState: ProgressState = selectedThread?.progressState ?? "not_started";
   const currentStageCompleted = currentStage
-    ? isStageCompleted(currentStage.stageType, currentEarnedStars)
+    ? isStageCompleted(currentStage.stageType, currentProgressState)
     : false;
 
   // Determine what CTA to show after completion
@@ -107,7 +110,7 @@ export default function ChatPage() {
   const canGoNext = currentNavIndex >= 0
     && currentNavIndex < navigableStages.length - 1
     && currentStage != null
-    && isStageCompleted(currentStage.stageType, currentEarnedStars);
+    && isStageCompleted(currentStage.stageType, currentProgressState);
 
   // Show arrows only when on walkthrough or challenge stages
   const showStageArrows = currentStage != null
@@ -120,8 +123,12 @@ export default function ChatPage() {
       if (!courseId || !unitId) return;
 
       try {
-        const studentData = await getCurrentStudent();
+        const [studentData, agentResult] = await Promise.all([
+          getCurrentStudent(),
+          getAgent(),
+        ]);
         setStudent(studentData);
+        setAgentData(agentResult);
 
         const [courseData, unitData, threadsData, progressData] = await Promise.all([
           getCourse(courseId),
@@ -252,10 +259,10 @@ export default function ChatPage() {
         setMessages((prev) => [...prev, newMessage]);
 
         // Auto-advance for begin stage: first student message completes it
-        if (currentStage.stageType === "begin" && !isStageCompleted("begin", currentEarnedStars)) {
+        if (currentStage.stageType === "begin" && !isStageCompleted("begin", currentProgressState)) {
           await advanceStage(student.id, selectedThread.objectiveId);
 
-          const completionMsg = makeCompletionMessage(selectedStageId, selectedThreadId, "begin", 1);
+          const completionMsg = makeCompletionMessage(selectedStageId, selectedThreadId, "begin", "walkthrough_started");
           setMessages((prev) => [...prev, completionMsg]);
 
           if (courseId && unitId) {
@@ -271,7 +278,7 @@ export default function ChatPage() {
         console.error("Error sending message:", error);
       }
     },
-    [selectedThreadId, selectedStageId, student, selectedThread, currentStage, currentEarnedStars, courseId, unitId]
+    [selectedThreadId, selectedStageId, student, selectedThread, currentStage, currentProgressState, courseId, unitId]
   );
 
   const handleAdvanceToNextStage = useCallback(async () => {
@@ -299,6 +306,14 @@ export default function ChatPage() {
     setSearchParams({ thread: selectedThreadId, stage: nextStage.id }, { replace: true });
   }, [canGoNext, currentNavIndex, navigableStages, selectedThreadId, setSearchParams]);
 
+  // Handle clicking a suggested question pill
+  const handlePillClick = useCallback((question: string) => {
+    // Populate the composer input - we use a state for this
+    setPillText(question);
+  }, []);
+
+  const [pillText, setPillText] = useState("");
+
   // Messages to display: real messages + optional synthetic completion for challenge
   const displayMessages = useMemo(() => {
     if (!currentStage || !selectedThreadId) return messages;
@@ -306,8 +321,18 @@ export default function ChatPage() {
     if (currentStage.stageType !== "challenge") return messages;
     const hasCompletion = messages.some((m) => m.metadata?.isCompletionMessage === true);
     if (hasCompletion) return messages;
-    return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, "challenge", 3)];
+    return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, "challenge", "challenge_complete")];
   }, [messages, currentStage, currentStageCompleted, selectedThreadId]);
+
+  // Whether to show the Current Question header
+  // WALKTHROUGH: NO current question header
+  // CHALLENGE: YES current question header
+  const showCurrentQuestion = currentStage?.stageType === "challenge";
+
+  // Whether to show suggested question pills (walkthrough stages only)
+  const suggestedQuestions = currentStage?.stageType === "walkthrough" && !currentStageCompleted
+    ? currentStage.suggestedQuestions ?? []
+    : [];
 
   // ============ Styles ============
 
@@ -344,7 +369,7 @@ export default function ChatPage() {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: showCurrentQuestion ? 12 : 0,
     gap: 16,
   };
 
@@ -383,8 +408,8 @@ export default function ChatPage() {
   const stageBadgeStyles: React.CSSProperties = {
     fontSize: 12,
     fontWeight: 600,
-    color: MAIN_GREEN,
-    backgroundColor: "rgba(125, 186, 132, 0.15)",
+    color: SUCCESS_GREEN,
+    backgroundColor: "rgba(92, 143, 106, 0.18)",
     padding: "4px 10px",
     borderRadius: 12,
     textTransform: "uppercase",
@@ -392,7 +417,7 @@ export default function ChatPage() {
   };
 
   const questionPromptStyles: React.CSSProperties = {
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "rgba(139, 122, 158, 0.12)",
     borderRadius: 8,
     padding: "12px 16px",
     marginTop: 12,
@@ -408,7 +433,7 @@ export default function ChatPage() {
   const promptLabelStyles: React.CSSProperties = {
     fontSize: 11,
     fontWeight: 600,
-    color: MAIN_GREEN,
+    color: PRIMARY,
     textTransform: "uppercase",
     letterSpacing: "0.5px",
   };
@@ -441,7 +466,7 @@ export default function ChatPage() {
     padding: "10px 20px",
     borderRadius: 8,
     border: "none",
-    backgroundColor: MAIN_GREEN,
+    backgroundColor: PRIMARY,
     color: WHITE,
     fontSize: 14,
     fontWeight: 600,
@@ -452,6 +477,27 @@ export default function ChatPage() {
     fontSize: 14,
     color: GRAY_500,
     fontWeight: 500,
+  };
+
+  const pillContainerStyles: React.CSSProperties = {
+    padding: "8px 24px",
+    display: "flex",
+    gap: 8,
+    overflowX: "auto",
+    flexShrink: 0,
+  };
+
+  const pillButtonStyles: React.CSSProperties = {
+    padding: "6px 14px",
+    borderRadius: 20,
+    border: `1px solid ${GRAY_300}`,
+    backgroundColor: "#f9fafb",
+    color: GRAY_600,
+    fontSize: 13,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+    fontFamily: "inherit",
   };
 
   if (loading) {
@@ -526,7 +572,7 @@ export default function ChatPage() {
               )}
             </div>
           </div>
-          {currentStage && (
+          {showCurrentQuestion && currentStage && (
             <div style={questionPromptStyles}>
               <div style={promptHeaderStyles}>
                 <span style={promptLabelStyles}>
@@ -538,7 +584,7 @@ export default function ChatPage() {
           )}
         </header>
         <div style={chatAreaStyles}>
-          <MessageList messages={displayMessages} />
+          <MessageList messages={displayMessages} agent={agentData ?? undefined} />
           {currentStageCompleted && (
             <div style={ctaBarStyles}>
               {hasNextStage ? (
@@ -556,10 +602,34 @@ export default function ChatPage() {
               )}
             </div>
           )}
+          {suggestedQuestions.length > 0 && (
+            <div style={pillContainerStyles}>
+              {suggestedQuestions.map((q, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  style={pillButtonStyles}
+                  onClick={() => handlePillClick(q)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "rgba(139, 122, 158, 0.1)";
+                    e.currentTarget.style.borderColor = PRIMARY;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "#f9fafb";
+                    e.currentTarget.style.borderColor = GRAY_300;
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
           <ChatComposer
             onSend={handleSendMessage}
             disabled={!selectedThreadId || !selectedStageId || currentStageCompleted}
             placeholder={currentStageCompleted ? "Stage completed" : undefined}
+            externalValue={pillText}
+            onExternalValueConsumed={() => setPillText("")}
           />
         </div>
       </main>

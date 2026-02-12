@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import Card from "../ui/Card";
 import Button from "../ui/Button";
 import ProgressBar from "../ui/ProgressBar";
-import { GRAY_900, GRAY_500, MAIN_GREEN, GRAY_300 } from "../../theme/colors";
+import { GRAY_900, GRAY_500, SUCCESS_GREEN, GRAY_300 } from "../../theme/colors";
 import type { Unit, UnitProgress } from "../../types/domain";
 
 interface UnitCardProps {
@@ -74,7 +74,7 @@ export default function UnitCard({ unit, courseId, progress }: UnitCardProps) {
           width="24"
           height="24"
           viewBox="0 0 24 24"
-          fill={MAIN_GREEN}
+          fill={SUCCESS_GREEN}
           stroke="none"
         >
           <path d="M12 2C13.1 2 14 2.9 14 4V5H19C19.55 5 20 5.45 20 6V8C20 10.21 18.21 12 16 12H14.27C13.8 13.54 12.54 14.73 11 15.08V18H14C14.55 18 15 18.45 15 19V21C15 21.55 14.55 22 14 22H10C9.45 22 9 21.55 9 21V19C9 18.45 9.45 18 10 18H11V15.08C9.46 14.73 8.2 13.54 7.73 12H6C3.79 12 2 10.21 2 8V6C2 5.45 2.45 5 3 5H8V4C8 2.9 8.9 2 10 2H12ZM4 7V8C4 9.1 4.9 10 6 10H7.17C7.06 9.54 7 9.05 7 8.5V7H4ZM18 7H15V8.5C15 9.05 14.94 9.54 14.83 10H16C17.1 10 18 9.1 18 8V7Z" />
@@ -104,7 +104,7 @@ export default function UnitCard({ unit, courseId, progress }: UnitCardProps) {
           width: 10,
           height: 10,
           borderRadius: "50%",
-          backgroundColor: MAIN_GREEN,
+          backgroundColor: SUCCESS_GREEN,
         }}
       />
     );
