@@ -1,5 +1,61 @@
 ## sApIens
 
+It already is Markdown-formatted — but here it is again, clean and fully Markdown-ready with no extra formatting artifacts:
+
+# Sprint 2 Progress
+
+## Live App
+
+**App Link:**  
+https://sapiens-pp4l.vercel.app/
+
+Or run locally:
+
+```bash
+git clone https://github.com/elizamg/sapiens.git
+cd sapiens/frontend
+npm install
+npm run dev
+````
+
+## Current User Flow
+
+1. Click **Get Started**
+2. Log in
+3. Log in
+4. Explore courses
+5. Enter a unit
+6. Look through questions at different stages of progress
+
+---
+
+## Team Updates
+
+### Eliza — Frontend
+
+I built a few initial versions of the frontend and iterated by taking them back to the team. I implemented frontend changes that we discussed as a team and with our mentor.
+
+We talked a lot about how we wanted the structure of questions to look and landed on having **Walkthrough** and **Challenge** subparts instead of difficulty-based questions. We also spent time thinking about how to display questions in the sidebar so it wouldn’t feel cluttered but would still give students the opportunity to explore.
+
+With our mentor, we discussed how to indicate progress (we changed from stars to a progress circle), how green is typically reserved for success semantically (so we updated our color scheme), and how to make critical components stand out clearly to the user.
+
+We also thought a lot about how to invite the user to engage and ask questions — by making walkthroughs feel like a conversation and adding suggested question pills.
+
+All of these design decisions were made iteratively and are reflected in our current frontend.
+
+---
+
+### Brooke — TODO
+
+*To be added.*
+
+---
+
+### Ben — TODO
+
+*To be added.*
+
+
 
 ## Sprint 1 Progress
 
