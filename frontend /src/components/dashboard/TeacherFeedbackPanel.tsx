@@ -1,7 +1,7 @@
 import React from "react";
 import Card from "../ui/Card";
 import Avatar from "../ui/Avatar";
-import { GRAY_900, GRAY_600, MAIN_GREEN } from "../../theme/colors";
+import { GRAY_900, GRAY_600, PRIMARY } from "../../theme/colors";
 import type { FeedbackItem, Unit, Instructor } from "../../types/domain";
 import whiteTreeLogo from "../../assets/white-tree.png";
 
@@ -43,7 +43,7 @@ export default function TeacherFeedbackPanel({
   const seeAllStyles: React.CSSProperties = {
     fontSize: 14,
     fontWeight: 500,
-    color: MAIN_GREEN,
+    color: PRIMARY,
     textDecoration: "none",
     background: "none",
     border: "none",
@@ -132,7 +132,7 @@ function FeedbackCard({ feedback, unitTitle, instructor }: FeedbackCardProps) {
   const seeMoreStyles: React.CSSProperties = {
     fontSize: 14,
     fontWeight: 500,
-    color: MAIN_GREEN,
+    color: PRIMARY,
     textDecoration: "none",
     background: "none",
     border: "none",

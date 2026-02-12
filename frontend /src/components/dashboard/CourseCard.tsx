@@ -4,7 +4,7 @@ import Card from "../ui/Card";
 import Button from "../ui/Button";
 import Avatar from "../ui/Avatar";
 import TintedImage from "../ui/TintedImage";
-import { GRAY_900, GRAY_500, MAIN_GREEN } from "../../theme/colors";
+import { GRAY_900, GRAY_500, SUCCESS_GREEN, PRIMARY } from "../../theme/colors";
 import type { Course, Instructor } from "../../types/domain";
 import historyLogo from "../../assets/history-logo.png";
 import scienceLogo from "../../assets/science-logo.png";
@@ -72,7 +72,7 @@ export default function CourseCard({ course, instructors }: CourseCardProps) {
           (iconSrc ? (
             <TintedImage
               src={iconSrc}
-              color={MAIN_GREEN}
+              color={course.icon === "science" || course.icon === "history" ? PRIMARY : SUCCESS_GREEN}
               width={40}
               height={40}
               style={iconStyles}

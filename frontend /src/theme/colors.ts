@@ -1,18 +1,33 @@
-// Color palette: ["#8fd694","#7dba84","#77ad78","#6f8f72","#504b43"]
-export const LIGHTER_GREEN = "#8fd694";
-export const MAIN_GREEN = "#7dba84";
-export const MID_GREEN = "#77ad78";
-export const DARKER_GREEN = "#6f8f72";
-export const DARK_ACCENT = "#504b43";
-export const TRANSPARENT_GREEN = "rgba(125, 186, 132, 0.15)";
+// Muted palette: soft grey surface, muted violet/lavender/olive. Analogous harmony.
+// Surface (replaces cream): soft warm grey for backgrounds
+export const SURFACE = "#f2f1ef";
+export const CREAM = SURFACE; // alias for existing imports
 
-// Style Colors
+// Muted accent colors — desaturated so they combine without clashing
+export const OLIVE = "#a39e72";
+export const LAVENDER = "#9a98b5";
+export const PRIMARY = "#8b7a9e";
+
+// Success: muted sage (harmonizes with olive, reads as success)
+export const SUCCESS_GREEN = "#5c8f6a";
+
+// Semantic: primary tint for selected/current state (muted purple)
+export const TRANSPARENT_PRIMARY = "rgba(139, 122, 158, 0.18)";
+
+// Legacy / aliases
+export const LIGHTER_GREEN = LAVENDER;
+export const MAIN_GREEN = PRIMARY;
+export const MID_GREEN = OLIVE;
+export const DARKER_GREEN = OLIVE;
+export const DARK_ACCENT = "#504b43";
+export const TRANSPARENT_GREEN = TRANSPARENT_PRIMARY;
+
+// Gradients (muted)
 export const BLUE_MAIN = "rgb(59, 130, 246)";
-export const GREEN_GRADIENT = "linear-gradient(90deg, #8fd694, #6f8f72)";
-/** Vertical: light green (top) to darker green (bottom). Greens only, no brown. Use for welcome banner. */
-export const GREEN_GRADIENT_VERTICAL = "linear-gradient(180deg, #8fd694 0%, #7dba84 33%, #77ad78 66%, #6f8f72 100%)";
-export const RADIAL_GREEN = "radial-gradient(circle, #8fd694, #7dba84)";
-export const WHITE_GREEN_GRADIENT = "linear-gradient(180deg, #ffffff, #8fd694)";
+export const GREEN_GRADIENT = `linear-gradient(90deg, ${SUCCESS_GREEN}, #4a7c59)`;
+export const GREEN_GRADIENT_VERTICAL = `linear-gradient(180deg, ${LAVENDER} 0%, ${PRIMARY} 100%)`;
+export const RADIAL_GREEN = `radial-gradient(circle, ${LAVENDER}, ${PRIMARY})`;
+export const WHITE_GREEN_GRADIENT = `linear-gradient(180deg, #ffffff, ${LAVENDER})`;
 
 // Neutral Colors
 export const WHITE = "#ffffff";

@@ -1,7 +1,7 @@
 import React from "react";
 import SidebarNav from "./SidebarNav";
 import TopBar from "./TopBar";
-import { GRAY_50 } from "../../theme/colors";
+import { SURFACE } from "../../theme/colors";
 import type { Student } from "../../types/domain";
 
 interface AppShellProps {
@@ -21,7 +21,7 @@ export default function AppShell({ children, student, activePath }: AppShellProp
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    backgroundColor: GRAY_50,
+    backgroundColor: SURFACE,
     minWidth: 0,
   };
 

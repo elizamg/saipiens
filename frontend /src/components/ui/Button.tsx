@@ -1,7 +1,7 @@
 import React from "react";
 import {
-  MAIN_GREEN,
-  LIGHTER_GREEN,
+  PRIMARY,
+  LAVENDER,
 } from "../../theme/colors";
 
 type ButtonVariant = "primary" | "secondary" | "ghost";
@@ -46,26 +46,26 @@ export default function Button({
     switch (variant) {
       case "primary":
         return {
-          background: MAIN_GREEN,
+          background: PRIMARY,
           color: "#ffffff",
           transform: isHovered && !disabled ? "translateY(-1px)" : "none",
           boxShadow: isHovered && !disabled
-            ? "0 4px 12px rgba(141, 211, 74, 0.4)"
+            ? "0 4px 12px rgba(139, 122, 158, 0.35)"
             : "none",
         };
       case "secondary":
         return {
-          background: LIGHTER_GREEN,
+          background: LAVENDER,
           color: "#1a1a1a",
           transform: isHovered && !disabled ? "translateY(-1px)" : "none",
           boxShadow: isHovered && !disabled
-            ? "0 4px 12px rgba(186, 232, 141, 0.4)"
+            ? "0 4px 12px rgba(154, 152, 181, 0.35)"
             : "none",
         };
       case "ghost":
         return {
           background: "transparent",
-          color: MAIN_GREEN,
+          color: PRIMARY,
           opacity: isHovered && !disabled ? 0.7 : disabled ? 0.6 : 1,
         };
     }
