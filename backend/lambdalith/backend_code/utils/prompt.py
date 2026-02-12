@@ -1,7 +1,7 @@
 import re
 
 class Prompt:
-    def get_parameter_names(self) -> str:
+    def get_parameter_names(self):
         parameter_names = re.findall(r'\{\{(.*?)\}\}', self.raw_prompt)
         valid_parameter_names = [name for name in parameter_names if not bool(re.search(r'\s', name))]
 
