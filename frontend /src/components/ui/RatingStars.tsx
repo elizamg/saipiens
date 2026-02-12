@@ -1,4 +1,4 @@
-import { SUCCESS_GREEN } from "../../theme/colors";
+import { MAIN_GREEN } from "../../theme/colors";
 
 interface RatingStarsProps {
   rating: 0 | 1 | 2 | 3;
@@ -32,8 +32,8 @@ function Star({ filled, size }: StarProps) {
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill={filled ? SUCCESS_GREEN : "none"}
-      stroke={SUCCESS_GREEN}
+      fill={filled ? MAIN_GREEN : "none"}
+      stroke={MAIN_GREEN}
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"

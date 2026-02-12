@@ -18,13 +18,12 @@ This document describes what the **frontend expects the backend to provide**: AP
 
 All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00Z"`).
 
-### 2.1 People & Agent
+### 2.1 People
 
 | Type | Fields | Notes |
 |------|--------|--------|
 | **Student** | `id`, `name`, `yearLabel`, `avatarUrl?` | Current user and possibly others. |
 | **Instructor** | `id`, `name`, `avatarUrl?` | Used for course attribution and feedback. |
-| **Agent** | `id`, `name`, `avatarUrl` | The AI tutor identity (e.g. "Sam"). All fields required. `avatarUrl` is the agent's profile image. |
 
 ### 2.2 Courses & Structure
 
@@ -33,15 +32,14 @@ All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00
 | **Course** | `id`, `title`, `icon?`, `instructorIds: string[]`, `enrolledStudentIds: string[]` | |
 | **Unit** | `id`, `courseId`, `title`, `status` | `status`: `"active"` \| `"completed"` \| `"locked"` |
 | **Objective** | `id`, `unitId`, `kind`, `title`, `order` | `kind`: `"knowledge"` \| `"skill"` \| `"capstone"`. `order` is a number used for sorting objectives within a unit. |
-| **ItemStage** | `id`, `itemId`, `stageType`, `order`, `prompt`, `suggestedQuestions?` | `itemId` is the parent objective's `id`. `stageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. Each objective has exactly 3 stages. `order` determines display order (1, 2, 3). `prompt` is the stage's question text. `suggestedQuestions` is an optional `string[]` of pill questions, only present on walkthrough stages. |
+| **ItemStage** | `id`, `itemId`, `stageType`, `order`, `prompt` | `itemId` is the parent objective's `id`. `stageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. Each objective has exactly 3 stages. `order` determines display order (1, 2, 3). `prompt` is the stage's question text. |
 
 ### 2.3 Progress
 
 | Type | Fields | Notes |
 |------|--------|--------|
-| **ProgressState** (enum) | — | `"not_started"` \| `"walkthrough_started"` \| `"walkthrough_complete"` \| `"challenge_started"` \| `"challenge_complete"`. Represents the 5-state progress model. |
-| **StudentObjectiveProgress** | `studentId`, `objectiveId`, `progressState`, `currentStageType`, `updatedAt` | `progressState`: one of the `ProgressState` values. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"` = the stage currently being worked on. |
-| **UnitProgress** (computed) | `unitId`, `totalObjectives`, `completedObjectives`, `progressPercent` | `completedObjectives` = count of objectives with `progressState === "challenge_complete"`. |
+| **StudentObjectiveProgress** | `studentId`, `objectiveId`, `earnedStars`, `currentStageType`, `updatedAt` | `earnedStars`: `0` \| `1` \| `2` \| `3`. Stars map to completed stages: 1 = begin done, 2 = walkthrough done, 3 = challenge done. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"` = the stage currently being worked on. |
+| **UnitProgress** (computed) | `unitId`, `totalObjectives`, `completedObjectives`, `progressPercent` | `completedObjectives` = count of objectives with `earnedStars === 3`. |
 
 ### 2.4 Awards & Feedback
 
@@ -55,10 +53,10 @@ All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00
 | Type | Fields | Notes |
 |------|--------|--------|
 | **ChatThread** | `id`, `unitId`, `courseId`, `objectiveId`, `title`, `kind`, `lastMessageAt` | One thread per objective. `kind`: `"knowledge"` \| `"skill"` \| `"capstone"`. |
-| **ThreadWithProgress** (computed) | ChatThread + `progressState`, `currentStageType`, `currentStageId`, `order` | Used in unit chat view. `progressState`: one of `ProgressState` values. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. `currentStageId`: the `id` of the current `ItemStage`. `order`: from the parent objective. |
+| **ThreadWithProgress** (computed) | ChatThread + `earnedStars`, `currentStageType`, `currentStageId`, `order` | Used in unit chat view. `earnedStars`: `0`–`3`. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. `currentStageId`: the `id` of the current `ItemStage`. `order`: from the parent objective. |
 | **ChatMessage** | `id`, `threadId`, `stageId?`, `role`, `content`, `createdAt`, `attachments?`, `metadata?` | `role`: `"student"` \| `"tutor"`. `stageId` scopes the message to a specific stage. Stage prompts are **not** stored as messages; they come from **ItemStage**. |
 | **ChatMessageAttachment** | `type` (`"image"` \| `"file"`), `url`, `name?` | Optional on messages. |
-| **ChatMessageMetadata** | `isFeedback?`, `isSystemMessage?`, `progressState?`, `isCompletionMessage?` | All fields optional. `progressState` is a `ProgressState` value indicating the milestone reached. |
+| **ChatMessageMetadata** | `isFeedback?`, `isSystemMessage?`, `earnedStars?`, `isCompletionMessage?` | All fields optional booleans, except `earnedStars` which is a number. |
 
 ---
 
@@ -74,11 +72,9 @@ The frontend currently calls the following. The backend should provide equivalen
 
 If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current user") may be needed later.
 
-### 3.2 Agent
+### 3.2 Student
 
-| Frontend call | Expected backend behavior |
-|---------------|---------------------------|
-| `getAgent()` | Return the AI tutor agent identity. Response: **Agent**. |
+- No additional student list endpoints are required for the current UI; current user is enough.
 
 ### 3.3 Courses
 
@@ -106,7 +102,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 |---------------|---------------------------|
 | `listObjectives(unitId)` | All objectives for the unit. Response: **Objective[]**. |
 | `getObjective(objectiveId)` | One objective. Response: **Objective** or 404. |
-| `listItemStages(itemId)` | All stages for the objective (identified by `itemId` = objective id), **sorted by `order` ascending**. Response: **ItemStage[]**. Walkthrough stages should include `suggestedQuestions`. |
+| `listItemStages(itemId)` | All stages for the objective (identified by `itemId` = objective id), **sorted by `order` ascending**. Response: **ItemStage[]**. |
 | `getStage(stageId)` | One stage by id. Response: **ItemStage** or 404. |
 
 ### 3.7 Student Progress
@@ -116,7 +112,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 | `getStudentObjectiveProgress(studentId, objectiveId)` | Progress for that objective. Response: **StudentObjectiveProgress** or 404/undefined. |
 | `listStudentProgressForUnit(studentId, unitId)` | All objective progress for that student in that unit. Response: **StudentObjectiveProgress[]**. |
 | `getUnitProgress(studentId, unitId)` | Aggregated progress for the unit. Response: **UnitProgress** (can be computed server-side from objectives + progress). |
-| `advanceStage(studentId, itemId)` | Advance the student's progress on the objective to the next stage. Updates `progressState` and moves `currentStageType` forward (begin → walkthrough → challenge). If no progress exists, creates it with `progressState: "walkthrough_started"` and `currentStageType: "walkthrough"`. Response: **StudentObjectiveProgress**. |
+| `advanceStage(studentId, itemId)` | Advance the student's progress on the objective to the next stage. Increments `earnedStars` and moves `currentStageType` forward (begin → walkthrough → challenge). If no progress exists, creates it with `earnedStars: 1` and `currentStageType: "walkthrough"`. Response: **StudentObjectiveProgress**. |
 
 ### 3.8 Awards
 
@@ -138,7 +134,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 |---------------|---------------------------|
 | `listChatThreadsForUnit({ courseId, unitId, studentId })` | All threads for that unit, with progress for that student. Response: **ThreadWithProgress[]**. |
 | `getThread(threadId)` | One thread. Response: **ChatThread** or 404. |
-| `getThreadWithProgress(threadId, studentId)` | One thread plus progress state, current stage type, current stage id, and order. Response: **ThreadWithProgress** or 404. |
+| `getThreadWithProgress(threadId, studentId)` | One thread plus earned stars, current stage type, current stage id, and order. Response: **ThreadWithProgress** or 404. |
 
 ### 3.11 Chat Messages
 
@@ -166,60 +162,30 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 
 ### 4.4 Stage prompts vs chat messages
 
-- **Stage prompt text** is stored only on **ItemStage** (the `prompt` field). It is shown in the chat header as the "current question" on **challenge** stages only.
-- **Walkthrough** stages do NOT show the prompt as a "current question" header. Instead, the walkthrough begins as a conversation with the agent, and the first message should already be present from the agent.
-- **Chat messages** are student answers, tutor replies, and optional system messages (e.g. "Challenge complete!"). The backend should not store the stage prompt as a message.
+- **Stage prompt text** is stored only on **ItemStage** (the `prompt` field). It is shown in the chat as the "current stage prompt," not as a chat message.
+- **Chat messages** are student answers, tutor replies, and optional system messages (e.g. "3 stars earned"). The backend should not store the stage prompt as a message.
 
-### 4.5 Suggested Questions (Walkthrough Pills)
-
-- Walkthrough stages include an optional `suggestedQuestions: string[]` field.
-- These are displayed as clickable pills above the chat input during walkthrough stages.
-- Clicking a pill populates the chat input with that text (does not auto-send).
-- The backend is responsible for providing contextual suggested questions.
-
-### 4.6 Thread–objective relationship
+### 4.5 Thread–objective relationship
 
 - One **ChatThread** per **Objective** (per unit/course). Threads are tied to `objectiveId`; listing threads for a unit is effectively listing threads for that unit's objectives (with progress).
 
-### 4.7 Stage progression model
+### 4.6 Stage progression model
 
-- Each **Objective** has exactly 3 **ItemStages**: begin, walkthrough, challenge.
-- Progress is tracked via **ProgressState** with 5 states:
-  - `"not_started"` — no interaction yet
-  - `"walkthrough_started"` — begin stage completed, walkthrough in progress
-  - `"walkthrough_complete"` — walkthrough completed
-  - `"challenge_started"` — challenge in progress
-  - `"challenge_complete"` — all stages completed
+- Each **Objective** has exactly 3 **ItemStages**: begin (1 star), walkthrough (2 stars), challenge (3 stars).
+- Stars represent **progress milestones**, not difficulty. Completing each stage awards stars cumulatively.
 - Progression is linear: begin → walkthrough → challenge. A student cannot skip stages.
-
-### 4.8 Agent Identity
-
-- The AI tutor is identified as **Sam** with a profile picture.
-- The `getAgent()` endpoint returns the agent's `id`, `name`, and `avatarUrl`.
-- Agent messages (role: "tutor") display the agent's avatar and name in the chat UI.
-
-### 4.9 Progress Indicator
-
-- Progress is displayed as a 5-state circle indicator (not stars):
-  - ○ Not started
-  - ◔ Walkthrough started (1/4 filled)
-  - ◐ Walkthrough complete (1/2 filled)
-  - ◕ Challenge started (3/4 filled)
-  - ● Challenge complete (full circle)
-- This appears next to each objective in the sidebar.
 
 ---
 
 ## 5. Summary Checklist for Backend
 
 - [ ] **Auth**: Endpoint or middleware that resolves current user and returns a **Student** (or equivalent) for the frontend.
-- [ ] **Agent**: Endpoint that returns the AI tutor **Agent** identity (name: "Sam", avatarUrl).
 - [ ] **Courses**: List by student, get by id.
 - [ ] **Instructors**: List by ids.
 - [ ] **Units**: List by course, get by id.
 - [ ] **Objectives**: List by unit, get by id. Include `order` field for sorting.
-- [ ] **ItemStages**: List by objective (sorted by order), get by id. Each objective has exactly 3 stages (begin, walkthrough, challenge) with a `prompt`. Walkthrough stages include `suggestedQuestions: string[]`.
-- [ ] **Progress**: Per-objective and per-unit progress for a student using `ProgressState`; support **UnitProgress** (computed or stored). Support **advanceStage** to move a student forward.
+- [ ] **ItemStages**: List by objective (sorted by order), get by id. Each objective has exactly 3 stages (begin, walkthrough, challenge) with a `prompt`.
+- [ ] **Progress**: Per-objective and per-unit progress for a student; support **UnitProgress** (computed or stored). Support **advanceStage** to move a student forward.
 - [ ] **Awards**: List by student; optionally by student + course.
 - [ ] **Feedback**: List by student; list by course.
 - [ ] **Chat**: Threads for unit (with progress); get thread (with optional progress); list messages (optional filter by stage); send message and return created **ChatMessage**.

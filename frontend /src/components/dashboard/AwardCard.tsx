@@ -1,6 +1,6 @@
 import Card from "../ui/Card";
 import TintedImage from "../ui/TintedImage";
-import { GRAY_900, GRAY_500, SUCCESS_GREEN } from "../../theme/colors";
+import { GRAY_900, GRAY_500, MAIN_GREEN } from "../../theme/colors";
 import { getAwardIcon } from "../../utils/awardIcons";
 import type { Award } from "../../types/domain";
 
@@ -43,8 +43,8 @@ export default function AwardCard({ award, courseName }: AwardCardProps) {
     margin: 0,
     fontSize: 11,
     fontWeight: 500,
-    color: SUCCESS_GREEN,
-    backgroundColor: "rgba(92, 143, 106, 0.18)",
+    color: MAIN_GREEN,
+    backgroundColor: "rgba(141, 211, 74, 0.1)",
     padding: "4px 8px",
     borderRadius: 4,
   };
@@ -54,7 +54,7 @@ export default function AwardCard({ award, courseName }: AwardCardProps) {
       <div style={contentStyles}>
         <TintedImage
           src={getAwardIcon(award.iconKey)}
-          color={SUCCESS_GREEN}
+          color={MAIN_GREEN}
           alt={award.title}
           width={64}
           height={64}
