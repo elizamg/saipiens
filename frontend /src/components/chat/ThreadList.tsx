@@ -1,7 +1,7 @@
 import { useState } from "react";
-import ProgressCircle from "../ui/ProgressCircle";
+import RatingStars from "../ui/RatingStars";
 import ProgressBar from "../ui/ProgressBar";
-import { GRAY_900, GRAY_500, PRIMARY, TRANSPARENT_PRIMARY, WHITE } from "../../theme/colors";
+import { GRAY_900, GRAY_400, GRAY_500, MAIN_GREEN, TRANSPARENT_GREEN, WHITE } from "../../theme/colors";
 import type {
   ThreadWithProgress,
   UnitProgress,
@@ -197,21 +197,24 @@ function ThreadItem({
   isThreadSelected,
   onSelectThread,
 }: ThreadItemProps) {
+  const isCompletedKnowledge = thread.kind === "knowledge" && thread.earnedStars === 3;
+
   const threadRowStyles: React.CSSProperties = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     padding: "10px 16px",
     cursor: "pointer",
-    backgroundColor: isThreadSelected ? TRANSPARENT_PRIMARY : "transparent",
-    borderLeft: isThreadSelected ? `3px solid ${PRIMARY}` : "3px solid transparent",
+    backgroundColor: isThreadSelected ? TRANSPARENT_GREEN : "transparent",
+    borderLeft: isThreadSelected ? `3px solid ${MAIN_GREEN}` : "3px solid transparent",
+    opacity: isCompletedKnowledge ? 0.5 : 1,
   };
 
   const threadTitleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 14,
     fontWeight: isThreadSelected ? 600 : 500,
-    color: GRAY_900,
+    color: isCompletedKnowledge ? GRAY_400 : GRAY_900,
   };
 
   return (
@@ -226,7 +229,7 @@ function ThreadItem({
       }}
     >
       <span style={threadTitleStyles}>{thread.title}</span>
-      <ProgressCircle state={thread.progressState} size={21} />
+      <RatingStars rating={thread.earnedStars} size={14} />
     </div>
   );
 }

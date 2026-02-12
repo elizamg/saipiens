@@ -5,7 +5,7 @@ import AuthCard from "../components/auth/AuthCard";
 import Input, { EyeIcon, EyeOffIcon } from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import GoogleButton from "../components/auth/GoogleButton";
-import { PRIMARY, GRAY_600 } from "../theme/colors";
+import { MAIN_GREEN, GRAY_600 } from "../theme/colors";
 
 export default function SignUpPage() {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export default function SignUpPage() {
   const linkButtonStyles: React.CSSProperties = {
     background: "none",
     border: "none",
-    color: PRIMARY,
+    color: MAIN_GREEN,
     fontWeight: 600,
     cursor: "pointer",
     padding: 0,

@@ -1,14 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import MessageBubble from "./MessageBubble";
-import { SURFACE } from "../../theme/colors";
-import type { ChatMessage, Agent } from "../../types/domain";
+import { GRAY_50 } from "../../theme/colors";
+import type { ChatMessage } from "../../types/domain";
 
 interface MessageListProps {
   messages: ChatMessage[];
-  agent?: Agent;
 }
 
-export default function MessageList({ messages, agent }: MessageListProps) {
+export default function MessageList({ messages }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wasNearBottomRef = useRef(true);
 
@@ -16,7 +15,7 @@ export default function MessageList({ messages, agent }: MessageListProps) {
     flex: 1,
     overflowY: "auto",
     padding: "24px",
-    backgroundColor: SURFACE,
+    backgroundColor: GRAY_50,
   };
 
   // Check if user is near bottom before messages update
@@ -44,7 +43,7 @@ export default function MessageList({ messages, agent }: MessageListProps) {
       onScroll={handleScroll}
     >
       {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} agent={agent} />
+        <MessageBubble key={message.id} message={message} />
       ))}
     </div>
   );

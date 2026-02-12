@@ -5,7 +5,7 @@ import AuthCard from "../components/auth/AuthCard";
 import Input, { EyeIcon, EyeOffIcon } from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import GoogleButton from "../components/auth/GoogleButton";
-import { PRIMARY, GRAY_600 } from "../theme/colors";
+import { MAIN_GREEN, GRAY_600 } from "../theme/colors";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ export default function LoginPage() {
   const forgotLinkStyles: React.CSSProperties = {
     background: "none",
     border: "none",
-    color: PRIMARY,
+    color: MAIN_GREEN,
     fontSize: 13,
     cursor: "pointer",
     padding: 0,
@@ -33,7 +33,7 @@ export default function LoginPage() {
   const linkButtonStyles: React.CSSProperties = {
     background: "none",
     border: "none",
-    color: PRIMARY,
+    color: MAIN_GREEN,
     fontWeight: 600,
     cursor: "pointer",
     padding: 0,

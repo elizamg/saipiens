@@ -15,7 +15,7 @@ import {
   listFeedbackForCourse,
   getUnitProgress,
 } from "../services/api";
-import { GRAY_900, GRAY_500, SUCCESS_GREEN, PRIMARY } from "../theme/colors";
+import { GRAY_900, GRAY_500, MAIN_GREEN } from "../theme/colors";
 import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress } from "../types/domain";
 import historyLogo from "../assets/history-logo.png";
 import scienceLogo from "../assets/science-logo.png";
@@ -141,7 +141,7 @@ export default function CoursePage() {
                 (courseIconSrc ? (
                   <TintedImage
                     src={courseIconSrc}
-                    color={course.icon === "science" || course.icon === "history" ? PRIMARY : SUCCESS_GREEN}
+                    color={MAIN_GREEN}
                     width={40}
                     height={40}
                     style={iconStyles}

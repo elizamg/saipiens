@@ -1,35 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
-import { PRIMARY, WHITE, GRAY_300 } from "../../theme/colors";
+import { MAIN_GREEN, WHITE, GRAY_300 } from "../../theme/colors";
 
 interface ChatComposerProps {
   onSend: (content: string) => void;
   disabled?: boolean;
   placeholder?: string;
-  /** External value to populate into the input (e.g. from clicking a pill). */
-  externalValue?: string;
-  /** Called after the external value has been consumed (set into the input). */
-  onExternalValueConsumed?: () => void;
 }
 
-export default function ChatComposer({
-  onSend,
-  disabled = false,
-  placeholder = "Type a message...",
-  externalValue,
-  onExternalValueConsumed,
-}: ChatComposerProps) {
+export default function ChatComposer({ onSend, disabled = false, placeholder = "Type a message..." }: ChatComposerProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // When externalValue changes (e.g. pill click), populate the input
-  useEffect(() => {
-    if (externalValue) {
-      setValue(externalValue);
-      onExternalValueConsumed?.();
-      // Focus the textarea
-      textareaRef.current?.focus();
-    }
-  }, [externalValue, onExternalValueConsumed]);
 
   const containerStyles: React.CSSProperties = {
     padding: "16px 24px",
@@ -59,7 +39,7 @@ export default function ChatComposer({
     height: 44,
     borderRadius: "50%",
     border: "none",
-    backgroundColor: value.trim() && !disabled ? PRIMARY : GRAY_300,
+    backgroundColor: value.trim() && !disabled ? MAIN_GREEN : GRAY_300,
     color: WHITE,
     cursor: value.trim() && !disabled ? "pointer" : "not-allowed",
     display: "flex",

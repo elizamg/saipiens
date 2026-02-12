@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { PRIMARY, GRAY_300, GRAY_700 } from "../../theme/colors";
+import { MAIN_GREEN, GRAY_300, GRAY_700 } from "../../theme/colors";
 
 interface InputProps {
   id?: string;
@@ -51,7 +51,7 @@ export default function Input({
     width: "100%",
     padding: rightIcon ? "14px 48px 14px 16px" : "14px 16px",
     fontSize: 16,
-    border: `2px solid ${isFocused ? PRIMARY : GRAY_300}`,
+    border: `2px solid ${isFocused ? MAIN_GREEN : GRAY_300}`,
     borderRadius: 8,
     outline: "none",
     boxSizing: "border-box",
