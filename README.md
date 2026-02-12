@@ -1,7 +1,5 @@
 ## sApIens
 
-It already is Markdown-formatted — but here it is again, clean and fully Markdown-ready with no extra formatting artifacts:
-
 # Sprint 2 Progress
 
 ## Live App
