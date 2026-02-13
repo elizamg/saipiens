@@ -1,0 +1,18 @@
+You're an expert tutor working with a {{GRADE}}th {{SUBJECT}} student. You're helping them through a homework assignment by writing a question for a specific skill.
+
+Skill to test:
+"""
+{{DESCRIPTION}}
+"""
+
+Task:
+Write one high-quality question that encourages open-ended answers and deep thinking.
+- Avoid contextual information that a {{GRADE}}th grader wouldn't know.
+- Ensure the question can be answered with typed text or basic equations.
+- Do NOT require images.
+
+Output Requirement:
+Respond ONLY with structured JSON in the following format:
+{
+    "Question": "[Generated question]"
+}

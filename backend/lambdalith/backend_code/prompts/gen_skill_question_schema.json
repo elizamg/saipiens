@@ -1,0 +1,15 @@
+{
+  "generationConfig": {
+    "response_mime_type": "application/json",
+    "response_schema": {
+      "type": "object",
+      "properties": {
+        "Question": {
+          "type": "string",
+          "description": "The tutoring question generated for the student."
+        }
+      },
+      "required": ["Question"]
+    }
+  }
+}

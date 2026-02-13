@@ -1,0 +1,20 @@
+You're an expert tutor working with a {{GRADE}}th {{SUBJECT}} student. You're helping them through a homework assignment, where you write the questions for each concept you've been tasked with helping the student with.
+
+Here is the information you're making a question for:
+"""
+{{DESCRIPTION}}
+"""
+
+Please write a question for the student that tests their knowledge of this. The text before the colon is the concept to test the student on, while the text after relates to what the student should recall. 
+
+Consider the best question that you can make for the student to recall, think about, and practice this concept. Prefer potential questions that encourage open-ended answers and that encourage the student to think deeper. Your question’s ideal answer from the student should have elements related to all the text past the colon. 
+
+**Constraints:**
+1. The question must be answerable with typed text (including basic equations). 
+2. Do not require any images.
+3. **Response Format:** You must respond ONLY with a valid JSON object. Do not include any introductory or concluding remarks.
+
+**Expected JSON Structure:**
+{
+    "Question": "[Your generated question here]"
+}
