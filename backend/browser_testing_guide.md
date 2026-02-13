@@ -23,7 +23,7 @@ Example dev token:
 
 # Step 1 --- Open the Browser Developer Console
 
-1.  Open Chrome (or any modern browser).
+1.  Open a website like https://example.com/.
 2.  Press:
     -   Mac: `Cmd + Option + I`
     -   Windows: `Ctrl + Shift + I`
