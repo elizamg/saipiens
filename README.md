@@ -68,11 +68,36 @@ All of these design decisions were made iteratively and are reflected in our cur
 
 ### Brooke - AWS Infrastructure and Backend 
 
-First, Brooke worked on setting up the necessary AWS Infrastructure for our project.
+First, I worked on setting up the necessary AWS Infrastructure for our project.
 
-Specifically, Brooke configured Congito for authentification (and worked with Eliza to include this in the frontend); created the DynamoDB tables for the different information our application needs to store and communicated with other teammembers to design our tables; and got our Lambda function set up (we're using one big Lambda function (a Lambdaith) for simplicity and fewer cold starts).
+Specifically, I've configured Congito for authentification (and worked with Eliza to include this in the frontend); created the DynamoDB tables for the different information our application needs to store and communicated with other teammembers to design our tables; and got our Lambda function set up (we're using one big Lambda function (a Lambdaith) for simplicity and fewer cold starts). Cognito is currently disabled for testing purposes.
 
-Next, Brooke started work on fufilling the frontend-backend contract through Lambda router code that registers incoming requests and sends back formatted information from the database she created [febe-contract branch](https://github.com/elizamg/sapiens/tree/febe-contract).
+Next, I started work on fufilling the frontend-backend contract through Lambda router code that registers incoming requests and sends back formatted information from the databases [febe-contract branch](https://github.com/elizamg/sapiens/tree/febe-contract). More recent changes can be seen in [backend-setup branch] (https://github.com/elizamg/sapiens/tree/backend-setup).
+
+The backend is fully contract-complete and implemented using:
+
+- AWS Lambda (Python 3.12)
+- API Gateway (HTTP API v2)
+- DynamoDB (multi-table design)
+- Cognito JWT (production auth)
+- Dev-header auth fallback (for browser testing)
+
+All backend documentation lives in `/backend`:
+
+- **Architecture Overview**  
+  [backend/sapiens_backend_master_document.md](backend/sapiens_backend_master_document.md)
+
+- **DynamoDB Table Schema**  
+  [backend/table_schema.md](backend/table_schema.md)
+
+- **API Route Schema**  
+  [backend/route_schema.md](backend/route_schema.md)
+
+- **Browser Testing Guide (No AWS Credentials Required)**  
+  [backend/browser_testing_guide.md](backend/browser_testing_guide.md)
+
+- **Production TODO & Hardening Checklist**  
+  [backend/backend_TODO.md](backend/backend_TODO.md)
 
 ---
 
