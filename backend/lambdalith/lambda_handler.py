@@ -19,7 +19,7 @@ T = {
     "OBJECTIVES": os.environ["OBJECTIVES_TABLE"],
     "QUESTIONS": os.environ["QUESTIONS_TABLE"],
 
-    # NEW: stages + progress + chat + awards + feedback
+    # stages + progress + chat + awards + feedback
     "ITEM_STAGES": os.environ["ITEM_STAGES_TABLE"],
     "STUDENT_OBJECTIVE_PROGRESS": os.environ["STUDENT_OBJECTIVE_PROGRESS_TABLE"],
     "CHAT_THREADS": os.environ["CHAT_THREADS_TABLE"],
@@ -34,7 +34,6 @@ IDX = {
     "UNIT_OBJECTIVES": os.environ["UNIT_OBJECTIVES_INDEX"],
     "OBJECTIVE_QUESTIONS": os.environ["OBJECTIVE_QUESTIONS_INDEX"],
 
-    # NEW
     "ITEM_STAGES_BY_ITEM": os.environ["ITEM_STAGES_BY_ITEM_INDEX"],
     "UNIT_THREADS": os.environ["UNIT_THREADS_INDEX"],
 }
@@ -99,6 +98,7 @@ def resp(status: int, obj=None, extra_headers: dict | None = None):
 def resp_options():
     return resp(200, {})
 
+
 def resp_not_found(entity: str):
     return resp(404, {"error": f"{entity} not found"})
 
@@ -113,11 +113,6 @@ def safe_json(body: str):
 
 
 def require_json(event):
-    """
-    Minimal POST JSON validation: if Content-Type is set and not application/json -> 415.
-    If body isn't valid JSON -> 400.
-    Returns: (err_response_or_None, parsed_body_or_None)
-    """
     ct = (event.get("headers") or {}).get("content-type") or (event.get("headers") or {}).get("Content-Type")
     if ct and "application/json" not in ct:
         return resp(415, {"error": "Unsupported Media Type"}), None
@@ -145,6 +140,33 @@ def claims(event) -> dict:
 
 def authed_sub(event) -> str | None:
     return claims(event).get("sub")
+
+
+def query_all(table, *, index_name: str | None = None, key_condition=None, scan_forward: bool = True):
+    """
+    Fetch all pages for a DynamoDB Query (frontend does not paginate yet).
+    Returns combined Items[].
+    """
+    kwargs = {
+        "KeyConditionExpression": key_condition,
+        "ScanIndexForward": scan_forward,
+    }
+    if index_name:
+        kwargs["IndexName"] = index_name
+
+    items: list[dict] = []
+    start_key = None
+
+    while True:
+        if start_key:
+            kwargs["ExclusiveStartKey"] = start_key
+        resp_q = table.query(**kwargs)
+        items.extend(resp_q.get("Items", []))
+        start_key = resp_q.get("LastEvaluatedKey")
+        if not start_key:
+            break
+
+    return items
 
 
 def header(event, name: str) -> str | None:
@@ -200,11 +222,6 @@ def _default_progress(student_id: str, objective_id: str):
 
 
 def _compute_current_stage_type(earned_stars: int) -> str:
-    # earnedStars means completed stages count.
-    # If 0 completed -> current is begin
-    # If 1 completed -> current is walkthrough
-    # If 2 completed -> current is challenge
-    # If 3 completed -> still "challenge" (complete)
     if earned_stars <= 0:
         return "begin"
     if earned_stars == 1:
@@ -212,15 +229,7 @@ def _compute_current_stage_type(earned_stars: int) -> str:
     return "challenge"
 
 
-def _stage_id_for(objective_id: str, stage_type: str) -> str | None:
-    # We’ll look up from ItemStages; caller can pass in a preloaded map for efficiency.
-    return None
-
 def batch_get_all(table_name: str, keys: list[dict], max_retries: int = 5) -> list[dict]:
-    """
-    DynamoDB BatchGet can return UnprocessedKeys. This helper retries until done (or max_retries).
-    NOTE: keys must be DynamoDB key dicts like {"id": "..."} (DocumentClient style via boto3 resource).
-    """
     if not keys:
         return []
 
@@ -238,7 +247,6 @@ def batch_get_all(table_name: str, keys: list[dict], max_retries: int = 5) -> li
 
         retries += 1
         if retries > max_retries:
-            # Stop retrying; return what we have
             break
 
         request = {table_name: {"Keys": unprocessed[table_name]["Keys"]}}
@@ -246,7 +254,7 @@ def batch_get_all(table_name: str, keys: list[dict], max_retries: int = 5) -> li
     return out
 
 
-# ---- Route handlers (existing) ----
+# ---- Route handlers ----
 def handle_health():
     return resp(200, {"ok": True})
 
@@ -295,7 +303,6 @@ def handle_instructors_batch(event):
     return resp(200, ordered)
 
 
-
 def handle_get_course(course_id: str):
     courses = dynamodb.Table(T["COURSES"])
     got = courses.get_item(Key={"id": course_id})
@@ -307,11 +314,13 @@ def handle_get_course(course_id: str):
 
 def handle_list_units(course_id: str):
     units = dynamodb.Table(T["UNITS"])
-    q = units.query(
-        IndexName=IDX["COURSE_UNITS"],
-        KeyConditionExpression=Key("courseId").eq(course_id),
+    items = query_all(
+        units,
+        index_name=IDX["COURSE_UNITS"],
+        key_condition=Key("courseId").eq(course_id),
+        scan_forward=True,
     )
-    return resp(200, q.get("Items", []))
+    return resp(200, items)
 
 
 def handle_get_unit(unit_id: str):
@@ -325,11 +334,15 @@ def handle_get_unit(unit_id: str):
 
 def handle_list_objectives(unit_id: str):
     objectives = dynamodb.Table(T["OBJECTIVES"])
-    q = objectives.query(
-        IndexName=IDX["UNIT_OBJECTIVES"],
-        KeyConditionExpression=Key("unitId").eq(unit_id),
+    items = query_all(
+        objectives,
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
     )
-    return resp(200, q.get("Items", []))
+    # CONTRACT: sort by Objective.order (not by id)
+    items.sort(key=lambda o: int(o.get("order") or 0))
+    return resp(200, items)
 
 
 def handle_get_objective(objective_id: str):
@@ -343,12 +356,13 @@ def handle_get_objective(objective_id: str):
 
 def handle_list_questions_for_objective(objective_id: str):
     questions = dynamodb.Table(T["QUESTIONS"])
-    q = questions.query(
-        IndexName=IDX["OBJECTIVE_QUESTIONS"],
-        KeyConditionExpression=Key("objectiveId").eq(objective_id),
-        ScanIndexForward=True,
+    items = query_all(
+        questions,
+        index_name=IDX["OBJECTIVE_QUESTIONS"],
+        key_condition=Key("objectiveId").eq(objective_id),
+        scan_forward=True,  # difficultyStars asc
     )
-    return resp(200, q.get("Items", []))
+    return resp(200, items)
 
 
 def handle_get_question(question_id: str):
@@ -369,8 +383,13 @@ def handle_list_courses_for_student(event, student_id_param: str | None):
         return resp(403, {"error": "Forbidden"})
 
     enrollments = dynamodb.Table(T["ENROLLMENTS"])
-    enr = enrollments.query(KeyConditionExpression=Key("studentId").eq(sub))
-    course_ids = [it.get("courseId") for it in enr.get("Items", []) if it.get("courseId")]
+    enr_items = query_all(
+        enrollments,
+        key_condition=Key("studentId").eq(sub),
+        scan_forward=True,
+    )
+    course_ids = [it.get("courseId") for it in enr_items if it.get("courseId")]
+
     if not course_ids:
         return resp(200, [])
 
@@ -382,16 +401,16 @@ def handle_list_courses_for_student(event, student_id_param: str | None):
     return resp(200, ordered)
 
 
-
-# ---- Stages (contract) ----
+# ---- Stages ----
 def handle_list_stages_for_objective(objective_id: str):
     stages = dynamodb.Table(T["ITEM_STAGES"])
-    q = stages.query(
-        IndexName=IDX["ITEM_STAGES_BY_ITEM"],
-        KeyConditionExpression=Key("itemId").eq(objective_id),
-        ScanIndexForward=True,
+    items = query_all(
+        stages,
+        index_name=IDX["ITEM_STAGES_BY_ITEM"],
+        key_condition=Key("itemId").eq(objective_id),
+        scan_forward=True,  # order asc
     )
-    return resp(200, q.get("Items", []))
+    return resp(200, items)
 
 
 def handle_get_stage(stage_id: str):
@@ -404,13 +423,13 @@ def handle_get_stage(stage_id: str):
 
 
 def _load_stages_by_objective(objective_id: str) -> list[dict]:
-    stages = dynamodb.Table(T["ITEM_STAGES"])
-    q = stages.query(
-        IndexName=IDX["ITEM_STAGES_BY_ITEM"],
-        KeyConditionExpression=Key("itemId").eq(objective_id),
-        ScanIndexForward=True,
+    stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
+    return query_all(
+        stages_tbl,
+        index_name=IDX["ITEM_STAGES_BY_ITEM"],
+        key_condition=Key("itemId").eq(objective_id),
+        scan_forward=True,
     )
-    return q.get("Items", [])
 
 
 def _current_stage_id_from_stages(stages: list[dict], stage_type: str) -> str | None:
@@ -420,7 +439,7 @@ def _current_stage_id_from_stages(stages: list[dict], stage_type: str) -> str | 
     return None
 
 
-# ---- Progress (contract) ----
+# ---- Progress ----
 def handle_get_objective_progress(event, objective_id: str):
     student_id = effective_student_id(event)
     if not student_id:
@@ -432,7 +451,6 @@ def handle_get_objective_progress(event, objective_id: str):
     if not item:
         item = _default_progress(student_id, objective_id)
     else:
-        # Ensure currentStageType exists (backward compatible)
         if not item.get("currentStageType"):
             earned = int(item.get("earnedStars") or 0)
             item["currentStageType"] = _compute_current_stage_type(earned)
@@ -445,30 +463,29 @@ def handle_list_unit_progress_items(event, unit_id: str):
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
-    # objectives in unit
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
-    obj_q = objectives_tbl.query(
-        IndexName=IDX["UNIT_OBJECTIVES"],
-        KeyConditionExpression=Key("unitId").eq(unit_id),
-        ScanIndexForward=True,
+    objectives = query_all(
+        objectives_tbl,
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
     )
-    objectives = obj_q.get("Items", [])
-    obj_ids = {o.get("id") for o in objectives if o.get("id")}
 
+    obj_ids = [o.get("id") for o in objectives if o.get("id")]
     if not obj_ids:
         return resp(200, [])
 
-    # all progress for student, then filter (simple + fine for MVP)
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
-    p_q = prog_tbl.query(KeyConditionExpression=Key("studentId").eq(student_id))
-    all_prog = p_q.get("Items", [])
+    all_prog = query_all(
+        prog_tbl,
+        key_condition=Key("studentId").eq(student_id),
+        scan_forward=True,
+    )
 
     by_obj = {p.get("objectiveId"): p for p in all_prog if p.get("objectiveId")}
     out = []
     for oid in obj_ids:
-        p = by_obj.get(oid)
-        if not p:
-            p = _default_progress(student_id, oid)
+        p = by_obj.get(oid) or _default_progress(student_id, oid)
         if not p.get("currentStageType"):
             earned = int(p.get("earnedStars") or 0)
             p["currentStageType"] = _compute_current_stage_type(earned)
@@ -483,19 +500,23 @@ def handle_get_unit_progress(event, unit_id: str):
         return resp(401, {"error": "Unauthorized"})
 
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
-    obj_q = objectives_tbl.query(
-        IndexName=IDX["UNIT_OBJECTIVES"],
-        KeyConditionExpression=Key("unitId").eq(unit_id),
-        ScanIndexForward=True,
+    objectives = query_all(
+        objectives_tbl,
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
     )
-    objectives = obj_q.get("Items", [])
+
     total = len(objectives)
     if total == 0:
         return resp(200, {"unitId": unit_id, "totalObjectives": 0, "completedObjectives": 0, "progressPercent": 0})
 
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
-    p_q = prog_tbl.query(KeyConditionExpression=Key("studentId").eq(student_id))
-    all_prog = p_q.get("Items", [])
+    all_prog = query_all(
+        prog_tbl,
+        key_condition=Key("studentId").eq(student_id),
+        scan_forward=True,
+    )
 
     prog_by_obj = {p.get("objectiveId"): p for p in all_prog if p.get("objectiveId")}
     completed = 0
@@ -521,7 +542,6 @@ def handle_advance_stage(event, objective_id: str):
 
     now = iso_now()
     if not item:
-        # create with earnedStars: 1 and currentStageType: walkthrough
         item = {
             "studentId": student_id,
             "objectiveId": objective_id,
@@ -542,41 +562,42 @@ def handle_advance_stage(event, objective_id: str):
     return resp(200, item)
 
 
-# ---- Awards (contract) ----
+# ---- Awards ----
 def handle_list_awards(event, course_id: str | None = None):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
     awards_tbl = dynamodb.Table(T["AWARDS"])
-    q = awards_tbl.query(KeyConditionExpression=Key("studentId").eq(student_id))
-    items = q.get("Items", [])
+    items = query_all(
+        awards_tbl,
+        key_condition=Key("studentId").eq(student_id),
+        scan_forward=True,
+    )
     if course_id:
         items = [a for a in items if a.get("courseId") == course_id]
     return resp(200, items)
 
 
-# ---- Feedback (contract) ----
+# ---- Feedback ----
 def handle_list_feedback(event, course_id: str | None = None):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
     fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
-    q = fb_tbl.query(KeyConditionExpression=Key("studentId").eq(student_id))
-    items = q.get("Items", [])
+    items = query_all(
+        fb_tbl,
+        key_condition=Key("studentId").eq(student_id),
+        scan_forward=True,
+    )
     if course_id:
         items = [f for f in items if f.get("courseId") == course_id]
     return resp(200, items)
 
 
-# ---- Chat (contract) ----
+# ---- Chat ----
 def _ensure_threads_for_unit(unit: dict, objectives: list[dict], existing_threads: list[dict]) -> list[dict]:
-    """
-    Contract expects one thread per objective.
-    For efficiency during integration/testing, we auto-create missing threads.
-    Thread id is deterministic: thread-{objectiveId}
-    """
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
     existing_by_obj = {t.get("objectiveId"): t for t in existing_threads if t.get("objectiveId")}
     out = list(existing_threads)
@@ -586,9 +607,7 @@ def _ensure_threads_for_unit(unit: dict, objectives: list[dict], existing_thread
 
     for obj in objectives:
         oid = obj.get("id")
-        if not oid:
-            continue
-        if oid in existing_by_obj:
+        if not oid or oid in existing_by_obj:
             continue
 
         tid = f"thread-{oid}"
@@ -605,7 +624,6 @@ def _ensure_threads_for_unit(unit: dict, objectives: list[dict], existing_thread
             threads_tbl.put_item(Item=item, ConditionExpression="attribute_not_exists(id)")
             out.append(item)
         except Exception:
-            # If a race, ignore and rely on future reads
             pass
 
     return out
@@ -616,46 +634,46 @@ def handle_list_threads_for_unit(event, unit_id: str):
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
-    # fetch unit (need courseId)
     units_tbl = dynamodb.Table(T["UNITS"])
     unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
     if not unit:
-        return resp(404, {"error": "Unit not found"})
+        return resp_not_found("Unit")
 
-    # objectives for unit (need order + kind)
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
-    obj_q = objectives_tbl.query(
-        IndexName=IDX["UNIT_OBJECTIVES"],
-        KeyConditionExpression=Key("unitId").eq(unit_id),
-        ScanIndexForward=True,
+    objectives = query_all(
+        objectives_tbl,
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
     )
-    objectives = obj_q.get("Items", [])
+    # contract: objective order drives thread ordering
+    objectives.sort(key=lambda o: int(o.get("order") or 0))
     obj_by_id = {o.get("id"): o for o in objectives if o.get("id")}
 
-    # existing threads by unit via GSI
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
-    t_q = threads_tbl.query(
-        IndexName=IDX["UNIT_THREADS"],
-        KeyConditionExpression=Key("unitId").eq(unit_id),
-        ScanIndexForward=True,
+    threads = query_all(
+        threads_tbl,
+        index_name=IDX["UNIT_THREADS"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
     )
-    threads = t_q.get("Items", [])
 
-    # auto-create missing
     threads = _ensure_threads_for_unit(unit, objectives, threads)
 
-    # progress for student (query once)
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
-    p_q = prog_tbl.query(KeyConditionExpression=Key("studentId").eq(student_id))
-    all_prog = p_q.get("Items", [])
+    all_prog = query_all(
+        prog_tbl,
+        key_condition=Key("studentId").eq(student_id),
+        scan_forward=True,
+    )
     prog_by_obj = {p.get("objectiveId"): p for p in all_prog if p.get("objectiveId")}
 
-    # build ThreadWithProgress
     out = []
     for t in threads:
         oid = t.get("objectiveId")
         obj = obj_by_id.get(oid, {})
         order = obj.get("order", 0)
+
         p = prog_by_obj.get(oid) or _default_progress(student_id, oid or "")
         earned = int(p.get("earnedStars") or 0)
         stage_type = p.get("currentStageType") or _compute_current_stage_type(earned)
@@ -670,7 +688,6 @@ def handle_list_threads_for_unit(event, unit_id: str):
         twp["order"] = order
         out.append(twp)
 
-    # Sort by objective order (contract uses order in ThreadWithProgress)
     out.sort(key=lambda x: int(x.get("order") or 0))
     return resp(200, out)
 
@@ -698,12 +715,10 @@ def handle_get_thread_with_progress(event, thread_id: str):
     if not oid:
         return resp(500, {"error": "Thread missing objectiveId"})
 
-    # objective for order
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
     obj = objectives_tbl.get_item(Key={"id": oid}).get("Item") or {}
     order = obj.get("order", 0)
 
-    # progress
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     p = prog_tbl.get_item(Key={"studentId": student_id, "objectiveId": oid}).get("Item")
     if not p:
@@ -731,11 +746,11 @@ def handle_list_messages(event, thread_id: str):
     stage_id_filter = qs.get("stageId")
 
     msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
-    q = msgs_tbl.query(
-        KeyConditionExpression=Key("threadId").eq(thread_id),
-        ScanIndexForward=True,  # createdAt asc
+    items = query_all(
+        msgs_tbl,
+        key_condition=Key("threadId").eq(thread_id),
+        scan_forward=True,  # createdAt asc
     )
-    items = q.get("Items", [])
 
     if stage_id_filter:
         items = [m for m in items if m.get("stageId") == stage_id_filter]
@@ -773,7 +788,6 @@ def handle_send_message(event, thread_id: str):
     msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
     msgs_tbl.put_item(Item=msg)
 
-    # bump thread lastMessageAt
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
     try:
         threads_tbl.update_item(
@@ -796,23 +810,18 @@ def handler(event, context):
         if method == "OPTIONS":
             return resp_options()
 
-        # Public
         if method == "GET" and path == "/health":
             return handle_health()
 
-        # Current user
         if method == "GET" and path == "/current-student":
             return handle_current_student(event)
 
-        # Student courses
         if method == "GET" and path.endswith("/courses") and path.startswith("/students/"):
             return handle_list_courses_for_student(event, params.get("studentId"))
 
-        # Instructors
         if method == "POST" and path == "/instructors/batch":
             return handle_instructors_batch(event)
 
-        # Courses
         if method == "GET" and path.endswith("/units") and path.startswith("/courses/"):
             course_id = params.get("courseId")
             if not course_id:
@@ -825,7 +834,6 @@ def handler(event, context):
                 return resp(400, {"error": "Missing courseId"})
             return handle_get_course(course_id)
 
-        # Units
         if method == "GET" and path.endswith("/objectives") and path.startswith("/units/"):
             unit_id = params.get("unitId")
             if not unit_id:
@@ -838,7 +846,6 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_get_unit(unit_id)
 
-        # Objectives
         if method == "GET" and path.endswith("/questions") and path.startswith("/objectives/"):
             objective_id = params.get("objectiveId")
             if not objective_id:
@@ -869,21 +876,18 @@ def handler(event, context):
                 return resp(400, {"error": "Missing objectiveId"})
             return handle_get_objective(objective_id)
 
-        # Questions
         if method == "GET" and path.startswith("/questions/"):
             question_id = params.get("questionId")
             if not question_id:
                 return resp(400, {"error": "Missing questionId"})
             return handle_get_question(question_id)
 
-        # Stage by id
         if method == "GET" and path.startswith("/stages/"):
             stage_id = params.get("stageId")
             if not stage_id:
                 return resp(400, {"error": "Missing stageId"})
             return handle_get_stage(stage_id)
 
-        # Progress for unit
         if method == "GET" and path.endswith("/progress/items") and path.startswith("/units/"):
             unit_id = params.get("unitId")
             if not unit_id:
@@ -896,7 +900,6 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_get_unit_progress(event, unit_id)
 
-        # Awards
         if method == "GET" and path == "/awards":
             return handle_list_awards(event)
 
@@ -906,7 +909,6 @@ def handler(event, context):
                 return resp(400, {"error": "Missing courseId"})
             return handle_list_awards(event, course_id=course_id)
 
-        # Feedback
         if method == "GET" and path == "/feedback":
             return handle_list_feedback(event)
 
@@ -916,7 +918,6 @@ def handler(event, context):
                 return resp(400, {"error": "Missing courseId"})
             return handle_list_feedback(event, course_id=course_id)
 
-        # Chat threads
         if method == "GET" and path.endswith("/threads") and path.startswith("/units/"):
             unit_id = params.get("unitId")
             if not unit_id:
