@@ -72,7 +72,7 @@ First, I worked on setting up the necessary AWS Infrastructure for our project.
 
 Specifically, I've configured Congito for authentification (and worked with Eliza to include this in the frontend); created the DynamoDB tables for the different information our application needs to store and communicated with other teammembers to design our tables; and got our Lambda function set up (we're using one big Lambda function (a Lambdaith) for simplicity and fewer cold starts). Cognito is currently disabled for testing purposes.
 
-Next, I started work on fufilling the frontend-backend contract through Lambda router code that registers incoming requests and sends back formatted information from the databases [febe-contract branch](https://github.com/elizamg/sapiens/tree/febe-contract). More recent changes can be seen in [backend-setup branch] (https://github.com/elizamg/sapiens/tree/backend-setup).
+Next, I started work on fufilling the frontend-backend contract through Lambda router code that registers incoming requests and sends back formatted information from the databases [febe-contract branch](https://github.com/elizamg/sapiens/tree/febe-contract). More recent changes can be seen in [backend-setup branch](https://github.com/elizamg/sapiens/tree/backend-setup). 
 
 The backend is fully contract-complete and implemented using:
 
