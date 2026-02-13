@@ -20,16 +20,39 @@ npm run dev
 
 1. Click **Get Started**
 2. Log in
-3. Log in
-4. Explore courses
-5. Enter a unit
-6. Look through questions at different stages of progress
+3. Explore courses
+4. Enter a unit
+5. Look through questions at different stages of progress
+
+## Backend
+
+We weren't able to finish the backend this sprint, so our backend code doesn't run. Our endpoints are planned in the [FRONTEND_BACKEND_CONTRACT.md](FRONTEND_BACKEND_CONTRACT.md), with our specific pipelines planned in [agent_diagram.svg](https://github.com/elizamg/sapiens/blob/main/research_and_design/agent_diagram.svg). Our prompts can be found in [prompts](https://github.com/elizamg/sapiens/tree/main/backend/lambdalith/backend_code/prompts) (excluding our scaffolded question pipeline prompts and info feedback prompt, which haven't been finished).
 
 ---
 
 ## Team Updates
 
-### Eliza — Frontend
+### Ben - Research and Backend
+
+For this sprint, I started by researching best education and teaching practices ([teaching_methods_research.md](https://github.com/elizamg/sapiens/blob/main/research_and_design/teaching_methods_research.md)), to inform the "why" behind our usage of AI for homework, differentiate our product, and to clarify core design decisions before implimenting our project.
+
+Based on this, I created a mock "assignments" page ([concept_assignment_page.pdf
+](https://github.com/elizamg/sapiens/blob/main/research_and_design/concept_assignment_page.pdf)) to make our concept more concrete and allow my group and I to discuss and decide specifically what our system will do and how it will work. In addition, I created a specification for how our different LLM-based features will work ([agent_diagram.svg](https://github.com/elizamg/sapiens/blob/main/research_and_design/agent_diagram.svg)).
+
+Some specific insights that came from this design work were:
+- Moving from "easy-medium-hard" skill questions to scaffolded verses independent skill questions
+- Prioritizing immediate feedback as a selling point of our product
+- Splitting information questions and skills, since information needs to be delivered in a certain order (i.e. can't give the answer then allow the student to try the question again right after)
+- Decide how feedback should be given for skills
+- Removing the names from skills so the student needs to identify what tools they've learned to apply to the problem
+- Using spaced repetition through a review section with adapative problems based on the student's past experience
+- Having a capstone section where the student answers "explain-it-back-to-me" questions
+
+The design decisions were discussed with my group, and Eliza had great ideas about what feedback to give for information questions and how to structure the UI.
+
+After this, I worked on writing and testing the prompts for the different parts of the pipelines ([prompts](https://github.com/elizamg/sapiens/tree/main/backend/lambdalith/backend_code/prompts)); and writing and structuring the backend code. I also worked on fixing some git history issues our group ran into.
+
+### Eliza — Frontend and Vercel Hosting
 
 I built a few initial versions of the frontend and iterated by taking them back to the team. I implemented frontend changes that we discussed as a team and with our mentor.
 
@@ -43,15 +66,17 @@ All of these design decisions were made iteratively and are reflected in our cur
 
 ---
 
-### Brooke — TODO
+### Brooke - AWS Infrastructure and Backend 
 
-*To be added.*
+First, Brooke worked on setting up the necessary AWS Infrastructure for our project.
+
+Specifically, Brooke configured Congito for authentification (and worked with Eliza to include this in the frontend); created the DynamoDB tables for the different information our application needs to store and communicated with other teammembers to design our tables; and got our Lambda function set up (we're using one big Lambda function (a Lambdaith) for simplicity and fewer cold starts).
+
+Next, Brooke started work on fufilling the frontend-backend contract through Lambda router code that registers incoming requests and sends back formatted information from the database she created [febe-contract branch](https://github.com/elizamg/sapiens/tree/febe-contract).
 
 ---
 
-### Ben — TODO
 
-*To be added.*
 
 
 
