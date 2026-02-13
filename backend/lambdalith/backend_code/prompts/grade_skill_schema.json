@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "analysis": {
+      "type": "string",
+      "description": "Analysis of the student's logic and justification for the final grading category."
+    },
+    "answer_category": {
+      "type": "string",
+      "enum": [
+        "correct",
+        "slight clarification",
+        "small mistake",
+        "incorrect"
+      ],
+      "description": "The classification of the student's response."
+    },
+    "feedback": {
+      "type": "string",
+      "description": "The tutor persona-driven feedback intended for the student to read."
+    }
+  },
+  "required": [
+    "analysis",
+    "answer_category",
+    "feedback"
+  ]
+}
