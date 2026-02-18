@@ -73,4 +73,14 @@ const styles: Record<string, React.CSSProperties> = {
   green: {
     color: PRIMARY,
   },
+  instructorLink: {
+    background: "none",
+    border: "none",
+    color: PRIMARY,
+    fontSize: 15,
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: "12px 24px",
+    textDecoration: "underline",
+  },
 };

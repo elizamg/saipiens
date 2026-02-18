@@ -8,9 +8,11 @@ interface AppShellProps {
   children: React.ReactNode;
   student: Student | null;
   activePath?: string;
+  sidebarCourses?: import("../../types/domain").Course[];
+  routePrefix?: string;
 }
 
-export default function AppShell({ children, student, activePath }: AppShellProps) {
+export default function AppShell({ children, student, activePath, sidebarCourses, routePrefix }: AppShellProps) {
   const containerStyles: React.CSSProperties = {
     display: "flex",
     height: "100vh",
@@ -33,7 +35,7 @@ export default function AppShell({ children, student, activePath }: AppShellProp
 
   return (
     <div style={containerStyles}>
-      <SidebarNav activePath={activePath} />
+      <SidebarNav activePath={activePath} sidebarCourses={sidebarCourses} routePrefix={routePrefix} />
       <main style={mainStyles}>
         <TopBar student={student} />
         <div style={contentStyles}>{children}</div>

@@ -4,14 +4,18 @@ import AuthLayout from "../components/auth/AuthLayout";
 import AuthCard from "../components/auth/AuthCard";
 import Input, { EyeIcon, EyeOffIcon } from "../components/ui/Input";
 import Button from "../components/ui/Button";
+import Checkbox from "../components/ui/Checkbox";
 import GoogleButton from "../components/auth/GoogleButton";
 import { PRIMARY, GRAY_600 } from "../theme/colors";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { setRole } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isInstructor, setIsInstructor] = useState(false);
 
   const forgotLinkStyles: React.CSSProperties = {
     background: "none",
@@ -41,8 +45,8 @@ export default function LoginPage() {
   };
 
   const handleLogin = () => {
-    // No auth logic - just navigate to home
-    navigate("/home");
+    setRole(isInstructor ? "instructor" : "student");
+    navigate(isInstructor ? "/teacher" : "/home");
   };
 
   const footer = (
@@ -82,6 +86,12 @@ export default function LoginPage() {
         <button type="button" style={forgotLinkStyles}>
           Forgot password?
         </button>
+        <Checkbox
+          id="login-instructor"
+          label="I am an instructor"
+          checked={isInstructor}
+          onChange={setIsInstructor}
+        />
         <Button
           variant="primary"
           fullWidth

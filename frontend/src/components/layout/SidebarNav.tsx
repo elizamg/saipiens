@@ -55,30 +55,36 @@ const navItems: NavItem[] = [
 
 interface SidebarNavProps {
   activePath?: string;
+  sidebarCourses?: Course[];
+  /** Route prefix for all nav links. Empty string for student, "/teacher" for instructor. */
+  routePrefix?: string;
 }
 
-export default function SidebarNav({ activePath }: SidebarNavProps) {
+export default function SidebarNav({ activePath, sidebarCourses, routePrefix = "" }: SidebarNavProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [fetchedCourses, setFetchedCourses] = useState<Course[]>([]);
   const [coursesOpen, setCoursesOpen] = useState(false);
 
-  const isCoursesActive = activePath === "/courses" || location.pathname.startsWith("/course/");
+  const courses = sidebarCourses ?? fetchedCourses;
+  const homePath = routePrefix || "/home";
+  const isCoursesActive = activePath === "/courses" || location.pathname.includes("/course/");
 
   useEffect(() => {
+    if (sidebarCourses) return;
     let cancelled = false;
     getCurrentStudent()
       .then((student) => listCoursesForStudent(student.id))
       .then((list) => {
-        if (!cancelled) setCourses(list);
+        if (!cancelled) setFetchedCourses(list);
       })
       .catch(() => {
-        if (!cancelled) setCourses([]);
+        if (!cancelled) setFetchedCourses([]);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sidebarCourses]);
 
   const sidebarStyles: React.CSSProperties = {
     width: 240,
@@ -165,13 +171,13 @@ export default function SidebarNav({ activePath }: SidebarNavProps) {
 
       {/* Home */}
       <button
-        style={navItemStyles(activePath === "/home")}
-        onClick={() => navigate("/home")}
+        style={navItemStyles(activePath === homePath)}
+        onClick={() => navigate(homePath)}
         onMouseEnter={(e) => {
-          if (activePath !== "/home") e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+          if (activePath !== homePath) e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
         }}
         onMouseLeave={(e) => {
-          if (activePath !== "/home") e.currentTarget.style.backgroundColor = "transparent";
+          if (activePath !== homePath) e.currentTarget.style.backgroundColor = "transparent";
         }}
       >
         {navItems[0].icon}
@@ -215,13 +221,13 @@ export default function SidebarNav({ activePath }: SidebarNavProps) {
               </span>
             ) : (
               courses.map((course) => {
-                const isActive = location.pathname === `/course/${course.id}`;
+                const isActive = location.pathname === `${routePrefix}/course/${course.id}`;
                 return (
                   <button
                     key={course.id}
                     style={courseLinkStyles(isActive)}
                     onClick={() => {
-                      navigate(`/course/${course.id}`);
+                      navigate(`${routePrefix}/course/${course.id}`);
                     }}
                     onMouseEnter={(e) => {
                       if (!isActive) e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
@@ -240,22 +246,25 @@ export default function SidebarNav({ activePath }: SidebarNavProps) {
       </div>
 
       {/* Progress & Settings */}
-      {navItems.slice(1).map((item) => (
-        <button
-          key={item.path}
-          style={navItemStyles(activePath === item.path)}
-          onClick={() => navigate(item.path)}
-          onMouseEnter={(e) => {
-            if (activePath !== item.path) e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-          }}
-          onMouseLeave={(e) => {
-            if (activePath !== item.path) e.currentTarget.style.backgroundColor = "transparent";
-          }}
-        >
-          {item.icon}
-          {item.label}
-        </button>
-      ))}
+      {navItems.slice(1).map((item) => {
+        const fullPath = `${routePrefix}${item.path}`;
+        return (
+          <button
+            key={item.path}
+            style={navItemStyles(activePath === fullPath)}
+            onClick={() => navigate(fullPath)}
+            onMouseEnter={(e) => {
+              if (activePath !== fullPath) e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+            }}
+            onMouseLeave={(e) => {
+              if (activePath !== fullPath) e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            {item.icon}
+            {item.label}
+          </button>
+        );
+      })}
     </nav>
   );
 }
