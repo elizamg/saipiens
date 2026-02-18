@@ -4,14 +4,18 @@ import AuthLayout from "../components/auth/AuthLayout";
 import AuthCard from "../components/auth/AuthCard";
 import Input, { EyeIcon, EyeOffIcon } from "../components/ui/Input";
 import Button from "../components/ui/Button";
+import Checkbox from "../components/ui/Checkbox";
 import GoogleButton from "../components/auth/GoogleButton";
 import { PRIMARY, GRAY_600 } from "../theme/colors";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function SignUpPage() {
   const navigate = useNavigate();
+  const { setRole } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isInstructor, setIsInstructor] = useState(false);
 
   const footerStyles: React.CSSProperties = {
     marginTop: 24,
@@ -63,7 +67,21 @@ export default function SignUpPage() {
           rightIcon={showPassword ? <EyeOffIcon /> : <EyeIcon />}
           onRightIconClick={() => setShowPassword(!showPassword)}
         />
-        <Button variant="primary" fullWidth style={{ marginTop: 8 }}>
+        <Checkbox
+          id="signup-instructor"
+          label="I am an instructor"
+          checked={isInstructor}
+          onChange={setIsInstructor}
+        />
+        <Button
+          variant="primary"
+          fullWidth
+          style={{ marginTop: 8 }}
+          onClick={() => {
+            setRole(isInstructor ? "instructor" : "student");
+            navigate(isInstructor ? "/teacher" : "/home");
+          }}
+        >
           Create Account
         </Button>
         <GoogleButton />
