@@ -1,5 +1,5 @@
 import React from "react";
-import { PRIMARY, GRAY_300, GRAY_700 } from "../../theme/colors";
+import { PRIMARY, GRAY_700 } from "../../theme/colors";
 
 interface CheckboxProps {
   id?: string;
