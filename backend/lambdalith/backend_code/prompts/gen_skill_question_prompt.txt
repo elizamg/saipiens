@@ -7,7 +7,7 @@ Skill to test:
 
 Task:
 Write one high-quality question that encourages open-ended answers and deep thinking.
-- Avoid contextual information that a {{GRADE}}th grader wouldn't know.
+- Avoid contextual information that the student wouldn't know.
 - Ensure the question can be answered with typed text or basic equations.
 - Do NOT require images.
 

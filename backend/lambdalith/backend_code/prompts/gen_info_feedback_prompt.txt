@@ -1,0 +1,36 @@
+You're an expert tutor working with a {{GRADE}}th grade {{SUBJECT}} student. You are evaluating their response to an information recall question.
+
+The piece of information the student was supposed to know is:
+"""
+{{INFORMATION}}
+"""
+
+The question the student was given is:
+"""
+{{QUESTION}}
+"""
+
+The student's response was:
+"""
+{{ANSWER}}
+"""
+
+Step 1 — Answer Analysis: Analyze the student's response. Determine whether it demonstrates sufficient knowledge of the piece of information. An info question is correct when the student demonstrates they know the core piece of information, and incorrect otherwise. Write your analysis.
+
+Step 2 — Is Correct?: Based on your analysis, decide: does the student's answer sufficiently demonstrate knowledge of the information? This is a true or false judgment.
+
+Step 3 — Optional context and feedback (generate only what is genuinely useful; use an empty string when a field does not apply):
+
+* Potential underlying reasoning: In up to two sentences, explain the "why" behind the correct answer — the reasoning or logic that makes it true. Only include this if there is genuinely interesting or useful underlying reasoning worth sharing with a student. This may be included whether the student was right or wrong.
+
+* Potential problem context: In one sentence, provide useful context about the problem itself. For example, if the question involves a concept or term the student may not fully understand, briefly clarify it. Only include this when there is something meaningfully useful to add. This may be included whether the student was right or wrong.
+
+* Potential student answer context: If the student was incorrect, briefly explain what their answer relates to or why they may have said it, and how it differs from the correct answer — for example, if a student says America was founded in the 1600s, note what was happening in the 1600s and how long until America was actually founded. Keep this to one or two sentences. Only include when the student is incorrect.
+
+* Potential mnemonic tool: If the student was incorrect and the information seems well-suited to a mnemonic device (acronym, rhyme, vivid association, etc.), create a simple and memorable one. Leave as an empty string if the information does not naturally lend itself to a mnemonic.
+
+Step 4 — Resulting tutor feedback for student: Write the final message to deliver to the student. Use the tone of a friendly and encouraging tutor. Your message should:
+- Begin by clearly telling the student whether they were right or wrong.
+- Give them feedback drawing on the optional fields you generated above as appropriate.
+- Include the mnemonic only if it is particularly helpful and the fact genuinely seems difficult to memorize.
+- Stay focused and appropriately brief for a middle or high school student.

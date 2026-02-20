@@ -1,9 +1,10 @@
+import asyncio
 import time
 import requests
 import json
 from pprint import pprint
 from google import genai
-from tenacity import retry, stop_after_attempt, stop_after_delay
+from tenacity import retry, stop_after_attempt, stop_after_delay, wait_exponential
 
 from utils.config import Config
 from utils.config import ai_client
@@ -14,7 +15,7 @@ from utils.get_prompt_details import get_prompt_details, RAW_PROMPT_KEY, JSON_SC
 ENV_GEMINI_API_KEY = Config.GEMINI_API_KEY
 
 # Main Settings
-QUESTIONS_PER_KNOWLEDGE = 3
+QUESTIONS_PER_KNOWLEDGE = 1
 
 # Models
 GEM_3_FLASH = "gemini-3-flash-preview"
@@ -28,6 +29,10 @@ UPLOAD_PDF_TIMEOUT = 120
 IDENTIFY_KNOWLEDGE_MODEL = GEM_3_FLASH
 IDENTIFY_KNOWLEDGE_TRIES = 3
 IDENTIFY_KNOWLEDGE_TIMEOUT = 11*60
+
+GEN_QUESTION_TRIES = 3
+GEN_QUESTION_TIMEOUT = 3*60
+GEN_QUESTION_CONCURRENCY = 5  # max parallel LLM calls (rate limit protection)
 
 # Testing settings
 TEST_TEXTBOOK_CHAPTER_DOWNLOAD_URL = "https://files-backend.assets.thrillshare.com/documents/asset/uploaded_file/756/Jenkins_Independent_Schools/a1b6f2a0-efa2-4a86-8c48-390b571c4967/chap_03.pdf?disposition=inline"
@@ -43,11 +48,13 @@ class Gen_Curriculum_Pipeline:
 
         gen_skill_question_details = get_prompt_details("gen_skill_question")
         self.gen_skill_question_prompt = Prompt(gen_skill_question_details[RAW_PROMPT_KEY])
-        self.gen_skill_question_schema = gen_skill_question_details[JSON_SCHEMA_KEY]
+        # Schema file wraps the actual schema under "generationConfig.response_schema"
+        self.gen_skill_question_schema = gen_skill_question_details[JSON_SCHEMA_KEY]["generationConfig"]["response_schema"]
 
         gen_info_question_details = get_prompt_details("gen_info_question")
         self.gen_info_question_prompt = Prompt(gen_info_question_details[RAW_PROMPT_KEY])
-        self.gen_info_question_schema = gen_info_question_details[JSON_SCHEMA_KEY]
+        # Schema file wraps the actual schema under "response_schema"
+        self.gen_info_question_schema = gen_info_question_details[JSON_SCHEMA_KEY]["response_schema"]
     
     @retry(stop=(stop_after_attempt(DOWNLOAD_PDF_TRIES)))
     def download_pdf(self, url, output_file_path):
@@ -99,11 +106,74 @@ class Gen_Curriculum_Pipeline:
         )
         return response.parsed["knowledge_list"]  # type:ignore
 
-    def create_skill_question(self):
-        pass
-    
-    def create_info_question(self):
-        pass
+    @retry(stop=(stop_after_attempt(GEN_QUESTION_TRIES) | stop_after_delay(GEN_QUESTION_TIMEOUT)))
+    def create_skill_question(self, subject, grade, description):
+        content = self.gen_skill_question_prompt.arguments_to_content(
+            GRADE=grade,
+            SUBJECT=subject,
+            DESCRIPTION=description,
+        )
+        response = self.client.models.generate_content(
+            model=GEM_3_FLASH,
+            contents=content,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": self.gen_skill_question_schema,
+            },
+        )
+        print("\t\t> Generated skill question!")
+        return response.parsed["Question"]  # type: ignore
+
+    @retry(stop=(stop_after_attempt(GEN_QUESTION_TRIES) | stop_after_delay(GEN_QUESTION_TIMEOUT)))
+    def create_info_question(self, subject, grade, description):
+        content = self.gen_info_question_prompt.arguments_to_content(
+            GRADE=grade,
+            SUBJECT=subject,
+            DESCRIPTION=description,
+        )
+        response = self.client.models.generate_content(
+            model=GEM_3_FLASH,
+            contents=content,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": self.gen_info_question_schema,
+            },
+        )
+        print("\t\t> Generated info question!")
+        return response.parsed["Question"]  # type: ignore
+
+    async def _run_questions_async(self, identified_knowledge: list, subject: str, grade: str) -> list:
+        semaphore = asyncio.Semaphore(GEN_QUESTION_CONCURRENCY)
+
+        async def create_question(ktype: str, description: str) -> str:
+            prompt = self.gen_skill_question_prompt if ktype == "skill" else self.gen_info_question_prompt
+            schema = self.gen_skill_question_schema if ktype == "skill" else self.gen_info_question_schema
+            content = prompt.arguments_to_content(GRADE=grade, SUBJECT=subject, DESCRIPTION=description)
+
+            @retry(
+                stop=(stop_after_attempt(GEN_QUESTION_TRIES) | stop_after_delay(GEN_QUESTION_TIMEOUT)),
+                wait=wait_exponential(multiplier=2, min=1, max=10),
+            )
+            async def call_api():
+                async with semaphore:
+                    response = await self.client.aio.models.generate_content(
+                        model=GEM_3_FLASH,
+                        contents=content,
+                        config={"response_mime_type": "application/json", "response_schema": schema},
+                    )
+                    return response.parsed["Question"]  # type: ignore
+
+            return await call_api()
+
+        task_metadata = [
+            {"knowledge_type": k["type"], "knowledge_description": k["description"]}
+            for k in identified_knowledge
+            for _ in range(QUESTIONS_PER_KNOWLEDGE)
+        ]
+        tasks = [create_question(m["knowledge_type"], m["knowledge_description"]) for m in task_metadata]
+        question_texts = await asyncio.gather(*tasks)
+        print(f"\t> Generated {len(question_texts)} questions in parallel!")
+        return [{**meta, "question": q} for meta, q in zip(task_metadata, question_texts)]
 
     def download_test_textbook(self):
         self.download_pdf(TEST_TEXTBOOK_CHAPTER_DOWNLOAD_URL, TEST_TEXTBOOK_CHAPTER_PATH)
@@ -111,10 +181,85 @@ class Gen_Curriculum_Pipeline:
         return TEST_TEXTBOOK_CHAPTER_PATH
 
     def run(self, textbook_chapter_path, subject, grade):
+        print("> Running generate curriculum pipeline ...")
+
         # Upload the PDF to Gemini
         uploaded_chapter = self.upload_pdf(textbook_chapter_path, wait=True)
+        print("\t> Uploaded PDF!")
 
         # Identify pieces of knowledge from the uploaded chapter
         identified_knowledge = self.identify_knowledge(uploaded_chapter)
+        print(f"\t> Identified knowledge! ({len(identified_knowledge)} objectives identified!)")
 
-        # TODO: For identified knowledge, generate a question (using the corresponding prompt based on whether it's a skill or info)
+        # Generate all questions in parallel using the async API
+        return asyncio.run(self._run_questions_async(identified_knowledge, subject, grade))
+
+
+if __name__ == "__main__":
+    import os
+    from pathlib import Path
+    from collections import defaultdict
+
+    pipeline = Gen_Curriculum_Pipeline()
+
+    # Download the test textbook only if not already present
+    if not os.path.exists(TEST_TEXTBOOK_CHAPTER_PATH):
+        print(f"Downloading test textbook to {TEST_TEXTBOOK_CHAPTER_PATH}...")
+        pipeline.download_test_textbook()
+    else:
+        print(f"Using existing file at {TEST_TEXTBOOK_CHAPTER_PATH}")
+
+    # Run the full pipeline
+    print("Testing curriculum pipeline...\n")
+    questions = pipeline.run(TEST_TEXTBOOK_CHAPTER_PATH, "Science", "7")
+
+    # Group questions by (knowledge_type, knowledge_description), preserving order
+    grouped: dict = defaultdict(list)
+    for q in questions:
+        grouped[(q["knowledge_type"], q["knowledge_description"])].append(q["question"])
+
+    info_items = [(desc, qs) for (ktype, desc), qs in grouped.items() if ktype == "information"]
+    skill_items = [(desc, qs) for (ktype, desc), qs in grouped.items() if ktype == "skill"]
+
+    # Print in readable format
+    file_name = Path(TEST_TEXTBOOK_CHAPTER_PATH).name
+    print(f"{'='*60}")
+    print(f"  {file_name}")
+    print(f"{'='*60}")
+
+    print(f"\n--- Information ({len(info_items)} items) ---")
+    for desc, qs in info_items:
+        print(f"\n  {desc}")
+        for q in qs:
+            print(f"    - {q}")
+
+    print(f"\n--- Skills ({len(skill_items)} items) ---")
+    for desc, qs in skill_items:
+        print(f"\n  {desc}")
+        for q in qs:
+            print(f"    - {q}")
+
+    # Write .md file named after the chapter
+    file_stem = Path(TEST_TEXTBOOK_CHAPTER_PATH).stem
+    output_dir = Path(__file__).parent / "example_gen_curriculum"
+    output_dir.mkdir(exist_ok=True)
+    output_path = output_dir / f"{file_stem}_curriculum.md"
+
+    lines = [f"# {file_name}", "", "## Information", ""]
+    for desc, qs in info_items:
+        lines.append(f"### {desc}")
+        lines.append("")
+        for q in qs:
+            lines.append(f"- {q}")
+        lines.append("")
+
+    lines += ["## Skills", ""]
+    for desc, qs in skill_items:
+        lines.append(f"### {desc}")
+        lines.append("")
+        for q in qs:
+            lines.append(f"- {q}")
+        lines.append("")
+
+    output_path.write_text("\n".join(lines))
+    print(f"\nSaved to {output_path.name}")
