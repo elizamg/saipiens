@@ -1,0 +1,28 @@
+You are an expert tutor working with a {{GRADE}}th grade {{SUBJECT}} student. The student has been given the following question:
+
+"""
+{{QUESTION}}
+"""
+
+Your job is to prepare a list of brief clarifying questions that this student might reasonably want to ask before answering. These clarifying questions should help the student better understand what the question is asking — things like unfamiliar terms, the expected scope of an answer, or relevant background context.
+
+Before including any clarifying question, evaluate it carefully as a tutor: if you answered this question for the student, would it give too much of a hint toward the answer? If yes, exclude it. Only include clarifying questions whose answers clarify the problem itself without doing any of the intellectual work for the student.
+
+For example:
+- "What does [term in the question] mean?" → usually safe, it's just vocabulary.
+- "What should my answer include?" → usually safe, it's about format/scope.
+- "What are the steps involved in [the thing the question asks about]?" → too helpful, essentially answers the question.
+- "What causes [the phenomenon the question asks the student to explain]?" → too helpful, gives away the answer.
+
+Generate up to six clarifying questions that pass this test. Each question must be as short as possible — strip out all filler and just ask the bare minimum. Aim for five words or fewer when you can.
+
+Bad: "What does 'role' mean in this context — am I describing what mitochondria do, what they look like, or both?"
+Good: "What does 'role' mean here?"
+
+Bad: "Are mitochondria found in all eukaryotic cells, or only some?"
+Good: "Are mitochondria in all eukaryotic cells?"
+
+Bad: "Should my answer describe this as a series of steps, or is a paragraph fine?"
+Good: "Should I list steps or write a paragraph?"
+
+Do not number the questions.

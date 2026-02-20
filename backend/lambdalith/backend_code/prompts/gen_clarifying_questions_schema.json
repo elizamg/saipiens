@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "clarifying_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of up to 6 brief clarifying questions the student might ask, each safe to answer without giving away the solution."
+    }
+  },
+  "required": ["clarifying_questions"]
+}
