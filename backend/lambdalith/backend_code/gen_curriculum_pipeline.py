@@ -14,7 +14,7 @@ from utils.get_prompt_details import get_prompt_details, RAW_PROMPT_KEY, JSON_SC
 ENV_GEMINI_API_KEY = Config.GEMINI_API_KEY
 
 # Main Settings
-QUESTIONS_PER_KNOWLEDGE = 3
+QUESTIONS_PER_KNOWLEDGE = 2
 
 # Models
 GEM_3_FLASH = "gemini-3-flash-preview"
@@ -28,6 +28,9 @@ UPLOAD_PDF_TIMEOUT = 120
 IDENTIFY_KNOWLEDGE_MODEL = GEM_3_FLASH
 IDENTIFY_KNOWLEDGE_TRIES = 3
 IDENTIFY_KNOWLEDGE_TIMEOUT = 11*60
+
+GEN_QUESTION_TRIES = 3
+GEN_QUESTION_TIMEOUT = 3*60
 
 # Testing settings
 TEST_TEXTBOOK_CHAPTER_DOWNLOAD_URL = "https://files-backend.assets.thrillshare.com/documents/asset/uploaded_file/756/Jenkins_Independent_Schools/a1b6f2a0-efa2-4a86-8c48-390b571c4967/chap_03.pdf?disposition=inline"
@@ -43,11 +46,13 @@ class Gen_Curriculum_Pipeline:
 
         gen_skill_question_details = get_prompt_details("gen_skill_question")
         self.gen_skill_question_prompt = Prompt(gen_skill_question_details[RAW_PROMPT_KEY])
-        self.gen_skill_question_schema = gen_skill_question_details[JSON_SCHEMA_KEY]
+        # Schema file wraps the actual schema under "generationConfig.response_schema"
+        self.gen_skill_question_schema = gen_skill_question_details[JSON_SCHEMA_KEY]["generationConfig"]["response_schema"]
 
         gen_info_question_details = get_prompt_details("gen_info_question")
         self.gen_info_question_prompt = Prompt(gen_info_question_details[RAW_PROMPT_KEY])
-        self.gen_info_question_schema = gen_info_question_details[JSON_SCHEMA_KEY]
+        # Schema file wraps the actual schema under "response_schema"
+        self.gen_info_question_schema = gen_info_question_details[JSON_SCHEMA_KEY]["response_schema"]
     
     @retry(stop=(stop_after_attempt(DOWNLOAD_PDF_TRIES)))
     def download_pdf(self, url, output_file_path):
@@ -99,11 +104,39 @@ class Gen_Curriculum_Pipeline:
         )
         return response.parsed["knowledge_list"]  # type:ignore
 
-    def create_skill_question(self):
-        pass
-    
-    def create_info_question(self):
-        pass
+    @retry(stop=(stop_after_attempt(GEN_QUESTION_TRIES) | stop_after_delay(GEN_QUESTION_TIMEOUT)))
+    def create_skill_question(self, subject, grade, description):
+        content = self.gen_skill_question_prompt.arguments_to_content(
+            GRADE=grade,
+            SUBJECT=subject,
+            DESCRIPTION=description,
+        )
+        response = self.client.models.generate_content(
+            model=GEM_3_FLASH,
+            contents=content,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": self.gen_skill_question_schema,
+            },
+        )
+        return response.parsed["Question"]  # type: ignore
+
+    @retry(stop=(stop_after_attempt(GEN_QUESTION_TRIES) | stop_after_delay(GEN_QUESTION_TIMEOUT)))
+    def create_info_question(self, subject, grade, description):
+        content = self.gen_info_question_prompt.arguments_to_content(
+            GRADE=grade,
+            SUBJECT=subject,
+            DESCRIPTION=description,
+        )
+        response = self.client.models.generate_content(
+            model=GEM_3_FLASH,
+            contents=content,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": self.gen_info_question_schema,
+            },
+        )
+        return response.parsed["Question"]  # type: ignore
 
     def download_test_textbook(self):
         self.download_pdf(TEST_TEXTBOOK_CHAPTER_DOWNLOAD_URL, TEST_TEXTBOOK_CHAPTER_PATH)
@@ -117,4 +150,21 @@ class Gen_Curriculum_Pipeline:
         # Identify pieces of knowledge from the uploaded chapter
         identified_knowledge = self.identify_knowledge(uploaded_chapter)
 
-        # TODO: For identified knowledge, generate a question (using the corresponding prompt based on whether it's a skill or info)
+        # For each piece of knowledge, generate QUESTION_NUMBER questions
+        # using the matching prompt type ("skill" or "information")
+        questions = []
+        for knowledge in identified_knowledge:
+            create_question = (
+                self.create_skill_question
+                if knowledge["type"] == "skill"
+                else self.create_info_question
+            )
+            for _ in range(QUESTIONS_PER_KNOWLEDGE):
+                question = create_question(subject, grade, knowledge["description"])
+                questions.append({
+                    "knowledge_type": knowledge["type"],
+                    "knowledge_description": knowledge["description"],
+                    "question": question,
+                })
+
+        return questions
