@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "properties": {
+    "answer_analysis": {
+      "type": "string",
+      "description": "Analysis of the student's response and whether it demonstrates knowledge of the information."
+    },
+    "is_correct": {
+      "type": "boolean",
+      "description": "Whether the student's answer sufficiently demonstrates knowledge of the information."
+    },
+    "potential_underlying_reasoning": {
+      "type": "string",
+      "description": "Brief explanation (up to two sentences) of why the answer is correct. Empty string if not applicable."
+    },
+    "potential_problem_context": {
+      "type": "string",
+      "description": "One sentence of useful context about the problem itself. Empty string if not applicable."
+    },
+    "potential_student_answer_context": {
+      "type": "string",
+      "description": "Brief context about the student's incorrect answer (one to two sentences). Empty string if the student was correct or if not applicable."
+    },
+    "potential_mnemonic_tool": {
+      "type": "string",
+      "description": "A mnemonic device to help the student remember the information. Empty string if not applicable."
+    },
+    "tutor_feedback": {
+      "type": "string",
+      "description": "The final feedback message to send to the student, synthesizing the above fields."
+    }
+  },
+  "required": [
+    "answer_analysis",
+    "is_correct",
+    "potential_underlying_reasoning",
+    "potential_problem_context",
+    "potential_student_answer_context",
+    "potential_mnemonic_tool",
+    "tutor_feedback"
+  ]
+}
