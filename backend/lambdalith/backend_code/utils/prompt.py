@@ -5,7 +5,7 @@ class Prompt:
         parameter_names = re.findall(r'\{\{(.*?)\}\}', self.raw_prompt)
         valid_parameter_names = [name for name in parameter_names if not bool(re.search(r'\s', name))]
 
-        assert len(valid_parameter_names) == len(parameter_names) and len(valid_parameter_names) == len(set(valid_parameter_names)), "Parameter names must not contain whitespace!"
+        assert len(valid_parameter_names) == len(parameter_names), "Parameter names must not contain whitespace!"
 
         return valid_parameter_names
 
@@ -40,10 +40,10 @@ class Prompt:
         return filled_prompt
 
 if __name__ == "__main__":
-    prompt = Prompt("Hello, {{NAME}}! Welcome to {{PLACE}}. {{NON_STRING}}")
+    prompt = Prompt("Hello, {{NAME}}! Welcome to {{PLACE}}. {{NON_STRING}} {{PLACE}}")
     arguments = {"NAME": "Alice", "PLACE": "Wonderland", "NON_STRING": 123}
     filled = prompt.arguments_to_content(**arguments)
     print(prompt.raw_prompt)
     print(arguments)
     print(filled)
-    assert filled == ["Hello, Alice! Welcome to Wonderland. ", 123]
+    assert filled == ["Hello, Alice! Welcome to Wonderland. ", 123, " Wonderland"]

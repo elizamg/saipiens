@@ -119,6 +119,7 @@ class Gen_Curriculum_Pipeline:
                 "response_schema": self.gen_skill_question_schema,
             },
         )
+        print("\t\t> Generated skill question!")
         return response.parsed["Question"]  # type: ignore
 
     @retry(stop=(stop_after_attempt(GEN_QUESTION_TRIES) | stop_after_delay(GEN_QUESTION_TIMEOUT)))
@@ -136,6 +137,7 @@ class Gen_Curriculum_Pipeline:
                 "response_schema": self.gen_info_question_schema,
             },
         )
+        print("\t\t> Generated info question!")
         return response.parsed["Question"]  # type: ignore
 
     def download_test_textbook(self):
@@ -144,11 +146,15 @@ class Gen_Curriculum_Pipeline:
         return TEST_TEXTBOOK_CHAPTER_PATH
 
     def run(self, textbook_chapter_path, subject, grade):
+        print("Running generate curriculum pipeline ...")
+
         # Upload the PDF to Gemini
         uploaded_chapter = self.upload_pdf(textbook_chapter_path, wait=True)
+        print("\t> Uploaded PDF!")
 
         # Identify pieces of knowledge from the uploaded chapter
         identified_knowledge = self.identify_knowledge(uploaded_chapter)
+        print(f"\t> Identified knowledge! ({len(identified_knowledge)} objectives identified!)")
 
         # For each piece of knowledge, generate QUESTION_NUMBER questions
         # using the matching prompt type ("skill" or "information")
@@ -168,3 +174,73 @@ class Gen_Curriculum_Pipeline:
                 })
 
         return questions
+
+
+if __name__ == "__main__":
+    import os
+    from pathlib import Path
+    from collections import defaultdict
+
+    pipeline = Gen_Curriculum_Pipeline()
+
+    # Download the test textbook only if not already present
+    if not os.path.exists(TEST_TEXTBOOK_CHAPTER_PATH):
+        print(f"Downloading test textbook to {TEST_TEXTBOOK_CHAPTER_PATH}...")
+        pipeline.download_test_textbook()
+    else:
+        print(f"Using existing file at {TEST_TEXTBOOK_CHAPTER_PATH}")
+
+    # Run the full pipeline
+    print("Running curriculum pipeline...\n")
+    questions = pipeline.run(TEST_TEXTBOOK_CHAPTER_PATH, "Science", "7")
+
+    # Group questions by (knowledge_type, knowledge_description), preserving order
+    grouped: dict = defaultdict(list)
+    for q in questions:
+        grouped[(q["knowledge_type"], q["knowledge_description"])].append(q["question"])
+
+    info_items = [(desc, qs) for (ktype, desc), qs in grouped.items() if ktype == "information"]
+    skill_items = [(desc, qs) for (ktype, desc), qs in grouped.items() if ktype == "skill"]
+
+    # Print in readable format
+    file_name = Path(TEST_TEXTBOOK_CHAPTER_PATH).name
+    print(f"{'='*60}")
+    print(f"  {file_name}")
+    print(f"{'='*60}")
+
+    print(f"\n--- Information ({len(info_items)} items) ---")
+    for desc, qs in info_items:
+        print(f"\n  {desc}")
+        for q in qs:
+            print(f"    - {q}")
+
+    print(f"\n--- Skills ({len(skill_items)} items) ---")
+    for desc, qs in skill_items:
+        print(f"\n  {desc}")
+        for q in qs:
+            print(f"    - {q}")
+
+    # Write .md file named after the chapter
+    file_stem = Path(TEST_TEXTBOOK_CHAPTER_PATH).stem
+    output_dir = Path(__file__).parent / "example_gen_curriculum"
+    output_dir.mkdir(exist_ok=True)
+    output_path = output_dir / f"{file_stem}_curriculum.md"
+
+    lines = [f"# {file_name}", "", "## Information", ""]
+    for desc, qs in info_items:
+        lines.append(f"### {desc}")
+        lines.append("")
+        for q in qs:
+            lines.append(f"- {q}")
+        lines.append("")
+
+    lines += ["## Skills", ""]
+    for desc, qs in skill_items:
+        lines.append(f"### {desc}")
+        lines.append("")
+        for q in qs:
+            lines.append(f"- {q}")
+        lines.append("")
+
+    output_path.write_text("\n".join(lines))
+    print(f"\nSaved to {output_path.name}")
