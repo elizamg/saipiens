@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "Tutor_Response": {
+      "type": "string",
+      "description": "The tutor's response, either walking the student through the next step or helping them get unstuck."
+    },
+    "Is_Finished": {
+      "type": "boolean",
+      "description": "True only when the student has fully and correctly answered the entire problem."
+    }
+  },
+  "required": ["Tutor_Response", "Is_Finished"]
+}
