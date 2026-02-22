@@ -9,9 +9,10 @@ interface UnitCardProps {
   unit: Unit;
   courseId: string;
   progress?: UnitProgress;
+  routePrefix?: string;
 }
 
-export default function UnitCard({ unit, courseId, progress }: UnitCardProps) {
+export default function UnitCard({ unit, courseId, progress, routePrefix }: UnitCardProps) {
   const navigate = useNavigate();
   const isActive = unit.status === "active";
   const isCompleted = unit.status === "completed";
@@ -63,7 +64,11 @@ export default function UnitCard({ unit, courseId, progress }: UnitCardProps) {
   };
 
   const handleView = () => {
-    navigate(`/course/${courseId}/unit/${unit.id}/chat`);
+    if (routePrefix === "/teacher") {
+      navigate(`/teacher/course/${courseId}/unit/${unit.id}`);
+    } else {
+      navigate(`/course/${courseId}/unit/${unit.id}/chat`);
+    }
   };
 
   const renderIcon = () => {

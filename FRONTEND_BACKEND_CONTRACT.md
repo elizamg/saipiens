@@ -31,7 +31,7 @@ All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00
 |------|--------|--------|
 | **Course** | `id`, `title`, `icon?`, `instructorIds: string[]`, `enrolledStudentIds: string[]` | |
 | **Unit** | `id`, `courseId`, `title`, `status` | `status`: `"active"` \| `"completed"` \| `"locked"` |
-| **Objective** | `id`, `unitId`, `kind`, `title`, `order` | `kind`: `"knowledge"` \| `"skill"` \| `"capstone"`. `order` is a number used for sorting objectives within a unit. |
+| **Objective** | `id`, `unitId`, `kind`, `title`, `order`, `description?`, `enabled?` | `kind`: `"knowledge"` \| `"skill"` \| `"capstone"`. `order` is a number used for sorting objectives within a unit. `description` is optional display text. `enabled` indicates whether students see the objective (default `true`). |
 | **ItemStage** | `id`, `itemId`, `stageType`, `order`, `prompt` | `itemId` is the parent objective's `id`. `stageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. Each objective has exactly 3 stages. `order` determines display order (1, 2, 3). `prompt` is the stage's question text. |
 
 ### 2.3 Progress
@@ -143,6 +143,34 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 | `listMessages(threadId, stageId?)` | Messages in the thread; if `stageId` is provided, filter to that stage. **Sorted by `createdAt` ascending.** Response: **ChatMessage[]**. |
 | `sendMessage(threadId, content, stageId?)` | Create a student message; backend should persist it and (if applicable) trigger tutor/AI reply. Response: **ChatMessage** (the created message). |
 
+### 3.12 Teacher Objectives
+
+| Frontend call | Expected backend behavior |
+|---------------|---------------------------|
+| `listTeacherObjectives(unitId)` | Return all objectives for the given unit (teacher view, includes `description` and `enabled` fields). Response: **Objective[]**. |
+| `updateObjectiveEnabled(objectiveId, enabled)` | Toggle whether students see the objective. Response: **Objective** (updated). |
+
+### 3.13 Teacher Unit Upload
+
+| Frontend call | Expected backend behavior |
+|---------------|---------------------------|
+| `createUnitFromUpload(courseId, files)` | Accepts a `multipart/form-data` request with up to 10 text-based files (`.pdf`, `.txt`, `.docx`, `.doc`, `.md`, `.rtf`). The backend should process/parse the documents (potentially via LLM) and generate learning objectives. This is expected to be a **long-running request** (~seconds). Response: `{ unit: Unit, objectives: Objective[] }`. |
+
+### 3.14 Teacher Courses
+
+| Frontend call | Expected backend behavior |
+|---------------|---------------------------|
+| `createCourse({ title, icon, studentIds })` | Create a new course with the given title, icon key (`"history"` \| `"science"` \| `"general"`), and initial student roster. Response: `{ id, title, studentCount, icon }` (TeacherCourse shape). |
+
+### 3.15 Teacher Roster
+
+| Frontend call | Expected backend behavior |
+|---------------|---------------------------|
+| `listTeacherStudents()` | Return all students available for roster assignment. Response: **Student[]**. |
+| `getCourseRoster(courseId)` | Return the list of student IDs enrolled in the course. Response: **string[]**. |
+| `updateCourseRoster(courseId, studentIds)` | Replace the course roster with the given student IDs. Response: `{ studentIds: string[] }`. |
+| `createNewStudent(firstName, lastName, email)` | Create a new student record. Response: **Student** (with generated `id`). |
+
 ---
 
 ## 4. Conventions and Behaviors
@@ -189,5 +217,9 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 - [ ] **Awards**: List by student; optionally by student + course.
 - [ ] **Feedback**: List by student; list by course.
 - [ ] **Chat**: Threads for unit (with progress); get thread (with optional progress); list messages (optional filter by stage); send message and return created **ChatMessage**.
+- [ ] **Teacher Objectives**: List objectives for a unit (with `description` and `enabled`); toggle `enabled` on an objective.
+- [ ] **Teacher Unit Upload**: Accept multipart file upload (up to 10 files), process documents, return new `Unit` + generated `Objective[]`.
+- [ ] **Teacher Courses**: Create a new course with title, icon, and initial roster.
+- [ ] **Teacher Roster**: List all students, get/update course roster, create new student.
 
 Once these are implemented and responses match (or are mapped to) the types in `frontend/src/types/domain.ts`, the frontend can switch from `mock/db` to the real backend with minimal changes to UI code.

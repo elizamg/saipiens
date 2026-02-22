@@ -1,8 +1,10 @@
 import React from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import ActiveUnits from "../components/course/ActiveUnits";
+import NewUnitCard from "../components/course/NewUnitCard";
 import TintedImage from "../components/ui/TintedImage";
+import Button from "../components/ui/Button";
 import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
 import {
   mockInstructor,
@@ -20,6 +22,7 @@ const courseIconMap: Record<string, string> = {
 
 export default function TeacherCoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
+  const navigate = useNavigate();
 
   const course = teacherCourses.find((c) => c.id === courseId);
   const units = courseId ? teacherUnitsMap[courseId] ?? [] : [];
@@ -59,7 +62,24 @@ export default function TeacherCoursePage() {
     color: GRAY_500,
   };
 
-  const iconSrc = course?.icon ? courseIconMap[course.icon] : null;
+  const iconSrc = course?.icon ? courseIconMap[course.icon] : undefined;
+
+  const bookIcon = (
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={PRIMARY}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={iconStyles}
+    >
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
 
   return (
     <AppShell
@@ -74,7 +94,7 @@ export default function TeacherCoursePage() {
         <>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              {iconSrc && (
+              {iconSrc ? (
                 <TintedImage
                   src={iconSrc}
                   color={PRIMARY}
@@ -82,6 +102,8 @@ export default function TeacherCoursePage() {
                   height={40}
                   style={iconStyles}
                 />
+              ) : (
+                bookIcon
               )}
               <h1 style={titleStyles}>{course.title}</h1>
             </div>
@@ -104,10 +126,18 @@ export default function TeacherCoursePage() {
               <span style={infoTextStyles}>
                 {course.studentCount} student{course.studentCount !== 1 ? "s" : ""} enrolled
               </span>
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/teacher/course/${courseId}/roster`)}
+                style={{ padding: "4px 12px", fontSize: 13, marginLeft: 8 }}
+              >
+                Edit Roster
+              </Button>
             </div>
           </header>
 
-          <ActiveUnits units={units} courseId={course.id} />
+          <ActiveUnits units={units} courseId={course.id} routePrefix="/teacher" />
+          <NewUnitCard courseId={course.id} />
         </>
       )}
     </AppShell>

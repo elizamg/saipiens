@@ -6,6 +6,10 @@ import HomePage from "../pages/HomePage";
 import InstructorHomePage from "../pages/InstructorHomePage";
 import CoursePage from "../pages/CoursePage";
 import TeacherCoursePage from "../pages/TeacherCoursePage";
+import CourseEditorPage from "../pages/CourseEditorPage";
+import UnitUploadPage from "../pages/UnitUploadPage";
+import CourseCreationPage from "../pages/CourseCreationPage";
+import EditRosterPage from "../pages/EditRosterPage";
 import ChatPage from "../pages/ChatPage";
 import ProgressPage from "../pages/ProgressPage";
 import SettingsPage from "../pages/SettingsPage";
@@ -29,7 +33,11 @@ export default function AppRoutes() {
 
       {/* Teacher routes */}
       <Route path="/teacher" element={<RequireRole role="instructor"><InstructorHomePage /></RequireRole>} />
+      <Route path="/teacher/course/create" element={<RequireRole role="instructor"><CourseCreationPage /></RequireRole>} />
       <Route path="/teacher/course/:courseId" element={<RequireRole role="instructor"><TeacherCoursePage /></RequireRole>} />
+      <Route path="/teacher/course/:courseId/roster" element={<RequireRole role="instructor"><EditRosterPage /></RequireRole>} />
+      <Route path="/teacher/course/:courseId/unit/:unitId" element={<RequireRole role="instructor"><CourseEditorPage /></RequireRole>} />
+      <Route path="/teacher/course/:courseId/upload" element={<RequireRole role="instructor"><UnitUploadPage /></RequireRole>} />
       <Route path="/teacher/progress" element={<RequireRole role="instructor"><ProgressPage /></RequireRole>} />
       <Route path="/teacher/settings" element={<RequireRole role="instructor"><SettingsPage /></RequireRole>} />
 

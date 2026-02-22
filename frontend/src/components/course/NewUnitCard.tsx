@@ -1,63 +1,62 @@
-import React from "react";
 import { useNavigate } from "react-router-dom";
 import Card from "../ui/Card";
 import { GRAY_300, GRAY_500, PRIMARY } from "../../theme/colors";
 
-export default function NewCourseCard() {
+interface NewUnitCardProps {
+  courseId: string;
+}
+
+export default function NewUnitCard({ courseId }: NewUnitCardProps) {
   const navigate = useNavigate();
+
   const cardOverrides: React.CSSProperties = {
     border: `2px dashed ${GRAY_300}`,
     boxShadow: "none",
     display: "flex",
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 180,
+    gap: 8,
     cursor: "pointer",
   };
 
-  const plusStyles: React.CSSProperties = {
-    marginBottom: 8,
-  };
-
   const labelStyles: React.CSSProperties = {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 600,
     color: GRAY_500,
   };
 
   return (
     <Card
+      padding={16}
       style={cardOverrides}
-      onClick={() => navigate("/teacher/course/create")}
+      onClick={() => navigate(`/teacher/course/${courseId}/upload`)}
     >
       <svg
-        width="36"
-        height="36"
-        viewBox="0 0 36 36"
+        width="20"
+        height="20"
+        viewBox="0 0 20 20"
         fill="none"
-        style={plusStyles}
       >
         <line
-          x1="18"
-          y1="6"
-          x2="18"
-          y2="30"
+          x1="10"
+          y1="3"
+          x2="10"
+          y2="17"
           stroke={PRIMARY}
-          strokeWidth="3"
+          strokeWidth="2.5"
           strokeLinecap="round"
         />
         <line
-          x1="6"
-          y1="18"
-          x2="30"
-          y2="18"
+          x1="3"
+          y1="10"
+          x2="17"
+          y2="10"
           stroke={PRIMARY}
-          strokeWidth="3"
+          strokeWidth="2.5"
           strokeLinecap="round"
         />
       </svg>
-      <span style={labelStyles}>New Course</span>
+      <span style={labelStyles}>New Unit</span>
     </Card>
   );
 }

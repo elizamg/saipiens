@@ -61,10 +61,27 @@ export default function TeacherCourseCard({
 
   const iconSrc = courseIconMap[icon];
 
+  const bookIcon = (
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={PRIMARY}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={iconStyles}
+    >
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
+
   return (
     <Card>
       <div style={headerStyles}>
-        {iconSrc && (
+        {iconSrc ? (
           <TintedImage
             src={iconSrc}
             color={PRIMARY}
@@ -72,6 +89,8 @@ export default function TeacherCourseCard({
             height={40}
             style={iconStyles}
           />
+        ) : (
+          bookIcon
         )}
         <h3 style={titleStyles}>{title}</h3>
       </div>
