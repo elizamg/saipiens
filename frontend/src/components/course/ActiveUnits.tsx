@@ -7,6 +7,7 @@ interface ActiveUnitsProps {
   courseId: string;
   title?: string;
   progressMap?: Record<string, UnitProgress>;
+  routePrefix?: string;
 }
 
 export default function ActiveUnits({
@@ -14,6 +15,7 @@ export default function ActiveUnits({
   courseId,
   title = "Units",
   progressMap,
+  routePrefix,
 }: ActiveUnitsProps) {
   const sectionStyles: React.CSSProperties = {
     marginBottom: 32,
@@ -49,6 +51,7 @@ export default function ActiveUnits({
             unit={unit}
             courseId={courseId}
             progress={progressMap?.[unit.id]}
+            routePrefix={routePrefix}
           />
         ))}
       </div>

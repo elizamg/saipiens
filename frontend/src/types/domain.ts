@@ -75,6 +75,8 @@ export interface Objective {
   kind: ObjectiveKind;
   title: string;
   order: number;
+  description?: string;
+  enabled?: boolean;
 }
 
 export type StageType = "begin" | "walkthrough" | "challenge";

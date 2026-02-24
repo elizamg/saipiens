@@ -13,6 +13,16 @@ import {
   studentAwards,
   agent,
 } from "../mock/db";
+import {
+  teacherObjectivesMap,
+  teacherUnitsMap,
+  teacherStudents,
+  teacherCourses,
+  sidebarCourses,
+  courseRosterMap,
+  mockInstructor,
+} from "../data/teacherMockData";
+import type { TeacherCourse } from "../data/teacherMockData";
 import type {
   Student,
   Instructor,
@@ -385,4 +395,135 @@ export async function sendMessage(
   }
 
   return newMessage;
+}
+
+// ============ TEACHER: OBJECTIVES ============
+
+export async function listTeacherObjectives(unitId: string): Promise<Objective[]> {
+  await delay(100);
+  return teacherObjectivesMap[unitId] ?? [];
+}
+
+export async function updateObjectiveEnabled(
+  objectiveId: string,
+  enabled: boolean
+): Promise<Objective> {
+  await delay(100);
+  for (const objs of Object.values(teacherObjectivesMap)) {
+    const obj = objs.find((o) => o.id === objectiveId);
+    if (obj) {
+      obj.enabled = enabled;
+      return { ...obj };
+    }
+  }
+  throw new Error(`Objective ${objectiveId} not found`);
+}
+
+// ============ TEACHER: UNIT UPLOAD ============
+
+export async function createUnitFromUpload(
+  courseId: string,
+  _files: File[]
+): Promise<{ unit: Unit; objectives: Objective[] }> {
+  // Simulate long-running LLM processing
+  await delay(2500);
+
+  const existingUnits = teacherUnitsMap[courseId] ?? [];
+  const newUnitNum = existingUnits.length + 1;
+  const newUnitId = `u${courseId}-${newUnitNum}`;
+
+  const unit: Unit = {
+    id: newUnitId,
+    courseId,
+    title: `Unit ${newUnitNum}: Uploaded Content`,
+    status: "active",
+  };
+
+  const generatedObjectives: Objective[] = [
+    { id: `${newUnitId}-o1`, unitId: newUnitId, kind: "knowledge", title: "Key Concepts Overview", description: "Identify and define the core concepts from the uploaded materials.", order: 1, enabled: true },
+    { id: `${newUnitId}-o2`, unitId: newUnitId, kind: "knowledge", title: "Terminology and Definitions", description: "Master the essential vocabulary introduced in the documents.", order: 2, enabled: true },
+    { id: `${newUnitId}-o3`, unitId: newUnitId, kind: "knowledge", title: "Historical Context", description: "Understand the background and context of the material.", order: 3, enabled: true },
+    { id: `${newUnitId}-o4`, unitId: newUnitId, kind: "skill", title: "Critical Analysis", description: "Analyze arguments and evidence presented in the source materials.", order: 4, enabled: true },
+    { id: `${newUnitId}-o5`, unitId: newUnitId, kind: "skill", title: "Synthesis and Connection", description: "Connect ideas across multiple documents to build understanding.", order: 5, enabled: true },
+    { id: `${newUnitId}-o6`, unitId: newUnitId, kind: "capstone", title: "Comprehensive Assessment", description: "Demonstrate mastery by applying concepts to a novel scenario.", order: 6, enabled: true },
+  ];
+
+  if (!teacherUnitsMap[courseId]) {
+    teacherUnitsMap[courseId] = [];
+  }
+  teacherUnitsMap[courseId].push(unit);
+  teacherObjectivesMap[newUnitId] = generatedObjectives;
+
+  return { unit, objectives: generatedObjectives };
+}
+
+// ============ TEACHER: STUDENTS ============
+
+export async function listTeacherStudents(): Promise<Student[]> {
+  await delay(100);
+  return [...teacherStudents];
+}
+
+// ============ TEACHER: ROSTER ============
+
+export async function getCourseRoster(courseId: string): Promise<string[]> {
+  await delay(100);
+  return courseRosterMap[courseId] ?? [];
+}
+
+export async function updateCourseRoster(
+  courseId: string,
+  studentIds: string[]
+): Promise<{ studentIds: string[] }> {
+  await delay(150);
+  courseRosterMap[courseId] = [...studentIds];
+  const tc = teacherCourses.find((c) => c.id === courseId);
+  if (tc) tc.studentCount = studentIds.length;
+  return { studentIds };
+}
+
+// ============ TEACHER: COURSES ============
+
+export async function createCourse(params: {
+  title: string;
+  icon: string;
+  studentIds: string[];
+}): Promise<TeacherCourse> {
+  await delay(200);
+  const newId = `course-${Date.now()}`;
+  const newCourse: TeacherCourse = {
+    id: newId,
+    title: params.title,
+    studentCount: params.studentIds.length,
+    icon: params.icon,
+  };
+  teacherCourses.push(newCourse);
+  sidebarCourses.push({
+    id: newId,
+    title: params.title,
+    icon: params.icon,
+    instructorIds: [mockInstructor.id],
+    enrolledStudentIds: [],
+  });
+  courseRosterMap[newId] = [...params.studentIds];
+  teacherUnitsMap[newId] = [];
+  return newCourse;
+}
+
+// ============ TEACHER: NEW STUDENT ============
+
+export async function createNewStudent(
+  firstName: string,
+  lastName: string,
+  email: string
+): Promise<Student> {
+  await delay(100);
+  const student: Student = {
+    id: `ts-new-${Date.now()}`,
+    name: `${firstName} ${lastName}`,
+    yearLabel: "New",
+  };
+  teacherStudents.push(student);
+  void email; // will be used by backend
+  return student;
 }
