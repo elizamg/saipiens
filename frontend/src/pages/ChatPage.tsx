@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import ThreadList from "../components/chat/ThreadList";
 import MessageList from "../components/chat/MessageList";
@@ -15,6 +15,11 @@ import {
   sendMessage,
   advanceStage,
   getAgent,
+  getKnowledgeQueue,
+  getKnowledgeProgress,
+  completeKnowledgeAttempt,
+  listKnowledgeMessages,
+  sendKnowledgeMessage,
 } from "../services/api";
 import { isStageCompleted, stageLabel } from "../utils/progress";
 import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, SUCCESS_GREEN } from "../theme/colors";
@@ -29,6 +34,8 @@ import type {
   ProgressState,
   StageType,
   Agent,
+  KnowledgeQueueItem,
+  KnowledgeProgress,
 } from "../types/domain";
 
 /** Synthetic completion message appended when a stage is completed. */
@@ -72,16 +79,27 @@ export default function ChatPage() {
   const [agentData, setAgentData] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Knowledge state
+  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeQueueItem[]>([]);
+  const [knowledgeProgress, setKnowledgeProgress] = useState<KnowledgeProgress | null>(null);
+  const [knowledgeMessages, setKnowledgeMessages] = useState<Record<string, ChatMessage[]>>({});
+  const [gradingInProgress, setGradingInProgress] = useState(false);
+  const [gradedItemIds, setGradedItemIds] = useState<Set<string>>(new Set());
+  // Track which item IDs we've already loaded messages for (avoid double-load)
+  const loadedMessageItemIds = useRef<Set<string>>(new Set());
+
   const selectedThreadId = searchParams.get("thread") || undefined;
   const selectedStageId = searchParams.get("stage") || undefined;
+  const selectedKnowledgeItemId = searchParams.get("knowledge") || undefined;
+
   const selectedThread = threads.find((t) => t.id === selectedThreadId);
+  const selectedKnowledgeItem = knowledgeItems.find((item) => item.id === selectedKnowledgeItemId);
 
   const currentProgressState: ProgressState = selectedThread?.progressState ?? "not_started";
   const currentStageCompleted = currentStage
     ? isStageCompleted(currentStage.stageType, currentProgressState)
     : false;
 
-  // Determine what CTA to show after completion
   const nextStageTypeMap: Record<StageType, StageType | null> = {
     begin: "walkthrough",
     walkthrough: "challenge",
@@ -104,18 +122,33 @@ export default function ChatPage() {
     return navigableStages.findIndex((s) => s.id === currentStage.id);
   }, [currentStage, navigableStages]);
 
-  // Can navigate back (challenge -> walkthrough) to review
   const canGoPrev = currentNavIndex > 0;
-  // Can navigate forward (walkthrough -> challenge) only if walkthrough is completed
   const canGoNext = currentNavIndex >= 0
     && currentNavIndex < navigableStages.length - 1
     && currentStage != null
     && isStageCompleted(currentStage.stageType, currentProgressState);
 
-  // Show arrows only when on walkthrough or challenge stages
   const showStageArrows = currentStage != null
     && NAVIGABLE_STAGES.includes(currentStage.stageType)
     && navigableStages.length > 1;
+
+  // Knowledge item derived state
+  const currentKnowledgeMessages = selectedKnowledgeItemId
+    ? (knowledgeMessages[selectedKnowledgeItemId] ?? [])
+    : [];
+  const knowledgeItemIsActive = selectedKnowledgeItem?.status === "active";
+  const knowledgeItemIsGraded = selectedKnowledgeItemId
+    ? gradedItemIds.has(selectedKnowledgeItemId)
+    : false;
+  const knowledgeHasStudentMessage = currentKnowledgeMessages.some((m) => m.role === "student");
+  const showKnowledgeGradeCTA = knowledgeItemIsActive && knowledgeHasStudentMessage && !knowledgeItemIsGraded;
+  const knowledgeComposerDisabled = !knowledgeItemIsActive || knowledgeItemIsGraded;
+
+  // Suggested pills: shown only when item is active and no student messages yet
+  const knowledgeSuggestedQuestions =
+    knowledgeItemIsActive && !knowledgeHasStudentMessage && !knowledgeItemIsGraded
+      ? (selectedKnowledgeItem?.suggestedQuestions ?? [])
+      : [];
 
   // Load initial data
   useEffect(() => {
@@ -130,36 +163,44 @@ export default function ChatPage() {
         setStudent(studentData);
         setAgentData(agentResult);
 
-        const [courseData, unitData, threadsData, progressData] = await Promise.all([
+        const [courseData, unitData, threadsData, progressData, kQueueData, kProgressData] = await Promise.all([
           getCourse(courseId),
           getUnit(unitId),
           listChatThreadsForUnit({ courseId, unitId, studentId: studentData.id }),
           getUnitProgress(studentData.id, unitId),
+          getKnowledgeQueue(unitId, studentData.id),
+          getKnowledgeProgress(unitId, studentData.id),
         ]);
 
         setCourse(courseData || null);
         setUnit(unitData || null);
         setThreads(threadsData);
         setUnitProgress(progressData);
+        setKnowledgeItems(kQueueData);
+        setKnowledgeProgress(kProgressData);
 
         const threadParam = searchParams.get("thread");
         const stageParam = searchParams.get("stage");
-        if (threadsData.length > 0) {
-          if (!threadParam) {
+        const knowledgeParam = searchParams.get("knowledge");
+
+        if (!threadParam && !knowledgeParam) {
+          if (kQueueData.length > 0) {
+            setSearchParams({ knowledge: kQueueData[0].id }, { replace: true });
+          } else if (threadsData.length > 0) {
             const first = threadsData[0];
             setSearchParams(
               { thread: first.id, ...(first.currentStageId ? { stage: first.currentStageId } : {}) },
               { replace: true }
             );
-          } else if (threadParam && !stageParam) {
-            const thread = threadsData.find((t) => t.id === threadParam);
-            if (thread?.currentStageId) {
-              setSearchParams((prev) => {
-                const next = new URLSearchParams(prev);
-                next.set("stage", thread.currentStageId);
-                return next;
-              }, { replace: true });
-            }
+          }
+        } else if (threadParam && !stageParam) {
+          const thread = threadsData.find((t) => t.id === threadParam);
+          if (thread?.currentStageId) {
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.set("stage", thread.currentStageId);
+              return next;
+            }, { replace: true });
           }
         }
       } catch (error) {
@@ -171,6 +212,22 @@ export default function ChatPage() {
 
     loadData();
   }, [courseId, unitId]);
+
+  // Load pre-existing knowledge messages when a knowledge item is selected
+  useEffect(() => {
+    if (!selectedKnowledgeItemId) return;
+    if (loadedMessageItemIds.current.has(selectedKnowledgeItemId)) return;
+    loadedMessageItemIds.current.add(selectedKnowledgeItemId);
+
+    listKnowledgeMessages(selectedKnowledgeItemId).then((msgs) => {
+      if (msgs.length > 0) {
+        setKnowledgeMessages((prev) => ({
+          ...prev,
+          [selectedKnowledgeItemId]: msgs,
+        }));
+      }
+    });
+  }, [selectedKnowledgeItemId]);
 
   // Load stages for each thread
   useEffect(() => {
@@ -250,6 +307,13 @@ export default function ChatPage() {
     [threads, setSearchParams]
   );
 
+  const handleSelectKnowledgeItem = useCallback(
+    (itemId: string) => {
+      setSearchParams({ knowledge: itemId }, { replace: true });
+    },
+    [setSearchParams]
+  );
+
   const handleSendMessage = useCallback(
     async (content: string) => {
       if (!selectedThreadId || !selectedStageId || !student || !selectedThread || !currentStage) return;
@@ -258,7 +322,6 @@ export default function ChatPage() {
         const newMessage = await sendMessage(selectedThreadId, content, selectedStageId);
         setMessages((prev) => [...prev, newMessage]);
 
-        // Auto-advance for begin stage: first student message completes it
         if (currentStage.stageType === "begin" && !isStageCompleted("begin", currentProgressState)) {
           await advanceStage(student.id, selectedThread.objectiveId);
 
@@ -280,6 +343,82 @@ export default function ChatPage() {
     },
     [selectedThreadId, selectedStageId, student, selectedThread, currentStage, currentProgressState, courseId, unitId]
   );
+
+  const handleSendKnowledgeMessage = useCallback(
+    async (content: string) => {
+      if (!selectedKnowledgeItemId || !selectedKnowledgeItem || !student) return;
+      if (!knowledgeItemIsActive || knowledgeItemIsGraded) return;
+
+      const studentMsg = await sendKnowledgeMessage(selectedKnowledgeItemId, "student", content);
+      const tutorMsg = await sendKnowledgeMessage(
+        selectedKnowledgeItemId,
+        "tutor",
+        "Thanks for your response! When you're ready, click \"Grade my answer\" to submit."
+      );
+
+      setKnowledgeMessages((prev) => ({
+        ...prev,
+        [selectedKnowledgeItemId]: [...(prev[selectedKnowledgeItemId] ?? []), studentMsg, tutorMsg],
+      }));
+    },
+    [selectedKnowledgeItemId, selectedKnowledgeItem, student, knowledgeItemIsActive, knowledgeItemIsGraded]
+  );
+
+  const handleGradeKnowledgeItem = useCallback(async () => {
+    if (!selectedKnowledgeItem || !student || !unitId || gradingInProgress) return;
+
+    setGradingInProgress(true);
+    try {
+      // Deterministic mock grading: odd order = correct, even = incorrect
+      const is_correct = selectedKnowledgeItem.order % 2 === 1;
+      const { updatedItem, newQueueItem } = await completeKnowledgeAttempt(
+        unitId,
+        student.id,
+        selectedKnowledgeItem.id,
+        is_correct
+      );
+
+      setGradedItemIds((prev) => new Set([...prev, selectedKnowledgeItem.id]));
+
+      // Persist the result message
+      const resultContent = is_correct
+        ? "Correct! Great work on this topic."
+        : "Good try, we'll revisit this.";
+      const resultMsg = await sendKnowledgeMessage(
+        selectedKnowledgeItem.id,
+        "tutor",
+        resultContent,
+        { isSystemMessage: true, isCompletionMessage: true }
+      );
+
+      setKnowledgeMessages((prev) => ({
+        ...prev,
+        [selectedKnowledgeItem.id]: [...(prev[selectedKnowledgeItem.id] ?? []), resultMsg],
+      }));
+
+      // Refresh queue + progress
+      const [updatedQueue, kProgress] = await Promise.all([
+        getKnowledgeQueue(unitId, student.id),
+        getKnowledgeProgress(unitId, student.id),
+      ]);
+      setKnowledgeItems(updatedQueue);
+      setKnowledgeProgress(kProgress);
+
+      // Auto-select next active item
+      const nextActive = updatedQueue.find(
+        (item) => item.status === "active"
+          && item.id !== updatedItem.id
+          && (newQueueItem ? item.id !== newQueueItem.id : true)
+      );
+      if (nextActive) {
+        setSearchParams({ knowledge: nextActive.id }, { replace: true });
+      }
+    } catch (error) {
+      console.error("Error grading knowledge item:", error);
+    } finally {
+      setGradingInProgress(false);
+    }
+  }, [selectedKnowledgeItem, student, unitId, gradingInProgress, setSearchParams]);
 
   const handleAdvanceToNextStage = useCallback(async () => {
     if (!selectedThread || !currentStage) return;
@@ -306,15 +445,12 @@ export default function ChatPage() {
     setSearchParams({ thread: selectedThreadId, stage: nextStage.id }, { replace: true });
   }, [canGoNext, currentNavIndex, navigableStages, selectedThreadId, setSearchParams]);
 
-  // Handle clicking a suggested question pill
+  const [pillText, setPillText] = useState("");
+
   const handlePillClick = useCallback((question: string) => {
-    // Populate the composer input - we use a state for this
     setPillText(question);
   }, []);
 
-  const [pillText, setPillText] = useState("");
-
-  // Messages to display: real messages + optional synthetic completion for challenge
   const displayMessages = useMemo(() => {
     if (!currentStage || !selectedThreadId) return messages;
     if (!currentStageCompleted) return messages;
@@ -324,12 +460,8 @@ export default function ChatPage() {
     return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, "challenge", "challenge_complete")];
   }, [messages, currentStage, currentStageCompleted, selectedThreadId]);
 
-  // Whether to show the Current Question header
-  // WALKTHROUGH: NO current question header
-  // CHALLENGE: YES current question header
   const showCurrentQuestion = currentStage?.stageType === "challenge";
 
-  // Whether to show suggested question pills (walkthrough stages only)
   const suggestedQuestions = currentStage?.stageType === "walkthrough" && !currentStageCompleted
     ? currentStage.suggestedQuestions ?? []
     : [];
@@ -344,6 +476,7 @@ export default function ChatPage() {
 
   const mainStyles: React.CSSProperties = {
     flex: 1,
+    minWidth: 0,
     display: "flex",
     flexDirection: "column",
   };
@@ -369,7 +502,7 @@ export default function ChatPage() {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: showCurrentQuestion ? 12 : 0,
+    marginBottom: (showCurrentQuestion || selectedKnowledgeItem) ? 12 : 0,
     gap: 16,
   };
 
@@ -510,13 +643,24 @@ export default function ChatPage() {
     );
   }
 
+  const isKnowledgeMode = selectedKnowledgeItem != null;
+
+  // Completion label for pre-graded items (already completed_correct/incorrect from mock)
+  const preCompletedLabel = selectedKnowledgeItem?.status === "completed_correct"
+    ? "Correct ✓"
+    : "Good try, we'll revisit this.";
+
   return (
     <div style={containerStyles}>
       <ThreadList
         threads={threads}
-        selectedThreadId={selectedThreadId}
+        knowledgeItems={knowledgeItems}
+        selectedThreadId={isKnowledgeMode ? undefined : selectedThreadId}
+        selectedKnowledgeItemId={selectedKnowledgeItemId}
         onSelectThread={handleSelectThread}
+        onSelectKnowledgeItem={handleSelectKnowledgeItem}
         unitProgress={unitProgress || undefined}
+        knowledgeProgress={knowledgeProgress || undefined}
       />
       <main style={mainStyles}>
         <header style={headerStyles}>
@@ -529,7 +673,7 @@ export default function ChatPage() {
           </div>
           <div style={titleRowStyles}>
             <div style={titleWithNavStyles}>
-              {showStageArrows && (
+              {!isKnowledgeMode && showStageArrows && (
                 <button
                   type="button"
                   style={navButtonStyles(!canGoPrev)}
@@ -543,9 +687,11 @@ export default function ChatPage() {
                 </button>
               )}
               <h1 style={titleStyles}>
-                {selectedThread ? selectedThread.title : "Select an item"}
+                {isKnowledgeMode
+                  ? `Knowledge ${selectedKnowledgeItem.labelIndex}`
+                  : (selectedThread ? selectedThread.title : "Select an item")}
               </h1>
-              {showStageArrows && (
+              {!isKnowledgeMode && showStageArrows && (
                 <button
                   type="button"
                   style={navButtonStyles(!canGoNext)}
@@ -560,78 +706,147 @@ export default function ChatPage() {
               )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {showStageArrows && (
+              {!isKnowledgeMode && showStageArrows && (
                 <span style={stageIndicatorStyles}>
                   {currentNavIndex + 1} / {navigableStages.length}
                 </span>
               )}
-              {currentStage && (
-                <span style={stageBadgeStyles}>
-                  {stageLabel(currentStage.stageType)}
-                </span>
-              )}
+              <span style={stageBadgeStyles}>
+                {isKnowledgeMode ? "Knowledge" : (currentStage ? stageLabel(currentStage.stageType) : "")}
+              </span>
             </div>
           </div>
-          {showCurrentQuestion && currentStage && (
+          {isKnowledgeMode ? (
             <div style={questionPromptStyles}>
               <div style={promptHeaderStyles}>
-                <span style={promptLabelStyles}>
-                  Current Question
-                </span>
+                <span style={promptLabelStyles}>Current Question</span>
+              </div>
+              <p style={promptTextStyles}>{selectedKnowledgeItem.questionPrompt}</p>
+            </div>
+          ) : showCurrentQuestion && currentStage ? (
+            <div style={questionPromptStyles}>
+              <div style={promptHeaderStyles}>
+                <span style={promptLabelStyles}>Current Question</span>
               </div>
               <p style={promptTextStyles}>{currentStage.prompt}</p>
             </div>
-          )}
+          ) : null}
         </header>
-        <div style={chatAreaStyles}>
-          <MessageList messages={displayMessages} agent={agentData ?? undefined} />
-          {currentStageCompleted && (
-            <div style={ctaBarStyles}>
-              {hasNextStage ? (
+
+        {isKnowledgeMode ? (
+          // ── Knowledge item chat area ──
+          <div style={chatAreaStyles}>
+            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} />
+            {/* Grade CTA: shown when active, has student message, not yet graded */}
+            {showKnowledgeGradeCTA && (
+              <div style={ctaBarStyles}>
                 <button
                   type="button"
-                  style={ctaButtonStyles}
-                  onClick={handleAdvanceToNextStage}
+                  style={{ ...ctaButtonStyles, opacity: gradingInProgress ? 0.6 : 1 }}
+                  onClick={handleGradeKnowledgeItem}
+                  disabled={gradingInProgress}
                 >
-                  {currentStage?.stageType === "begin"
-                    ? "Start Walkthrough \u2192"
-                    : "Start Challenge \u2192"}
+                  {gradingInProgress ? "Grading…" : "Grade my answer"}
                 </button>
-              ) : (
-                <span style={completedLabelStyles}>Completed</span>
-              )}
-            </div>
-          )}
-          {suggestedQuestions.length > 0 && (
-            <div style={pillContainerStyles}>
-              {suggestedQuestions.map((q, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  style={pillButtonStyles}
-                  onClick={() => handlePillClick(q)}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(139, 122, 158, 0.1)";
-                    e.currentTarget.style.borderColor = PRIMARY;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "#f9fafb";
-                    e.currentTarget.style.borderColor = GRAY_300;
-                  }}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-          <ChatComposer
-            onSend={handleSendMessage}
-            disabled={!selectedThreadId || !selectedStageId || currentStageCompleted}
-            placeholder={currentStageCompleted ? "Stage completed" : undefined}
-            externalValue={pillText}
-            onExternalValueConsumed={() => setPillText("")}
-          />
-        </div>
+              </div>
+            )}
+            {/* Result bar: shown after grading in this session */}
+            {knowledgeItemIsGraded && (
+              <div style={ctaBarStyles}>
+                <span style={completedLabelStyles}>
+                  {selectedKnowledgeItem.is_correct ? "Correct ✓" : "Good try, we'll revisit this."}
+                </span>
+              </div>
+            )}
+            {/* Completion bar: pre-completed items loaded from mock */}
+            {!knowledgeItemIsActive && !knowledgeItemIsGraded && (
+              <div style={ctaBarStyles}>
+                <span style={completedLabelStyles}>{preCompletedLabel}</span>
+              </div>
+            )}
+            {/* Suggested question pills: shown for active empty chats */}
+            {knowledgeSuggestedQuestions.length > 0 && (
+              <div style={pillContainerStyles}>
+                {knowledgeSuggestedQuestions.map((q, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    style={pillButtonStyles}
+                    onClick={() => handlePillClick(q)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "rgba(139, 122, 158, 0.1)";
+                      e.currentTarget.style.borderColor = PRIMARY;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "#f9fafb";
+                      e.currentTarget.style.borderColor = GRAY_300;
+                    }}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+            <ChatComposer
+              onSend={handleSendKnowledgeMessage}
+              disabled={knowledgeComposerDisabled}
+              placeholder={knowledgeItemIsGraded ? "Graded" : (!knowledgeItemIsActive ? "Completed" : undefined)}
+              externalValue={pillText}
+              onExternalValueConsumed={() => setPillText("")}
+            />
+          </div>
+        ) : (
+          // ── Thread (skill/capstone) chat area ──
+          <div style={chatAreaStyles}>
+            <MessageList messages={displayMessages} agent={agentData ?? undefined} />
+            {currentStageCompleted && (
+              <div style={ctaBarStyles}>
+                {hasNextStage ? (
+                  <button
+                    type="button"
+                    style={ctaButtonStyles}
+                    onClick={handleAdvanceToNextStage}
+                  >
+                    {currentStage?.stageType === "begin"
+                      ? "Start Walkthrough \u2192"
+                      : "Start Challenge \u2192"}
+                  </button>
+                ) : (
+                  <span style={completedLabelStyles}>Completed</span>
+                )}
+              </div>
+            )}
+            {suggestedQuestions.length > 0 && (
+              <div style={pillContainerStyles}>
+                {suggestedQuestions.map((q, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    style={pillButtonStyles}
+                    onClick={() => handlePillClick(q)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "rgba(139, 122, 158, 0.1)";
+                      e.currentTarget.style.borderColor = PRIMARY;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "#f9fafb";
+                      e.currentTarget.style.borderColor = GRAY_300;
+                    }}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+            <ChatComposer
+              onSend={handleSendMessage}
+              disabled={!selectedThreadId || !selectedStageId || currentStageCompleted}
+              placeholder={currentStageCompleted ? "Stage completed" : undefined}
+              externalValue={pillText}
+              onExternalValueConsumed={() => setPillText("")}
+            />
+          </div>
+        )}
       </main>
     </div>
   );

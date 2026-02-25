@@ -177,3 +177,53 @@ export interface ThreadWithProgress extends ChatThread {
   currentStageId: string;
   order: number;
 }
+
+// ============ Knowledge Types ============
+
+/** Teacher-visible knowledge topic (descriptive name, not shown to students) */
+export interface KnowledgeTopic {
+  id: string;
+  unitId: string;
+  knowledgeTopic: string; // e.g. "Magnetic Fields Around Wires"
+  order: number;
+}
+
+/** Student-facing knowledge queue item status */
+export type KnowledgeItemStatus =
+  | "pending"             // not yet revealed to student
+  | "active"              // currently being worked on
+  | "completed_correct"   // graded correct (is_correct: true)
+  | "completed_incorrect";// graded incorrect (is_correct: false)
+
+/** Student queue entry for a knowledge topic */
+export interface KnowledgeQueueItem {
+  id: string;
+  unitId: string;
+  studentId: string;
+  knowledgeTopicId: string;
+  /** Used for the student-facing label "Knowledge {labelIndex}" */
+  labelIndex: number;
+  /** Chronological queue position (for sidebar sort) */
+  order: number;
+  status: KnowledgeItemStatus;
+  /** Set when status is completed_correct / completed_incorrect. Field name mirrors backend grade_info() output. */
+  is_correct?: boolean;
+  /** The question text shown to the student */
+  questionPrompt: string;
+  /** Optional pill suggestions shown when the student hasn't typed yet (active items only) */
+  suggestedQuestions?: string[];
+  createdAt: string;
+}
+
+/** Knowledge progress summary for a unit's progress bar */
+export interface KnowledgeProgress {
+  unitId: string;
+  /** Total unique knowledge topics for this unit */
+  totalTopics: number;
+  /** Topics answered correctly */
+  correctCount: number;
+  /** Topics answered incorrectly (awaiting retry) */
+  incorrectCount: number;
+  correctPercent: number;
+  incorrectPercent: number;
+}

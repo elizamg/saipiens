@@ -201,8 +201,8 @@ Access patterns:
 ---
 
 ## 13) FeedbackItems
-**Table:** `FeedbackItems`  
-**PK:** `studentId` (String)  
+**Table:** `FeedbackItems`
+**PK:** `studentId` (String)
 **SK:** `id` (String)
 
 Typical attributes:
@@ -213,3 +213,47 @@ Typical attributes:
 Access patterns:
 - List feedback for studentId (query by PK)
 - Filter by courseId in application code
+
+---
+
+## 14) KnowledgeTopics
+**Table:** `KnowledgeTopics`
+**PK:** `id` (String)
+
+**GSI:** `UnitKnowledgeTopicsIndex`
+- PK: `unitId` (String)
+- SK: `order` (Number)
+
+Typical attributes:
+- `id`, `unitId`, `knowledgeTopic` (descriptive teacher-visible name)
+- `order` (Number) — sort order within unit
+
+Access patterns:
+- Get topic by id
+- List topics for unitId ordered by order asc (GSI)
+
+---
+
+## 15) KnowledgeQueueItems
+**Table:** `KnowledgeQueueItems`
+**PK:** `studentId` (String)
+**SK:** `id` (String)
+
+**GSI:** `UnitQueueIndex`
+- PK: `unitId` (String)
+- SK: `order` (Number)
+
+Typical attributes:
+- `id`, `unitId`, `studentId`
+- `knowledgeTopicId` (FK → KnowledgeTopics)
+- `labelIndex` (Number) — used for student-facing "Knowledge N" label
+- `order` (Number) — chronological queue position
+- `status` (`pending|active|completed_correct|completed_incorrect`)
+- `is_correct` (Boolean, optional) — set when completed; mirrors `grade_info()` output
+- `questionPrompt` (String) — LLM-generated question shown to student
+- `createdAt` (ISO timestamp)
+
+Access patterns:
+- List queue items for (studentId, unitId): query by PK, filter by unitId
+- Get single item: query by PK + SK
+- Update item status: update by PK + SK

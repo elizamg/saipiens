@@ -86,3 +86,27 @@ Identity:
 ### Messages
 - **GET** `/threads/{threadId}/messages?stageId=...` → `ChatMessage[]` (sorted by createdAt asc)
 - **POST** `/threads/{threadId}/messages` body: `{ "content": string, "stageId"?: string }` → created `ChatMessage`
+
+---
+
+## 13) Knowledge Topics (teacher-visible)
+- **GET** `/units/{unitId}/knowledge-topics` → `KnowledgeTopic[]` (sorted by `order` asc)
+
+---
+
+## 14) Knowledge Queue (student-facing)
+- **GET** `/units/{unitId}/knowledge-queue` → `KnowledgeQueueItem[]`
+  - Returns only visible items (status ≠ `pending`), sorted by `order` asc
+  - Server infers `studentId` from JWT
+
+- **POST** `/knowledge-queue/{queueItemId}/complete`
+  - Body: `{ "is_correct": boolean }`
+  - Returns: `{ "updatedItem": KnowledgeQueueItem, "newQueueItem"?: KnowledgeQueueItem }`
+  - Side effects:
+    - Sets `status` to `completed_correct` or `completed_incorrect` and sets `is_correct`
+    - If `is_correct: false`: creates a new `pending` retry item for the same `knowledgeTopicId` with incremented `labelIndex` and `order`
+    - Advances the next `pending` item in the queue to `active`
+
+- **GET** `/units/{unitId}/knowledge-progress` → `KnowledgeProgress`
+  - Returns `{ unitId, totalTopics, correctCount, incorrectCount, correctPercent, incorrectPercent }`
+  - `correctCount` / `incorrectCount` count unique topics (not retries); a topic retried correctly is removed from incorrectCount

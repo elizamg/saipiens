@@ -11,6 +11,8 @@ import type {
   StudentObjectiveProgress,
   ChatThread,
   ChatMessage,
+  KnowledgeTopic,
+  KnowledgeQueueItem,
 } from "../types/domain";
 import whiteTreeLogo from "../assets/white-tree.png";
 
@@ -81,12 +83,6 @@ export const units: Unit[] = [
 // Each objective has an explicit `order` for chronological sorting within its section.
 export const objectives: Objective[] = [
   // -------- Unit 6 (Thermodynamics) - COMPLETED --------
-  // Knowledge (5)
-  { id: "obj_6_k1", unitId: "unit_ph_6", kind: "knowledge", title: "Knowledge 1", order: 1 },
-  { id: "obj_6_k2", unitId: "unit_ph_6", kind: "knowledge", title: "Knowledge 2", order: 2 },
-  { id: "obj_6_k3", unitId: "unit_ph_6", kind: "knowledge", title: "Knowledge 3", order: 3 },
-  { id: "obj_6_k4", unitId: "unit_ph_6", kind: "knowledge", title: "Knowledge 4", order: 4 },
-  { id: "obj_6_k5", unitId: "unit_ph_6", kind: "knowledge", title: "Knowledge 5", order: 5 },
   // Skills (5)
   { id: "obj_6_s1", unitId: "unit_ph_6", kind: "skill", title: "Skill 1", order: 1 },
   { id: "obj_6_s2", unitId: "unit_ph_6", kind: "skill", title: "Skill 2", order: 2 },
@@ -97,14 +93,6 @@ export const objectives: Objective[] = [
   { id: "obj_6_c1", unitId: "unit_ph_6", kind: "capstone", title: "Capstone 1", order: 1 },
 
   // -------- Unit 8 (Magnetism) - IN PROGRESS --------
-  // Knowledge (7)
-  { id: "obj_8_k1", unitId: "unit_ph_8", kind: "knowledge", title: "Knowledge 1", order: 1 },
-  { id: "obj_8_k2", unitId: "unit_ph_8", kind: "knowledge", title: "Knowledge 2", order: 2 },
-  { id: "obj_8_k3", unitId: "unit_ph_8", kind: "knowledge", title: "Knowledge 3", order: 3 },
-  { id: "obj_8_k4", unitId: "unit_ph_8", kind: "knowledge", title: "Knowledge 4", order: 4 },
-  { id: "obj_8_k5", unitId: "unit_ph_8", kind: "knowledge", title: "Knowledge 5", order: 5 },
-  { id: "obj_8_k6", unitId: "unit_ph_8", kind: "knowledge", title: "Knowledge 6", order: 6 },
-  { id: "obj_8_k7", unitId: "unit_ph_8", kind: "knowledge", title: "Knowledge 7", order: 7 },
   // Skills (6)
   { id: "obj_8_s1", unitId: "unit_ph_8", kind: "skill", title: "Skill 1", order: 1 },
   { id: "obj_8_s2", unitId: "unit_ph_8", kind: "skill", title: "Skill 2", order: 2 },
@@ -117,12 +105,6 @@ export const objectives: Objective[] = [
   { id: "obj_8_c2", unitId: "unit_ph_8", kind: "capstone", title: "Capstone 2", order: 2 },
 
   // -------- Unit 1 (Colonial America) - COMPLETED --------
-  // Knowledge (5)
-  { id: "obj_1_k1", unitId: "unit_ah_1", kind: "knowledge", title: "Knowledge 1", order: 1 },
-  { id: "obj_1_k2", unitId: "unit_ah_1", kind: "knowledge", title: "Knowledge 2", order: 2 },
-  { id: "obj_1_k3", unitId: "unit_ah_1", kind: "knowledge", title: "Knowledge 3", order: 3 },
-  { id: "obj_1_k4", unitId: "unit_ah_1", kind: "knowledge", title: "Knowledge 4", order: 4 },
-  { id: "obj_1_k5", unitId: "unit_ah_1", kind: "knowledge", title: "Knowledge 5", order: 5 },
   // Skills (5)
   { id: "obj_1_s1", unitId: "unit_ah_1", kind: "skill", title: "Skill 1", order: 1 },
   { id: "obj_1_s2", unitId: "unit_ah_1", kind: "skill", title: "Skill 2", order: 2 },
@@ -133,13 +115,6 @@ export const objectives: Objective[] = [
   { id: "obj_1_c1", unitId: "unit_ah_1", kind: "capstone", title: "Capstone 1", order: 1 },
 
   // -------- Unit 2 (Revolutionary War) - IN PROGRESS --------
-  // Knowledge (6)
-  { id: "obj_2_k1", unitId: "unit_ah_2", kind: "knowledge", title: "Knowledge 1", order: 1 },
-  { id: "obj_2_k2", unitId: "unit_ah_2", kind: "knowledge", title: "Knowledge 2", order: 2 },
-  { id: "obj_2_k3", unitId: "unit_ah_2", kind: "knowledge", title: "Knowledge 3", order: 3 },
-  { id: "obj_2_k4", unitId: "unit_ah_2", kind: "knowledge", title: "Knowledge 4", order: 4 },
-  { id: "obj_2_k5", unitId: "unit_ah_2", kind: "knowledge", title: "Knowledge 5", order: 5 },
-  { id: "obj_2_k6", unitId: "unit_ah_2", kind: "knowledge", title: "Knowledge 6", order: 6 },
   // Skills (5)
   { id: "obj_2_s1", unitId: "unit_ah_2", kind: "skill", title: "Skill 1", order: 1 },
   { id: "obj_2_s2", unitId: "unit_ah_2", kind: "skill", title: "Skill 2", order: 2 },
@@ -156,31 +131,6 @@ export const itemStages: ItemStage[] = [
   // ======================================================================
   //  UNIT 6 - THERMODYNAMICS
   // ======================================================================
-
-  // --- K1: First Law of Thermodynamics ---
-  { id: "stg_6k1_b", itemId: "obj_6_k1", stageType: "begin", order: 1, prompt: "What is the first law of thermodynamics in simple terms?" },
-  { id: "stg_6k1_w", itemId: "obj_6_k1", stageType: "walkthrough", order: 2, prompt: "Let's walk through how the first law applies to an adiabatic process step by step.", suggestedQuestions: ["What formula should I use?", "Can you give me a hint about adiabatic processes?", "How does Q relate to W here?"] },
-  { id: "stg_6k1_c", itemId: "obj_6_k1", stageType: "challenge", order: 3, prompt: "Derive the work done by an ideal gas in an isothermal expansion using the first law." },
-
-  // --- K2: Entropy and the Second Law ---
-  { id: "stg_6k2_b", itemId: "obj_6_k2", stageType: "begin", order: 1, prompt: "What is entropy?" },
-  { id: "stg_6k2_w", itemId: "obj_6_k2", stageType: "walkthrough", order: 2, prompt: "Let's explore how entropy relates to the second law of thermodynamics.", suggestedQuestions: ["What is the formula for entropy change?", "Why does entropy always increase?", "How does temperature affect entropy?"] },
-  { id: "stg_6k2_c", itemId: "obj_6_k2", stageType: "challenge", order: 3, prompt: "Calculate the entropy change when ice melts at 0\u00b0C. Given: heat of fusion = 334 J/g." },
-
-  // --- K3: Heat Engines and the Carnot Cycle ---
-  { id: "stg_6k3_b", itemId: "obj_6_k3", stageType: "begin", order: 1, prompt: "What is a heat engine and what does it do?" },
-  { id: "stg_6k3_w", itemId: "obj_6_k3", stageType: "walkthrough", order: 2, prompt: "Let's walk through the four stages of the Carnot cycle and why it represents maximum efficiency.", suggestedQuestions: ["What are the four stages of the Carnot cycle?", "Why is Carnot efficiency the maximum?", "How do I calculate Carnot efficiency?"] },
-  { id: "stg_6k3_c", itemId: "obj_6_k3", stageType: "challenge", order: 3, prompt: "Explain why no real engine can be more efficient than a Carnot engine operating between the same temperatures. Use the second law in your reasoning." },
-
-  // --- K4: Thermodynamic Processes ---
-  { id: "stg_6k4_b", itemId: "obj_6_k4", stageType: "begin", order: 1, prompt: "Name four common thermodynamic processes and what is held constant in each." },
-  { id: "stg_6k4_w", itemId: "obj_6_k4", stageType: "walkthrough", order: 2, prompt: "Let's compare isothermal, adiabatic, isobaric, and isochoric processes on a PV diagram.", suggestedQuestions: ["What is held constant in each process?", "How do the curves differ on a PV diagram?", "Which process does the most work?"] },
-  { id: "stg_6k4_c", itemId: "obj_6_k4", stageType: "challenge", order: 3, prompt: "An ideal gas undergoes an adiabatic expansion from V1 to 2V1. If gamma = 1.4 and initial temperature is 300K, find the final temperature." },
-
-  // --- K5: Kinetic Theory of Gases ---
-  { id: "stg_6k5_b", itemId: "obj_6_k5", stageType: "begin", order: 1, prompt: "What does the kinetic theory of gases tell us about gas molecules?" },
-  { id: "stg_6k5_w", itemId: "obj_6_k5", stageType: "walkthrough", order: 2, prompt: "Let's derive the relationship between average kinetic energy and temperature step by step.", suggestedQuestions: ["What is the kinetic energy formula for gas molecules?", "How does Boltzmann's constant come in?", "What assumptions does kinetic theory make?"] },
-  { id: "stg_6k5_c", itemId: "obj_6_k5", stageType: "challenge", order: 3, prompt: "Calculate the root-mean-square speed of nitrogen molecules at 300K. Molar mass of N2 = 28 g/mol." },
 
   // --- S1: Work in Gas Expansion ---
   { id: "stg_6s1_b", itemId: "obj_6_s1", stageType: "begin", order: 1, prompt: "A gas expands from 1L to 2L at constant pressure of 100 kPa. Calculate the work done." },
@@ -216,40 +166,7 @@ export const itemStages: ItemStage[] = [
   //  UNIT 8 - MAGNETISM
   // ======================================================================
 
-  // --- K1: Magnetic Fields Around Wires (COMPLETED - challenge_complete) ---
-  { id: "stg_8k1_b", itemId: "obj_8_k1", stageType: "begin", order: 1, prompt: "What creates a magnetic field around a wire?" },
-  { id: "stg_8k1_w", itemId: "obj_8_k1", stageType: "walkthrough", order: 2, prompt: "Let's walk through the shape and direction of magnetic field lines around a current-carrying wire.", suggestedQuestions: ["How do I use the right-hand rule?", "What shape do the field lines form?", "How does current direction affect the field?"] },
-  { id: "stg_8k1_c", itemId: "obj_8_k1", stageType: "challenge", order: 3, prompt: "Using the right-hand rule, explain how to determine field direction. How does field strength vary with distance?" },
-
-  // --- K2: Electromagnets (challenge_started - walkthrough done, on challenge) ---
-  { id: "stg_8k2_b", itemId: "obj_8_k2", stageType: "begin", order: 1, prompt: "What is an electromagnet?" },
-  { id: "stg_8k2_w", itemId: "obj_8_k2", stageType: "walkthrough", order: 2, prompt: "Let's work through how electromagnets work and how to increase their strength step by step.", suggestedQuestions: ["What factors affect electromagnet strength?", "Why does an iron core make it stronger?", "What is the solenoid field formula?"] },
-  { id: "stg_8k2_c", itemId: "obj_8_k2", stageType: "challenge", order: 3, prompt: "Explain all factors affecting electromagnet strength and derive the relationship B = \u03bc\u2080nI for a solenoid." },
-
-  // --- K3: Electromagnetic Induction (not_started - begin done, on walkthrough, no student walkthrough msgs) ---
-  { id: "stg_8k3_b", itemId: "obj_8_k3", stageType: "begin", order: 1, prompt: "What is electromagnetic induction?" },
-  { id: "stg_8k3_w", itemId: "obj_8_k3", stageType: "walkthrough", order: 2, prompt: "Let's explore Faraday's law of electromagnetic induction step by step.", suggestedQuestions: ["What is Faraday's law in math form?", "What causes an EMF to be induced?", "How does the rate of flux change matter?"] },
-  { id: "stg_8k3_c", itemId: "obj_8_k3", stageType: "challenge", order: 3, prompt: "Derive the EMF induced in a rotating coil and explain its applications in generators." },
-
-  // --- K4: Lenz's Law (not_started) ---
-  { id: "stg_8k4_b", itemId: "obj_8_k4", stageType: "begin", order: 1, prompt: "What does Lenz's law tell us about the direction of an induced current?" },
-  { id: "stg_8k4_w", itemId: "obj_8_k4", stageType: "walkthrough", order: 2, prompt: "Let's apply Lenz's law to several scenarios involving a magnet moving through a coil.", suggestedQuestions: ["How do I determine the direction of induced current?", "What does Lenz's law say about opposing change?", "Can you show me an example with a bar magnet?"] },
-  { id: "stg_8k4_c", itemId: "obj_8_k4", stageType: "challenge", order: 3, prompt: "A bar magnet is dropped through a copper tube. Explain the motion of the magnet using Lenz's law and energy conservation." },
-
-  // --- K5: Magnetic Flux (COMPLETED - challenge_complete) ---
-  { id: "stg_8k5_b", itemId: "obj_8_k5", stageType: "begin", order: 1, prompt: "What is magnetic flux and how is it different from the magnetic field?" },
-  { id: "stg_8k5_w", itemId: "obj_8_k5", stageType: "walkthrough", order: 2, prompt: "Let's work through how magnetic flux depends on field strength, area, and angle.", suggestedQuestions: ["What is the magnetic flux formula?", "When is flux at its maximum?", "What does the angle theta represent?"] },
-  { id: "stg_8k5_c", itemId: "obj_8_k5", stageType: "challenge", order: 3, prompt: "A circular coil of radius 10 cm with 50 turns is placed in a uniform 0.2 T field. Calculate the flux when the coil normal is at 0\u00b0, 30\u00b0, 60\u00b0, and 90\u00b0 to the field." },
-
-  // --- K6: Magnetic Materials / Ferromagnetism (not_started) ---
-  { id: "stg_8k6_b", itemId: "obj_8_k6", stageType: "begin", order: 1, prompt: "Why are some materials magnetic and others are not?" },
-  { id: "stg_8k6_w", itemId: "obj_8_k6", stageType: "walkthrough", order: 2, prompt: "Let's explore magnetic domains, hysteresis, and what makes ferromagnetic materials special.", suggestedQuestions: ["What are magnetic domains?", "What is a hysteresis loop?", "Why are some materials ferromagnetic?"] },
-  { id: "stg_8k6_c", itemId: "obj_8_k6", stageType: "challenge", order: 3, prompt: "Explain the hysteresis loop for a ferromagnetic material. What do remanence and coercivity represent, and how do they affect the choice of material for a permanent magnet vs. a transformer core?" },
-
-  // --- K7: Earth's Magnetic Field (not_started - begin done, on walkthrough, no student walkthrough msgs) ---
-  { id: "stg_8k7_b", itemId: "obj_8_k7", stageType: "begin", order: 1, prompt: "What causes Earth's magnetic field?" },
-  { id: "stg_8k7_w", itemId: "obj_8_k7", stageType: "walkthrough", order: 2, prompt: "Let's walk through the structure of Earth's magnetic field, including declination, inclination, and the magnetosphere.", suggestedQuestions: ["What is magnetic declination?", "How does the magnetosphere protect Earth?", "Why do the magnetic poles move?"] },
-  { id: "stg_8k7_c", itemId: "obj_8_k7", stageType: "challenge", order: 3, prompt: "Explain how Earth's magnetic field protects the planet from solar wind. Include the role of the Van Allen belts and describe what would happen if the field weakened significantly." },
+  // --- (Knowledge topics moved to knowledgeTopics / studentKnowledgeQueues below) ---
 
   // --- S1: Calculating B-field from Wire / Biot-Savart (COMPLETED - challenge_complete) ---
   { id: "stg_8s1_b", itemId: "obj_8_s1", stageType: "begin", order: 1, prompt: "A wire carries 1A. Is the magnetic field at 1cm stronger or weaker than at 2cm?" },
@@ -295,30 +212,7 @@ export const itemStages: ItemStage[] = [
   //  UNIT 1 - COLONIAL AMERICA (COMPLETED)
   // ======================================================================
 
-  // --- K1: Jamestown Settlement (COMPLETED - challenge_complete) ---
-  { id: "stg_1k1_b", itemId: "obj_1_k1", stageType: "begin", order: 1, prompt: "Why was Jamestown established in 1607, and what challenges did the settlers face?" },
-  { id: "stg_1k1_w", itemId: "obj_1_k1", stageType: "walkthrough", order: 2, prompt: "Let's walk through the key factors that nearly destroyed Jamestown and how John Smith and John Rolfe helped it survive.", suggestedQuestions: ["What was the 'starving time'?", "How did tobacco save Jamestown?", "What role did John Smith play in the colony's survival?"] },
-  { id: "stg_1k1_c", itemId: "obj_1_k1", stageType: "challenge", order: 3, prompt: "Evaluate whether Jamestown's survival was due more to leadership decisions or economic factors like tobacco cultivation. Support your argument with specific evidence." },
-
-  // --- K2: Mayflower Compact (COMPLETED - challenge_complete) ---
-  { id: "stg_1k2_b", itemId: "obj_1_k2", stageType: "begin", order: 1, prompt: "What was the Mayflower Compact and why was it significant?" },
-  { id: "stg_1k2_w", itemId: "obj_1_k2", stageType: "walkthrough", order: 2, prompt: "Let's examine the Mayflower Compact step by step: who wrote it, what it said, and how it established a precedent for self-government in America.", suggestedQuestions: ["Why was the Compact necessary?", "Who were the 'Strangers' on the Mayflower?", "How did the Compact influence later democracy?"] },
-  { id: "stg_1k2_c", itemId: "obj_1_k2", stageType: "challenge", order: 3, prompt: "Compare the Mayflower Compact to modern democratic principles. In what ways was it revolutionary, and in what ways was it limited?" },
-
-  // --- K3: Colonial Government (COMPLETED - challenge_complete) ---
-  { id: "stg_1k3_b", itemId: "obj_1_k3", stageType: "begin", order: 1, prompt: "What were the main forms of government in the British colonies?" },
-  { id: "stg_1k3_w", itemId: "obj_1_k3", stageType: "walkthrough", order: 2, prompt: "Let's compare royal, proprietary, and charter colonies and how each type of colonial government operated.", suggestedQuestions: ["What is the difference between the three colony types?", "Which type had the most self-governance?", "How did colonial assemblies gain power?"] },
-  { id: "stg_1k3_c", itemId: "obj_1_k3", stageType: "challenge", order: 3, prompt: "Analyze how the House of Burgesses and New England town meetings laid the groundwork for American representative democracy." },
-
-  // --- K4: Mercantilism (COMPLETED - challenge_complete) ---
-  { id: "stg_1k4_b", itemId: "obj_1_k4", stageType: "begin", order: 1, prompt: "What was mercantilism and how did it shape the colonial economy?" },
-  { id: "stg_1k4_w", itemId: "obj_1_k4", stageType: "walkthrough", order: 2, prompt: "Let's trace how the Navigation Acts enforced mercantilist policies and how colonists responded to trade restrictions.", suggestedQuestions: ["What did the Navigation Acts require?", "How did colonists evade trade restrictions?", "Were there any benefits to mercantilism for colonies?"] },
-  { id: "stg_1k4_c", itemId: "obj_1_k4", stageType: "challenge", order: 3, prompt: "Argue whether mercantilism ultimately helped or hindered colonial economic development, using the triangular trade and Navigation Acts as evidence." },
-
-  // --- K5: Great Awakening (COMPLETED - challenge_complete) ---
-  { id: "stg_1k5_b", itemId: "obj_1_k5", stageType: "begin", order: 1, prompt: "What was the Great Awakening and when did it occur?" },
-  { id: "stg_1k5_w", itemId: "obj_1_k5", stageType: "walkthrough", order: 2, prompt: "Let's explore how preachers like Jonathan Edwards and George Whitefield transformed colonial religious life and social structures.", suggestedQuestions: ["How did Edwards and Whitefield differ in style?", "What was the social impact of the Great Awakening?", "How did the movement challenge established churches?"] },
-  { id: "stg_1k5_c", itemId: "obj_1_k5", stageType: "challenge", order: 3, prompt: "Evaluate how the Great Awakening contributed to the development of a uniquely American identity and later revolutionary ideals." },
+  // --- (Knowledge topics moved to knowledgeTopics / studentKnowledgeQueues below) ---
 
   // --- S1: Primary Source Analysis (COMPLETED - challenge_complete) ---
   { id: "stg_1s1_b", itemId: "obj_1_s1", stageType: "begin", order: 1, prompt: "Read the following excerpt from John Smith's account of Jamestown. What can you identify as the author's perspective and potential biases?" },
@@ -354,35 +248,7 @@ export const itemStages: ItemStage[] = [
   //  UNIT 2 - REVOLUTIONARY WAR (ACTIVE / MIXED PROGRESS)
   // ======================================================================
 
-  // --- K1: Causes of Revolution (challenge_complete) ---
-  { id: "stg_2k1_b", itemId: "obj_2_k1", stageType: "begin", order: 1, prompt: "What were the main causes of the American Revolution?" },
-  { id: "stg_2k1_w", itemId: "obj_2_k1", stageType: "walkthrough", order: 2, prompt: "Let's trace the chain of events from the French and Indian War through the Intolerable Acts, examining how each event escalated colonial resistance.", suggestedQuestions: ["How did the French and Indian War lead to taxation?", "What was the Stamp Act and why did colonists resist?", "How did the Intolerable Acts unite the colonies?"] },
-  { id: "stg_2k1_c", itemId: "obj_2_k1", stageType: "challenge", order: 3, prompt: "Rank the top three causes of the American Revolution in order of importance and defend your ranking with historical evidence." },
-
-  // --- K2: Boston Tea Party (challenge_complete) ---
-  { id: "stg_2k2_b", itemId: "obj_2_k2", stageType: "begin", order: 1, prompt: "What happened at the Boston Tea Party and why did the colonists do it?" },
-  { id: "stg_2k2_w", itemId: "obj_2_k2", stageType: "walkthrough", order: 2, prompt: "Let's examine the Boston Tea Party in context: the Tea Act, the role of the Sons of Liberty, and how Britain responded with the Intolerable Acts.", suggestedQuestions: ["What was the Tea Act really about?", "Who were the Sons of Liberty?", "Why did cheap tea still anger colonists?"] },
-  { id: "stg_2k2_c", itemId: "obj_2_k2", stageType: "challenge", order: 3, prompt: "Was the Boston Tea Party an act of justified protest or criminal destruction of property? Argue both sides and then state which interpretation you find more compelling." },
-
-  // --- K3: Declaration of Independence (challenge_started) ---
-  { id: "stg_2k3_b", itemId: "obj_2_k3", stageType: "begin", order: 1, prompt: "What was the Declaration of Independence and what were its main ideas?" },
-  { id: "stg_2k3_w", itemId: "obj_2_k3", stageType: "walkthrough", order: 2, prompt: "Let's break down the Declaration of Independence section by section: the preamble, the list of grievances, and the formal declaration, examining how Enlightenment ideas influenced each part.", suggestedQuestions: ["How did John Locke influence Jefferson?", "What are the three sections of the Declaration?", "Why did Jefferson blame the king specifically?"] },
-  { id: "stg_2k3_c", itemId: "obj_2_k3", stageType: "challenge", order: 3, prompt: "Analyze the contradiction between the Declaration's statement that 'all men are created equal' and the reality of slavery in 1776. How did the founders reconcile this, and what were the long-term consequences?" },
-
-  // --- K4: Key Battles (not_started - begin done, on walkthrough, no student walkthrough msgs) ---
-  { id: "stg_2k4_b", itemId: "obj_2_k4", stageType: "begin", order: 1, prompt: "Name three major battles of the American Revolution and explain why each was important." },
-  { id: "stg_2k4_w", itemId: "obj_2_k4", stageType: "walkthrough", order: 2, prompt: "Let's analyze the turning points of the war: Lexington and Concord, Saratoga, and Yorktown, examining strategy, leadership, and consequences of each battle.", suggestedQuestions: ["Why was Saratoga a turning point?", "What strategy did Washington use at Yorktown?", "How did foreign allies help at key battles?"] },
-  { id: "stg_2k4_c", itemId: "obj_2_k4", stageType: "challenge", order: 3, prompt: "Military historians debate which battle was the true turning point of the Revolution. Build a case for either Saratoga or Yorktown as the single most important battle, using strategic and diplomatic evidence." },
-
-  // --- K5: Foreign Alliances (not_started) ---
-  { id: "stg_2k5_b", itemId: "obj_2_k5", stageType: "begin", order: 1, prompt: "Which foreign nations helped the American colonies during the Revolution and why?" },
-  { id: "stg_2k5_w", itemId: "obj_2_k5", stageType: "walkthrough", order: 2, prompt: "Let's examine how Benjamin Franklin secured the French alliance and how French military and financial aid changed the course of the war.", suggestedQuestions: ["Why did France want to help the colonies?", "What role did Franklin play in diplomacy?", "How did French aid change the war?"] },
-  { id: "stg_2k5_c", itemId: "obj_2_k5", stageType: "challenge", order: 3, prompt: "Could the American colonies have won independence without foreign aid? Assess the contributions of France, Spain, and the Netherlands and argue whether American victory was possible without them." },
-
-  // --- K6: Treaty of Paris (not_started) ---
-  { id: "stg_2k6_b", itemId: "obj_2_k6", stageType: "begin", order: 1, prompt: "What were the key terms of the Treaty of Paris of 1783?" },
-  { id: "stg_2k6_w", itemId: "obj_2_k6", stageType: "walkthrough", order: 2, prompt: "Let's walk through the negotiations that led to the Treaty of Paris, examining what each side wanted and what they actually got.", suggestedQuestions: ["What were the key terms of the treaty?", "What territory did the US gain?", "How were Native American interests affected?"] },
-  { id: "stg_2k6_c", itemId: "obj_2_k6", stageType: "challenge", order: 3, prompt: "Evaluate whether the Treaty of Paris was a fair settlement for all parties involved. Consider the perspectives of Britain, France, Spain, Native Americans, and the new United States." },
+  // --- (Knowledge topics moved to knowledgeTopics / studentKnowledgeQueues below) ---
 
   // --- S1: Analyzing Political Cartoons (challenge_complete) ---
   { id: "stg_2s1_b", itemId: "obj_2_s1", stageType: "begin", order: 1, prompt: "What techniques do political cartoonists use to convey their message?" },
@@ -419,12 +285,6 @@ export const itemStages: ItemStage[] = [
 // progressState: "not_started" | "walkthrough_started" | "walkthrough_complete" | "challenge_started" | "challenge_complete"
 export const studentObjectiveProgress: StudentObjectiveProgress[] = [
   // -------- Unit 6 - Thermodynamics --------
-  // K1, K2 completed; rest not started
-  { studentId: "stu_1", objectiveId: "obj_6_k1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-10T15:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_6_k2", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-11T14:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_6_k3", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-11T15:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_6_k4", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-11T15:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_6_k5", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-11T15:00:00Z" },
   // S1 completed; rest not started
   { studentId: "stu_1", objectiveId: "obj_6_s1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-12T16:00:00Z" },
   { studentId: "stu_1", objectiveId: "obj_6_s2", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-12T16:00:00Z" },
@@ -435,20 +295,6 @@ export const studentObjectiveProgress: StudentObjectiveProgress[] = [
   { studentId: "stu_1", objectiveId: "obj_6_c1", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-12T16:00:00Z" },
 
   // -------- Unit 8 - Magnetism (MIXED PROGRESS) --------
-  // K1: challenge_complete
-  { studentId: "stu_1", objectiveId: "obj_8_k1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-15T10:30:00Z" },
-  // K2: challenge_started (walkthrough done, on challenge)
-  { studentId: "stu_1", objectiveId: "obj_8_k2", progressState: "challenge_started", currentStageType: "challenge", updatedAt: "2024-01-15T11:15:00Z" },
-  // K3: not_started (begin done, on walkthrough, but no student walkthrough messages yet)
-  { studentId: "stu_1", objectiveId: "obj_8_k3", progressState: "not_started", currentStageType: "walkthrough", updatedAt: "2024-01-15T11:30:00Z" },
-  // K4: not_started
-  { studentId: "stu_1", objectiveId: "obj_8_k4", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-15T11:30:00Z" },
-  // K5: challenge_complete
-  { studentId: "stu_1", objectiveId: "obj_8_k5", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-15T14:00:00Z" },
-  // K6: not_started
-  { studentId: "stu_1", objectiveId: "obj_8_k6", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-15T14:00:00Z" },
-  // K7: not_started (begin done, on walkthrough, but no student walkthrough messages yet)
-  { studentId: "stu_1", objectiveId: "obj_8_k7", progressState: "not_started", currentStageType: "walkthrough", updatedAt: "2024-01-15T14:30:00Z" },
   // S1: challenge_complete
   { studentId: "stu_1", objectiveId: "obj_8_s1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-15T12:15:00Z" },
   // S2: challenge_started (walkthrough done, on challenge)
@@ -467,11 +313,6 @@ export const studentObjectiveProgress: StudentObjectiveProgress[] = [
   { studentId: "stu_1", objectiveId: "obj_8_c2", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-15T15:00:00Z" },
 
   // -------- Unit 1 - Colonial America (ALL COMPLETED - challenge_complete each) --------
-  { studentId: "stu_1", objectiveId: "obj_1_k1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-02T10:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_1_k2", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-02T11:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_1_k3", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-02T12:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_1_k4", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-02T13:00:00Z" },
-  { studentId: "stu_1", objectiveId: "obj_1_k5", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-02T14:00:00Z" },
   { studentId: "stu_1", objectiveId: "obj_1_s1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-03T10:00:00Z" },
   { studentId: "stu_1", objectiveId: "obj_1_s2", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-03T11:00:00Z" },
   { studentId: "stu_1", objectiveId: "obj_1_s3", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-03T12:00:00Z" },
@@ -480,18 +321,6 @@ export const studentObjectiveProgress: StudentObjectiveProgress[] = [
   { studentId: "stu_1", objectiveId: "obj_1_c1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-04T10:00:00Z" },
 
   // -------- Unit 2 - Revolutionary War (MIXED PROGRESS) --------
-  // K1: challenge_complete
-  { studentId: "stu_1", objectiveId: "obj_2_k1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-06T10:00:00Z" },
-  // K2: challenge_complete
-  { studentId: "stu_1", objectiveId: "obj_2_k2", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-06T11:00:00Z" },
-  // K3: challenge_started (walkthrough done, on challenge)
-  { studentId: "stu_1", objectiveId: "obj_2_k3", progressState: "challenge_started", currentStageType: "challenge", updatedAt: "2024-01-06T12:00:00Z" },
-  // K4: not_started (begin done, on walkthrough, but no student walkthrough messages yet)
-  { studentId: "stu_1", objectiveId: "obj_2_k4", progressState: "not_started", currentStageType: "walkthrough", updatedAt: "2024-01-06T13:00:00Z" },
-  // K5: not_started
-  { studentId: "stu_1", objectiveId: "obj_2_k5", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-06T13:00:00Z" },
-  // K6: not_started
-  { studentId: "stu_1", objectiveId: "obj_2_k6", progressState: "not_started", currentStageType: "begin", updatedAt: "2024-01-06T13:00:00Z" },
   // S1: challenge_complete
   { studentId: "stu_1", objectiveId: "obj_2_s1", progressState: "challenge_complete", currentStageType: "challenge", updatedAt: "2024-01-07T10:00:00Z" },
   // S2: challenge_started (walkthrough done, on challenge)
@@ -510,11 +339,6 @@ export const studentObjectiveProgress: StudentObjectiveProgress[] = [
 // One thread per objective
 export const chatThreads: ChatThread[] = [
   // -------- Unit 6 Threads --------
-  { id: "thr_6_k1", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_k1", title: "Knowledge 1", kind: "knowledge", lastMessageAt: "2024-01-10T15:00:00Z" },
-  { id: "thr_6_k2", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_k2", title: "Knowledge 2", kind: "knowledge", lastMessageAt: "2024-01-11T14:00:00Z" },
-  { id: "thr_6_k3", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_k3", title: "Knowledge 3", kind: "knowledge", lastMessageAt: "2024-01-11T15:00:00Z" },
-  { id: "thr_6_k4", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_k4", title: "Knowledge 4", kind: "knowledge", lastMessageAt: "2024-01-11T15:00:00Z" },
-  { id: "thr_6_k5", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_k5", title: "Knowledge 5", kind: "knowledge", lastMessageAt: "2024-01-11T15:00:00Z" },
   { id: "thr_6_s1", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_s1", title: "Skill 1", kind: "skill", lastMessageAt: "2024-01-12T16:00:00Z" },
   { id: "thr_6_s2", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_s2", title: "Skill 2", kind: "skill", lastMessageAt: "2024-01-12T16:00:00Z" },
   { id: "thr_6_s3", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_s3", title: "Skill 3", kind: "skill", lastMessageAt: "2024-01-12T16:00:00Z" },
@@ -523,13 +347,6 @@ export const chatThreads: ChatThread[] = [
   { id: "thr_6_c1", unitId: "unit_ph_6", courseId: "crs_2", objectiveId: "obj_6_c1", title: "Explain: Thermodynamics", kind: "capstone", lastMessageAt: "2024-01-12T16:00:00Z" },
 
   // -------- Unit 8 Threads --------
-  { id: "thr_8_k1", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_k1", title: "Knowledge 1", kind: "knowledge", lastMessageAt: "2024-01-15T10:30:00Z" },
-  { id: "thr_8_k2", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_k2", title: "Knowledge 2", kind: "knowledge", lastMessageAt: "2024-01-15T11:15:00Z" },
-  { id: "thr_8_k3", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_k3", title: "Knowledge 3", kind: "knowledge", lastMessageAt: "2024-01-15T11:30:00Z" },
-  { id: "thr_8_k4", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_k4", title: "Knowledge 4", kind: "knowledge", lastMessageAt: "2024-01-15T11:30:00Z" },
-  { id: "thr_8_k5", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_k5", title: "Knowledge 5", kind: "knowledge", lastMessageAt: "2024-01-15T14:00:00Z" },
-  { id: "thr_8_k6", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_k6", title: "Knowledge 6", kind: "knowledge", lastMessageAt: "2024-01-15T14:00:00Z" },
-  { id: "thr_8_k7", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_k7", title: "Knowledge 7", kind: "knowledge", lastMessageAt: "2024-01-15T14:30:00Z" },
   { id: "thr_8_s1", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_s1", title: "Skill 1", kind: "skill", lastMessageAt: "2024-01-15T12:15:00Z" },
   { id: "thr_8_s2", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_s2", title: "Skill 2", kind: "skill", lastMessageAt: "2024-01-15T12:45:00Z" },
   { id: "thr_8_s3", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_s3", title: "Skill 3", kind: "skill", lastMessageAt: "2024-01-15T13:00:00Z" },
@@ -540,11 +357,6 @@ export const chatThreads: ChatThread[] = [
   { id: "thr_8_c2", unitId: "unit_ph_8", courseId: "crs_2", objectiveId: "obj_8_c2", title: "Explain: EM waves", kind: "capstone", lastMessageAt: "2024-01-15T15:00:00Z" },
 
   // -------- Unit 1 (Colonial America) Threads --------
-  { id: "thr_1_k1", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_k1", title: "Knowledge 1", kind: "knowledge", lastMessageAt: "2024-01-02T10:00:00Z" },
-  { id: "thr_1_k2", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_k2", title: "Knowledge 2", kind: "knowledge", lastMessageAt: "2024-01-02T11:00:00Z" },
-  { id: "thr_1_k3", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_k3", title: "Knowledge 3", kind: "knowledge", lastMessageAt: "2024-01-02T12:00:00Z" },
-  { id: "thr_1_k4", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_k4", title: "Knowledge 4", kind: "knowledge", lastMessageAt: "2024-01-02T13:00:00Z" },
-  { id: "thr_1_k5", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_k5", title: "Knowledge 5", kind: "knowledge", lastMessageAt: "2024-01-02T14:00:00Z" },
   { id: "thr_1_s1", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_s1", title: "Skill 1", kind: "skill", lastMessageAt: "2024-01-03T10:00:00Z" },
   { id: "thr_1_s2", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_s2", title: "Skill 2", kind: "skill", lastMessageAt: "2024-01-03T11:00:00Z" },
   { id: "thr_1_s3", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_s3", title: "Skill 3", kind: "skill", lastMessageAt: "2024-01-03T12:00:00Z" },
@@ -553,12 +365,6 @@ export const chatThreads: ChatThread[] = [
   { id: "thr_1_c1", unitId: "unit_ah_1", courseId: "crs_1", objectiveId: "obj_1_c1", title: "Explain: Colonial America", kind: "capstone", lastMessageAt: "2024-01-04T10:00:00Z" },
 
   // -------- Unit 2 (Revolutionary War) Threads --------
-  { id: "thr_2_k1", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_k1", title: "Knowledge 1", kind: "knowledge", lastMessageAt: "2024-01-06T10:00:00Z" },
-  { id: "thr_2_k2", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_k2", title: "Knowledge 2", kind: "knowledge", lastMessageAt: "2024-01-06T11:00:00Z" },
-  { id: "thr_2_k3", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_k3", title: "Knowledge 3", kind: "knowledge", lastMessageAt: "2024-01-06T12:00:00Z" },
-  { id: "thr_2_k4", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_k4", title: "Knowledge 4", kind: "knowledge", lastMessageAt: "2024-01-06T13:00:00Z" },
-  { id: "thr_2_k5", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_k5", title: "Knowledge 5", kind: "knowledge", lastMessageAt: "2024-01-06T13:00:00Z" },
-  { id: "thr_2_k6", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_k6", title: "Knowledge 6", kind: "knowledge", lastMessageAt: "2024-01-06T13:00:00Z" },
   { id: "thr_2_s1", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_s1", title: "Skill 1", kind: "skill", lastMessageAt: "2024-01-07T10:00:00Z" },
   { id: "thr_2_s2", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_s2", title: "Skill 2", kind: "skill", lastMessageAt: "2024-01-07T11:00:00Z" },
   { id: "thr_2_s3", unitId: "unit_ah_2", courseId: "crs_1", objectiveId: "obj_2_s3", title: "Skill 3", kind: "skill", lastMessageAt: "2024-01-07T12:00:00Z" },
@@ -575,36 +381,6 @@ export const chatMessages: ChatMessage[] = [
   //  UNIT 6 MESSAGES
   // ======================================================================
 
-  // ========== Thread 6_k1 - First Law of Thermodynamics (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_6k1_1", threadId: "thr_6_k1", stageId: "stg_6k1_b", role: "student", content: "Energy cannot be created or destroyed, only transferred or converted from one form to another.", createdAt: "2024-01-10T13:10:00Z" },
-  { id: "msg_6k1_2", threadId: "thr_6_k1", stageId: "stg_6k1_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-10T13:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage
-  { id: "msg_6k1_3", threadId: "thr_6_k1", stageId: "stg_6k1_w", role: "tutor", content: "Let's work on the first law of thermodynamics. First, can you write out the mathematical form of the first law?", createdAt: "2024-01-10T13:20:00Z" },
-  { id: "msg_6k1_4", threadId: "thr_6_k1", stageId: "stg_6k1_w", role: "student", content: "\u0394U = Q - W, where \u0394U is change in internal energy, Q is heat added, and W is work done by the system.", createdAt: "2024-01-10T13:25:00Z" },
-  { id: "msg_6k1_5", threadId: "thr_6_k1", stageId: "stg_6k1_w", role: "tutor", content: "Great! That's right. Now, in an adiabatic process Q = 0. What does the first law simplify to?", createdAt: "2024-01-10T13:30:00Z" },
-  { id: "msg_6k1_6", threadId: "thr_6_k1", stageId: "stg_6k1_w", role: "student", content: "\u0394U = -W, so all the change in internal energy comes from work done. If the gas expands (positive W), internal energy decreases.", createdAt: "2024-01-10T13:35:00Z" },
-  { id: "msg_6k1_7", threadId: "thr_6_k1", stageId: "stg_6k1_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-10T13:40:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_6k1_8", threadId: "thr_6_k1", stageId: "stg_6k1_c", role: "student", content: "For isothermal expansion of an ideal gas: \u0394U = 0 (temperature constant), so Q = W. Work W = \u222bPdV from V1 to V2. Using PV = nRT, P = nRT/V. Therefore W = \u222b(nRT/V)dV = nRT\u00b7ln(V\u2082/V\u2081). This is also the heat absorbed from the reservoir.", createdAt: "2024-01-10T14:30:00Z" },
-  { id: "msg_6k1_9", threadId: "thr_6_k1", stageId: "stg_6k1_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-10T14:35:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 6_k2 - Entropy and the Second Law (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_6k2_1", threadId: "thr_6_k2", stageId: "stg_6k2_b", role: "student", content: "Entropy is a measure of disorder or randomness in a system. It tells us how much energy is unavailable for doing useful work.", createdAt: "2024-01-11T12:00:00Z" },
-  { id: "msg_6k2_2", threadId: "thr_6_k2", stageId: "stg_6k2_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-11T12:05:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage
-  { id: "msg_6k2_3", threadId: "thr_6_k2", stageId: "stg_6k2_w", role: "tutor", content: "Let's work on entropy and the second law. First, what does the second law of thermodynamics state about entropy in an isolated system?", createdAt: "2024-01-11T12:10:00Z" },
-  { id: "msg_6k2_4", threadId: "thr_6_k2", stageId: "stg_6k2_w", role: "student", content: "The total entropy of an isolated system can never decrease. It either increases (irreversible process) or stays the same (reversible process).", createdAt: "2024-01-11T12:15:00Z" },
-  { id: "msg_6k2_5", threadId: "thr_6_k2", stageId: "stg_6k2_w", role: "tutor", content: "Great! That's right. Now, we need to understand how this limits energy conversion. You can do this by thinking about why heat flows spontaneously from hot to cold but not the reverse. Can you explain why?", createdAt: "2024-01-11T12:20:00Z" },
-  { id: "msg_6k2_6", threadId: "thr_6_k2", stageId: "stg_6k2_w", role: "student", content: "Heat flowing from hot to cold increases total entropy (the cold object gains more entropy than the hot object loses, because \u0394S = Q/T and the cold T is smaller). The reverse would decrease total entropy, violating the second law.", createdAt: "2024-01-11T12:25:00Z" },
-  { id: "msg_6k2_7", threadId: "thr_6_k2", stageId: "stg_6k2_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-11T12:30:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_6k2_8", threadId: "thr_6_k2", stageId: "stg_6k2_c", role: "student", content: "For 1g of ice melting at 0\u00b0C (273.15K): \u0394S = Q/T = 334 J / 273.15 K = 1.223 J/K. The entropy increases because the structured crystalline ice becomes disordered liquid water. For 100g: \u0394S = 33400 / 273.15 = 122.3 J/K.", createdAt: "2024-01-11T13:30:00Z" },
-  { id: "msg_6k2_9", threadId: "thr_6_k2", stageId: "stg_6k2_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-11T13:35:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
   // ========== Thread 6_s1 - Work in Gas Expansion (challenge_complete) ==========
 
   // Begin stage
@@ -619,15 +395,6 @@ export const chatMessages: ChatMessage[] = [
   // Challenge stage
   { id: "msg_6s1_8", threadId: "thr_6_s1", stageId: "stg_6s1_c", role: "student", content: "Carnot efficiency: \u03b7 = 1 - Tc/Th = 1 - 300/500 = 0.4 or 40%. Work output: W = \u03b7 \u00d7 Qh = 0.4 \u00d7 1000 = 400 J. Heat rejected: Qc = Qh - W = 1000 - 400 = 600 J.", createdAt: "2024-01-12T15:30:00Z" },
   { id: "msg_6s1_9", threadId: "thr_6_s1", stageId: "stg_6s1_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-12T15:35:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 6_k3 - Carnot Cycle (not_started) ==========
-  { id: "msg_6k3_0", threadId: "thr_6_k3", stageId: "stg_6k3_b", role: "tutor", content: "Hi! Let's explore the Carnot cycle and heat engines. What is a heat engine and what does it do? Share what you know!", createdAt: "2024-01-10T09:00:00Z" },
-
-  // ========== Thread 6_k4 - Thermodynamic Processes (not_started) ==========
-  { id: "msg_6k4_0", threadId: "thr_6_k4", stageId: "stg_6k4_b", role: "tutor", content: "Hey there! Today we're looking at thermodynamic processes. Can you name four common thermodynamic processes and what is held constant in each?", createdAt: "2024-01-10T09:00:00Z" },
-
-  // ========== Thread 6_k5 - Kinetic Theory (not_started) ==========
-  { id: "msg_6k5_0", threadId: "thr_6_k5", stageId: "stg_6k5_b", role: "tutor", content: "Welcome! We're diving into the kinetic theory of gases. What does the kinetic theory tell us about gas molecules? Give it your best shot!", createdAt: "2024-01-10T09:00:00Z" },
 
   // ========== Thread 6_s2 - Calorimetry Problems (not_started) ==========
   { id: "msg_6s2_0", threadId: "thr_6_s2", stageId: "stg_6s2_b", role: "tutor", content: "Hi! Ready for some calorimetry? Here's one to start: how much heat is needed to raise 500g of water from 20\u00b0C to 80\u00b0C? (c = 4.186 J/g\u00b7\u00b0C)", createdAt: "2024-01-10T09:00:00Z" },
@@ -647,75 +414,6 @@ export const chatMessages: ChatMessage[] = [
   // ======================================================================
   //  UNIT 8 MESSAGES
   // ======================================================================
-
-  // ========== Thread 8_k1 - Magnetic Fields Around Wires (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_8k1_1", threadId: "thr_8_k1", stageId: "stg_8k1_b", role: "student", content: "Electric current flowing through the wire creates the magnetic field. Moving charges produce magnetic fields.", createdAt: "2024-01-15T09:10:00Z" },
-  { id: "msg_8k1_2", threadId: "thr_8_k1", stageId: "stg_8k1_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-15T09:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage
-  { id: "msg_8k1_3", threadId: "thr_8_k1", stageId: "stg_8k1_w", role: "tutor", content: "Let's work on magnetic fields around wires. First, what shape do the field lines form around a straight current-carrying wire?", createdAt: "2024-01-15T09:20:00Z" },
-  { id: "msg_8k1_4", threadId: "thr_8_k1", stageId: "stg_8k1_w", role: "student", content: "They form concentric circles centered on the wire, in planes perpendicular to the wire.", createdAt: "2024-01-15T09:25:00Z" },
-  { id: "msg_8k1_5", threadId: "thr_8_k1", stageId: "stg_8k1_w", role: "tutor", content: "Great! That's right. Now, we need to determine the direction of these circles. You can do this by using the right-hand rule. Can you describe how the right-hand rule works for a current-carrying wire?", createdAt: "2024-01-15T09:28:00Z" },
-  { id: "msg_8k1_6", threadId: "thr_8_k1", stageId: "stg_8k1_w", role: "student", content: "Point your right thumb in the direction of the conventional current. Your fingers curl in the direction of the magnetic field lines around the wire.", createdAt: "2024-01-15T09:32:00Z" },
-  { id: "msg_8k1_7", threadId: "thr_8_k1", stageId: "stg_8k1_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-15T09:35:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_8k1_8", threadId: "thr_8_k1", stageId: "stg_8k1_c", role: "student", content: "Using the right-hand rule: point thumb in the direction of conventional current, fingers curl showing field direction. For a wire with current going up, the field circles counterclockwise when viewed from above. Field strength B = \u03bc\u2080I/(2\u03c0r), so it's inversely proportional to distance r. At double the distance, the field is half as strong. The field is continuous and never has a starting or ending point\u2014the lines form closed loops.", createdAt: "2024-01-15T10:15:00Z" },
-  { id: "msg_8k1_9", threadId: "thr_8_k1", stageId: "stg_8k1_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-15T10:20:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 8_k2 - Electromagnets (challenge_started) ==========
-
-  // Begin stage
-  { id: "msg_8k2_1", threadId: "thr_8_k2", stageId: "stg_8k2_b", role: "student", content: "An electromagnet is a magnet made by passing electric current through a coil of wire, often wrapped around an iron core. It can be turned on and off.", createdAt: "2024-01-15T10:40:00Z" },
-  { id: "msg_8k2_2", threadId: "thr_8_k2", stageId: "stg_8k2_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-15T10:45:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage - rich step-by-step tutor flow
-  { id: "msg_8k2_3", threadId: "thr_8_k2", stageId: "stg_8k2_w", role: "tutor", content: "Let's work on electromagnets. First, can you tell me what happens when you wrap a wire around an iron core and pass current through it?", createdAt: "2024-01-15T10:48:00Z" },
-  { id: "msg_8k2_4", threadId: "thr_8_k2", stageId: "stg_8k2_w", role: "student", content: "The iron becomes magnetized because the current creates a magnetic field that aligns the iron's magnetic domains.", createdAt: "2024-01-15T10:52:00Z" },
-  { id: "msg_8k2_5", threadId: "thr_8_k2", stageId: "stg_8k2_w", role: "tutor", content: "Great! That's right. Now, we need to understand how to increase the strength. You can do this by either increasing the current or adding more turns of wire. Which factor do you think has a bigger effect?", createdAt: "2024-01-15T10:55:00Z" },
-  { id: "msg_8k2_6", threadId: "thr_8_k2", stageId: "stg_8k2_w", role: "student", content: "More turns? Each turn adds another loop of magnetic field, so more turns means a stronger overall field.", createdAt: "2024-01-15T10:58:00Z" },
-  { id: "msg_8k2_7", threadId: "thr_8_k2", stageId: "stg_8k2_w", role: "tutor", content: "Good thinking! Actually, both factors are equally important and proportional. B is proportional to both n (turns per unit length) and I (current). Now let's put this together: for a solenoid, B = \u03bc\u2080nI. Can you identify what each symbol represents?", createdAt: "2024-01-15T11:00:00Z" },
-  { id: "msg_8k2_8", threadId: "thr_8_k2", stageId: "stg_8k2_w", role: "student", content: "B is the magnetic field strength in Tesla, \u03bc\u2080 is the permeability of free space (4\u03c0 \u00d7 10\u207b\u2077 T\u00b7m/A), n is the number of turns per unit length (N/L), and I is the current in amperes.", createdAt: "2024-01-15T11:03:00Z" },
-  { id: "msg_8k2_9", threadId: "thr_8_k2", stageId: "stg_8k2_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-15T11:05:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage - student started but not completed
-  { id: "msg_8k2_10", threadId: "thr_8_k2", stageId: "stg_8k2_c", role: "student", content: "The factors affecting electromagnet strength are: current (I), number of turns per unit length (n), and core material (permeability \u03bc). For the derivation of B = \u03bc\u2080nI...", createdAt: "2024-01-15T11:10:00Z" },
-  { id: "msg_8k2_11", threadId: "thr_8_k2", stageId: "stg_8k2_c", role: "tutor", content: "Good start! You've correctly identified the factors. Can you complete the derivation by applying Amp\u00e8re's law to a rectangular Amperian loop around the solenoid?", createdAt: "2024-01-15T11:15:00Z" },
-
-  // ========== Thread 8_k3 - Electromagnetic Induction (not_started - begin done, on walkthrough) ==========
-
-  // Begin stage
-  { id: "msg_8k3_1", threadId: "thr_8_k3", stageId: "stg_8k3_b", role: "student", content: "Electromagnetic induction is the process of generating an electric current or EMF by changing the magnetic flux through a conductor. It was discovered by Faraday.", createdAt: "2024-01-15T11:20:00Z" },
-  { id: "msg_8k3_2", threadId: "thr_8_k3", stageId: "stg_8k3_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-15T11:25:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough just started - tutor's first prompt, student hasn't responded yet
-  { id: "msg_8k3_3", threadId: "thr_8_k3", stageId: "stg_8k3_w", role: "tutor", content: "Let's work on electromagnetic induction. First, can you state Faraday's law in mathematical form?", createdAt: "2024-01-15T11:28:00Z" },
-
-  // ========== Thread 8_k4 - Lenz's Law (not_started) ==========
-  { id: "msg_8k4_0", threadId: "thr_8_k4", stageId: "stg_8k4_b", role: "tutor", content: "Hi! We're going to explore Lenz's law. What does Lenz's law tell us about the direction of an induced current? Share your thoughts!", createdAt: "2024-01-15T09:00:00Z" },
-
-  // ========== Thread 8_k5 - Magnetic Flux (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_8k5_1", threadId: "thr_8_k5", stageId: "stg_8k5_b", role: "student", content: "Magnetic flux is the total magnetic field passing through a given area. It depends on the field strength, the area, and the angle between the field and the surface normal. It is measured in Webers (Wb).", createdAt: "2024-01-15T13:00:00Z" },
-  { id: "msg_8k5_2", threadId: "thr_8_k5", stageId: "stg_8k5_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-15T13:05:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage
-  { id: "msg_8k5_3", threadId: "thr_8_k5", stageId: "stg_8k5_w", role: "tutor", content: "Let's work on magnetic flux. First, can you write the formula for magnetic flux through a flat surface?", createdAt: "2024-01-15T13:10:00Z" },
-  { id: "msg_8k5_4", threadId: "thr_8_k5", stageId: "stg_8k5_w", role: "student", content: "\u03a6 = B \u00b7 A \u00b7 cos(\u03b8), where B is the magnetic field, A is the area, and \u03b8 is the angle between the field direction and the normal to the surface.", createdAt: "2024-01-15T13:15:00Z" },
-  { id: "msg_8k5_5", threadId: "thr_8_k5", stageId: "stg_8k5_w", role: "tutor", content: "Great! That's right. Now, we need to understand when flux is maximum and minimum. You can do this by thinking about the angle \u03b8. When is the flux at its maximum, and when is it zero?", createdAt: "2024-01-15T13:18:00Z" },
-  { id: "msg_8k5_6", threadId: "thr_8_k5", stageId: "stg_8k5_w", role: "student", content: "Flux is maximum when \u03b8 = 0\u00b0 (field is perpendicular to the surface, or parallel to the normal), because cos(0\u00b0) = 1. Flux is zero when \u03b8 = 90\u00b0 (field is parallel to the surface), because cos(90\u00b0) = 0.", createdAt: "2024-01-15T13:22:00Z" },
-  { id: "msg_8k5_7", threadId: "thr_8_k5", stageId: "stg_8k5_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-15T13:25:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_8k5_8", threadId: "thr_8_k5", stageId: "stg_8k5_c", role: "student", content: "Area of coil: A = \u03c0r\u00b2 = \u03c0(0.1)\u00b2 = 0.0314 m\u00b2. For N = 50 turns:\n\nAt 0\u00b0: \u03a6 = NBA cos(0\u00b0) = 50 \u00d7 0.2 \u00d7 0.0314 \u00d7 1 = 0.314 Wb\nAt 30\u00b0: \u03a6 = 50 \u00d7 0.2 \u00d7 0.0314 \u00d7 cos(30\u00b0) = 0.314 \u00d7 0.866 = 0.272 Wb\nAt 60\u00b0: \u03a6 = 50 \u00d7 0.2 \u00d7 0.0314 \u00d7 cos(60\u00b0) = 0.314 \u00d7 0.5 = 0.157 Wb\nAt 90\u00b0: \u03a6 = 50 \u00d7 0.2 \u00d7 0.0314 \u00d7 cos(90\u00b0) = 0.314 \u00d7 0 = 0 Wb", createdAt: "2024-01-15T13:50:00Z" },
-  { id: "msg_8k5_9", threadId: "thr_8_k5", stageId: "stg_8k5_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-15T13:55:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 8_k6 - Magnetic Materials (not_started) ==========
-  { id: "msg_8k6_0", threadId: "thr_8_k6", stageId: "stg_8k6_b", role: "tutor", content: "Welcome! Let's explore magnetic materials. Why are some materials magnetic and others are not? What do you think?", createdAt: "2024-01-15T09:00:00Z" },
-
-  // ========== Thread 8_k7 - Earth's Magnetic Field (not_started - begin done, on walkthrough) ==========
-
-  // Begin stage
-  { id: "msg_8k7_1", threadId: "thr_8_k7", stageId: "stg_8k7_b", role: "student", content: "Earth's magnetic field is caused by convection currents in the liquid iron outer core. These moving charges create a self-sustaining dynamo effect.", createdAt: "2024-01-15T14:10:00Z" },
-  { id: "msg_8k7_2", threadId: "thr_8_k7", stageId: "stg_8k7_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-15T14:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough just started
-  { id: "msg_8k7_3", threadId: "thr_8_k7", stageId: "stg_8k7_w", role: "tutor", content: "Let's work on Earth's magnetic field. First, can you describe the overall shape of the field? How does it compare to a simple bar magnet?", createdAt: "2024-01-15T14:20:00Z" },
 
   // ========== Thread 8_s1 - Calculating B-field / Biot-Savart (challenge_complete) ==========
 
@@ -785,79 +483,6 @@ export const chatMessages: ChatMessage[] = [
   // ======================================================================
   //  UNIT 1 MESSAGES - COLONIAL AMERICA (ALL COMPLETED)
   // ======================================================================
-
-  // ========== Thread 1_k1 - Jamestown Settlement (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_1k1_1", threadId: "thr_1_k1", stageId: "stg_1k1_b", role: "student", content: "Jamestown was established in 1607 by the Virginia Company as a commercial venture. The settlers faced starvation, disease, conflicts with the Powhatan Confederacy, and poor leadership during the early years.", createdAt: "2024-01-02T09:10:00Z" },
-  { id: "msg_1k1_2", threadId: "thr_1_k1", stageId: "stg_1k1_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-02T09:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage - rich Socratic tutor flow
-  { id: "msg_1k1_3", threadId: "thr_1_k1", stageId: "stg_1k1_w", role: "tutor", content: "Good foundation! Let's dig deeper into Jamestown's survival. First, what was the 'starving time' and when did it occur?", createdAt: "2024-01-02T09:20:00Z" },
-  { id: "msg_1k1_4", threadId: "thr_1_k1", stageId: "stg_1k1_w", role: "student", content: "The starving time was the winter of 1609-1610. The colonists were trapped inside the fort due to conflicts with the Powhatan and ran out of food. Only about 60 of the 500 settlers survived.", createdAt: "2024-01-02T09:25:00Z" },
-  { id: "msg_1k1_5", threadId: "thr_1_k1", stageId: "stg_1k1_w", role: "tutor", content: "That's right. Now, John Smith had already left by then. But earlier, what policy did Smith implement that helped the colony survive, and why was it controversial?", createdAt: "2024-01-02T09:30:00Z" },
-  { id: "msg_1k1_6", threadId: "thr_1_k1", stageId: "stg_1k1_w", role: "student", content: "Smith enforced a 'he who shall not work shall not eat' policy. It was controversial because many of the gentlemen colonists considered manual labor beneath them, but Smith forced everyone to contribute to building and farming.", createdAt: "2024-01-02T09:35:00Z" },
-  { id: "msg_1k1_7", threadId: "thr_1_k1", stageId: "stg_1k1_w", role: "tutor", content: "Excellent! Now let's consider the economic turning point. What role did John Rolfe play in Jamestown's long-term survival, and how did his contribution change the colony's future?", createdAt: "2024-01-02T09:40:00Z" },
-  { id: "msg_1k1_8", threadId: "thr_1_k1", stageId: "stg_1k1_w", role: "student", content: "John Rolfe introduced a sweeter strain of tobacco from the Caribbean around 1612. This became a cash crop that made Jamestown profitable, attracting more settlers and investment. It also led to the plantation system and eventually the importation of enslaved Africans in 1619.", createdAt: "2024-01-02T09:45:00Z" },
-  { id: "msg_1k1_9", threadId: "thr_1_k1", stageId: "stg_1k1_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-02T09:50:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_1k1_10", threadId: "thr_1_k1", stageId: "stg_1k1_c", role: "student", content: "Jamestown's survival was due more to economic factors than leadership, though both mattered. While Smith's discipline kept colonists alive short-term, the colony nearly failed again after he left. It was Rolfe's tobacco cultivation that provided a sustainable economic reason for the colony's existence. The Virginia Company finally saw returns on investment, which attracted more settlers, supplies, and eventually women and families. Tobacco created a permanent economic foundation, whereas good leadership was temporary and person-dependent. The headright system, which gave land to those who paid for passage, further tied survival to economics. However, leadership and economics were intertwined: without Smith's early discipline, there might not have been a colony left for Rolfe to save.", createdAt: "2024-01-02T09:55:00Z" },
-  { id: "msg_1k1_11", threadId: "thr_1_k1", stageId: "stg_1k1_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-02T10:00:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 1_k2 - Mayflower Compact (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_1k2_1", threadId: "thr_1_k2", stageId: "stg_1k2_b", role: "student", content: "The Mayflower Compact was an agreement signed in 1620 by the Pilgrims aboard the Mayflower. It was significant because it established the principle of self-government and majority rule in the Plymouth Colony.", createdAt: "2024-01-02T10:10:00Z" },
-  { id: "msg_1k2_2", threadId: "thr_1_k2", stageId: "stg_1k2_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-02T10:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage - rich Socratic tutor flow
-  { id: "msg_1k2_3", threadId: "thr_1_k2", stageId: "stg_1k2_w", role: "tutor", content: "Good start! Let's explore why the Compact was written in the first place. The Pilgrims were supposed to land in Virginia, but ended up in Massachusetts. Why did this create a political crisis on the ship?", createdAt: "2024-01-02T10:20:00Z" },
-  { id: "msg_1k2_4", threadId: "thr_1_k2", stageId: "stg_1k2_w", role: "student", content: "Their patent from the Virginia Company was only valid for Virginia. Landing in Massachusetts meant they had no legal authority to govern. Some of the non-Pilgrim passengers, called 'Strangers,' said they would do as they pleased since no laws applied to them.", createdAt: "2024-01-02T10:25:00Z" },
-  { id: "msg_1k2_5", threadId: "thr_1_k2", stageId: "stg_1k2_w", role: "tutor", content: "Exactly right! So the Compact was a practical solution to a real problem. Now, what did the signers actually agree to in the document? Think about two key principles it established.", createdAt: "2024-01-02T10:30:00Z" },
-  { id: "msg_1k2_6", threadId: "thr_1_k2", stageId: "stg_1k2_w", role: "student", content: "They agreed to two main things: first, to form a 'civil body politic' -- basically a government by the consent of the governed. Second, to create and obey 'just and equal laws' made for the general good of the colony. This meant majority rule and the idea that laws should apply equally.", createdAt: "2024-01-02T10:35:00Z" },
-  { id: "msg_1k2_7", threadId: "thr_1_k2", stageId: "stg_1k2_w", role: "tutor", content: "That's a strong analysis. Now, why is this document considered a stepping stone toward American democracy, even though it was quite limited?", createdAt: "2024-01-02T10:40:00Z" },
-  { id: "msg_1k2_8", threadId: "thr_1_k2", stageId: "stg_1k2_w", role: "student", content: "It's a stepping stone because it was the first time European colonists in America created their own government based on the consent of the governed, rather than receiving authority from a king or company. But it was limited because only adult male church members could sign it -- women, servants, and non-church members were excluded.", createdAt: "2024-01-02T10:45:00Z" },
-  { id: "msg_1k2_9", threadId: "thr_1_k2", stageId: "stg_1k2_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-02T10:50:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_1k2_10", threadId: "thr_1_k2", stageId: "stg_1k2_c", role: "student", content: "The Mayflower Compact shares several principles with modern democracy: government by consent, majority rule, and laws for the common good. These ideas later influenced the Declaration of Independence and the Constitution. However, the Compact was revolutionary only in a limited sense. It excluded women, servants, and non-members of the Separatist congregation. It also operated under the assumption of a religious community, not a secular state. Modern democracy extends rights to all citizens regardless of gender, religion, or social status. The Compact was a first step -- establishing that ordinary people could create their own government -- but it took centuries to expand 'the governed' to include everyone.", createdAt: "2024-01-02T10:55:00Z" },
-  { id: "msg_1k2_11", threadId: "thr_1_k2", stageId: "stg_1k2_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-02T11:00:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 1_k3 - Colonial Government (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_1k3_1", threadId: "thr_1_k3", stageId: "stg_1k3_b", role: "student", content: "The main forms were royal colonies governed by the king through appointed governors, proprietary colonies owned by individuals granted charters, and charter colonies that elected their own governors and had the most self-governance.", createdAt: "2024-01-02T11:10:00Z" },
-  { id: "msg_1k3_2", threadId: "thr_1_k3", stageId: "stg_1k3_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-02T11:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage
-  { id: "msg_1k3_3", threadId: "thr_1_k3", stageId: "stg_1k3_w", role: "tutor", content: "Good overview! Let's compare these in more detail. In a royal colony like Virginia, who held the real power -- the governor or the colonial assembly?", createdAt: "2024-01-02T11:20:00Z" },
-  { id: "msg_1k3_4", threadId: "thr_1_k3", stageId: "stg_1k3_w", role: "student", content: "The governor was appointed by the king and had veto power, but the colonial assembly controlled taxation and spending. Over time, assemblies gained more power by using their control of the purse to influence the governor.", createdAt: "2024-01-02T11:25:00Z" },
-  { id: "msg_1k3_5", threadId: "thr_1_k3", stageId: "stg_1k3_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-02T11:30:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_1k3_6", threadId: "thr_1_k3", stageId: "stg_1k3_c", role: "student", content: "The House of Burgesses (1619) was the first elected legislative body in America, establishing that colonists had a voice in governance. New England town meetings gave every male property owner a direct vote on local issues. Together, these institutions created a tradition of self-governance that colonists came to see as their right. When Parliament later tried to impose taxes without colonial representation, colonists could point to over a century of governing themselves. These institutions were the practical foundation of American representative democracy.", createdAt: "2024-01-02T11:55:00Z" },
-  { id: "msg_1k3_7", threadId: "thr_1_k3", stageId: "stg_1k3_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-02T12:00:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 1_k4 - Mercantilism (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_1k4_1", threadId: "thr_1_k4", stageId: "stg_1k4_b", role: "student", content: "Mercantilism was an economic system where colonies existed to enrich the mother country by providing raw materials and buying manufactured goods. The Navigation Acts required colonists to trade only with England.", createdAt: "2024-01-02T12:10:00Z" },
-  { id: "msg_1k4_2", threadId: "thr_1_k4", stageId: "stg_1k4_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-02T12:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage
-  { id: "msg_1k4_3", threadId: "thr_1_k4", stageId: "stg_1k4_w", role: "tutor", content: "Correct! Now, the Navigation Acts sound restrictive, but some historians argue colonists actually benefited in certain ways. Can you think of any advantages the mercantilist system offered the colonies?", createdAt: "2024-01-02T12:20:00Z" },
-  { id: "msg_1k4_4", threadId: "thr_1_k4", stageId: "stg_1k4_w", role: "student", content: "Colonists had a guaranteed market for their goods in England, protection by the British navy, and access to credit from British merchants. Tobacco planters, for example, always had a buyer.", createdAt: "2024-01-02T12:25:00Z" },
-  { id: "msg_1k4_5", threadId: "thr_1_k4", stageId: "stg_1k4_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-02T12:30:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_1k4_6", threadId: "thr_1_k4", stageId: "stg_1k4_c", role: "student", content: "Mercantilism both helped and hindered colonial development. On one hand, the triangular trade gave colonies access to markets, naval protection, and capital. On the other hand, the Navigation Acts prevented colonies from developing manufacturing, forced them to use British ships (raising costs), and kept them dependent. Widespread smuggling showed colonists resented the restrictions. Ultimately, mercantilism hindered long-term development by preventing economic diversification and creating grievances that fueled revolution.", createdAt: "2024-01-02T12:55:00Z" },
-  { id: "msg_1k4_7", threadId: "thr_1_k4", stageId: "stg_1k4_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-02T13:00:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 1_k5 - Great Awakening (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_1k5_1", threadId: "thr_1_k5", stageId: "stg_1k5_b", role: "student", content: "The Great Awakening was a religious revival movement in the 1730s-1740s that swept through the American colonies. It emphasized personal religious experience and emotional preaching.", createdAt: "2024-01-02T13:10:00Z" },
-  { id: "msg_1k5_2", threadId: "thr_1_k5", stageId: "stg_1k5_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-02T13:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage
-  { id: "msg_1k5_3", threadId: "thr_1_k5", stageId: "stg_1k5_w", role: "tutor", content: "Good! Jonathan Edwards and George Whitefield approached preaching very differently. How did their styles compare, and why were they both so effective?", createdAt: "2024-01-02T13:20:00Z" },
-  { id: "msg_1k5_4", threadId: "thr_1_k5", stageId: "stg_1k5_w", role: "student", content: "Edwards used terrifying imagery, like in 'Sinners in the Hands of an Angry God,' to scare people into repentance. Whitefield was a charismatic outdoor preacher who drew enormous crowds with his theatrical delivery. Both bypassed traditional church authority and spoke directly to ordinary people.", createdAt: "2024-01-02T13:25:00Z" },
-  { id: "msg_1k5_5", threadId: "thr_1_k5", stageId: "stg_1k5_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-02T13:30:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_1k5_6", threadId: "thr_1_k5", stageId: "stg_1k5_c", role: "student", content: "The Great Awakening contributed to American identity by creating shared experiences across colonial boundaries -- Whitefield preached from Georgia to New England. It challenged established authority by teaching that individuals could have a direct relationship with God without clergy as intermediaries. This anti-authoritarian attitude later transferred to politics. It also democratized religion by appealing to ordinary people, women, and even enslaved Africans, planting seeds of egalitarianism. The proliferation of new denominations strengthened the case for religious tolerance, prefiguring the First Amendment.", createdAt: "2024-01-02T13:55:00Z" },
-  { id: "msg_1k5_7", threadId: "thr_1_k5", stageId: "stg_1k5_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-02T14:00:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
 
   // ========== Thread 1_s1 - Primary Source Analysis (challenge_complete) ==========
 
@@ -948,67 +573,6 @@ export const chatMessages: ChatMessage[] = [
   // ======================================================================
   //  UNIT 2 MESSAGES - REVOLUTIONARY WAR (MIXED PROGRESS)
   // ======================================================================
-
-  // ========== Thread 2_k1 - Causes of Revolution (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_2k1_1", threadId: "thr_2_k1", stageId: "stg_2k1_b", role: "student", content: "The main causes were taxation without representation (Stamp Act, Townshend Acts, Tea Act), the legacy of the French and Indian War which left Britain in debt, restriction of colonial self-governance through the Intolerable Acts, and Enlightenment ideas about natural rights.", createdAt: "2024-01-06T09:10:00Z" },
-  { id: "msg_2k1_2", threadId: "thr_2_k1", stageId: "stg_2k1_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-06T09:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage - rich Socratic tutor flow
-  { id: "msg_2k1_3", threadId: "thr_2_k1", stageId: "stg_2k1_w", role: "tutor", content: "Strong overview! Let's trace this chain more carefully. After the French and Indian War ended in 1763, Britain was deeply in debt. What was their reasoning for taxing the colonies, and why did colonists object?", createdAt: "2024-01-06T09:20:00Z" },
-  { id: "msg_2k1_4", threadId: "thr_2_k1", stageId: "stg_2k1_w", role: "student", content: "Britain argued the war had been fought partly to protect the colonies, so colonists should help pay for it. They also needed to fund the 10,000 troops stationed in North America. Colonists objected not to the idea of taxes, but to taxes imposed by Parliament where they had no elected representatives -- 'no taxation without representation.'", createdAt: "2024-01-06T09:25:00Z" },
-  { id: "msg_2k1_5", threadId: "thr_2_k1", stageId: "stg_2k1_w", role: "tutor", content: "Good distinction! Now, the Stamp Act of 1765 was the first direct tax on the colonies. How did the colonial response to the Stamp Act differ from earlier responses to the Navigation Acts, and why was that shift important?", createdAt: "2024-01-06T09:30:00Z" },
-  { id: "msg_2k1_6", threadId: "thr_2_k1", stageId: "stg_2k1_w", role: "student", content: "The Navigation Acts were trade regulations that colonists mostly evaded through smuggling. The Stamp Act was different because it was a direct internal tax that affected everyone -- lawyers, printers, merchants, even card players. The response was organized: the Stamp Act Congress brought nine colonies together for the first time to issue a joint protest. This shift from individual evasion to collective political action was a major step toward unity.", createdAt: "2024-01-06T09:35:00Z" },
-  { id: "msg_2k1_7", threadId: "thr_2_k1", stageId: "stg_2k1_w", role: "tutor", content: "Excellent analysis of the escalation pattern! Each British action produced a stronger colonial reaction. Let's look at the final escalation: how did the Intolerable Acts of 1774 push the colonies from protest to revolution?", createdAt: "2024-01-06T09:40:00Z" },
-  { id: "msg_2k1_8", threadId: "thr_2_k1", stageId: "stg_2k1_w", role: "student", content: "The Intolerable Acts punished Massachusetts for the Boston Tea Party by closing Boston Harbor, revoking Massachusetts' charter, and requiring colonists to house British soldiers. Instead of isolating Massachusetts, this united the other colonies in sympathy. The First Continental Congress met in September 1774, and colonies began organizing militias. The Acts showed that Britain could strip any colony of its rights, making all colonies feel threatened.", createdAt: "2024-01-06T09:45:00Z" },
-  { id: "msg_2k1_9", threadId: "thr_2_k1", stageId: "stg_2k1_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-06T09:50:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_2k1_10", threadId: "thr_2_k1", stageId: "stg_2k1_c", role: "student", content: "I rank the top three causes as: 1) The principle of 'no taxation without representation' -- this was the ideological foundation that united diverse colonies around a shared grievance and gave the revolution moral legitimacy. 2) The Intolerable Acts -- these transformed protest into revolution by demonstrating Britain would use collective punishment, uniting previously hesitant colonies. 3) The French and Indian War's legacy -- this was the root cause that triggered everything else, creating the debt that led to taxation. Enlightenment ideas were important but insufficient alone; the colonists needed concrete grievances to act on abstract principles.", createdAt: "2024-01-06T09:55:00Z" },
-  { id: "msg_2k1_11", threadId: "thr_2_k1", stageId: "stg_2k1_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-06T10:00:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 2_k2 - Boston Tea Party (challenge_complete) ==========
-
-  // Begin stage
-  { id: "msg_2k2_1", threadId: "thr_2_k2", stageId: "stg_2k2_b", role: "student", content: "On December 16, 1773, the Sons of Liberty disguised as Mohawk Indians boarded three ships in Boston Harbor and dumped 342 chests of East India Company tea into the water. They did it to protest the Tea Act, which gave the East India Company a monopoly on tea sales and maintained the tax on tea.", createdAt: "2024-01-06T10:10:00Z" },
-  { id: "msg_2k2_2", threadId: "thr_2_k2", stageId: "stg_2k2_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-06T10:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage
-  { id: "msg_2k2_3", threadId: "thr_2_k2", stageId: "stg_2k2_w", role: "tutor", content: "Good factual summary! Now let's think about the Tea Act more carefully. Ironically, the Tea Act actually lowered the price of tea. So why were colonists still angry about it?", createdAt: "2024-01-06T10:20:00Z" },
-  { id: "msg_2k2_4", threadId: "thr_2_k2", stageId: "stg_2k2_w", role: "student", content: "Even though the tea was cheaper, it still included a tax that Parliament imposed without colonial consent. Colonists feared that if they accepted this tax, it would set a precedent for Parliament to tax them on anything. Also, the monopoly cut out colonial merchants and smugglers who had been selling Dutch tea.", createdAt: "2024-01-06T10:25:00Z" },
-  { id: "msg_2k2_5", threadId: "thr_2_k2", stageId: "stg_2k2_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-06T10:30:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage
-  { id: "msg_2k2_6", threadId: "thr_2_k2", stageId: "stg_2k2_c", role: "student", content: "From the Patriot perspective, the Boston Tea Party was justified protest against tyranny. The colonists had petitioned peacefully for years and been ignored. The Tea Act threatened both their principle of self-governance and their economic livelihoods. The careful targeting of only tea (they damaged no other property and even replaced a broken padlock) shows it was principled resistance, not mob violence. From the Loyalist perspective, it was criminal destruction of private property worth about 10,000 pounds. The colonists had legal channels to protest and could have simply refused to buy the tea. Destroying another's property is never justified in a society of laws. I find the Patriot interpretation more compelling because the colonists had exhausted peaceful options, but I acknowledge the Loyalist point that property destruction set a dangerous precedent and directly provoked the harsh Intolerable Acts.", createdAt: "2024-01-06T10:55:00Z" },
-  { id: "msg_2k2_7", threadId: "thr_2_k2", stageId: "stg_2k2_c", role: "tutor", content: "Challenge complete!", createdAt: "2024-01-06T11:00:00Z", metadata: { isSystemMessage: true, progressState: "challenge_complete" as const, isCompletionMessage: true } },
-
-  // ========== Thread 2_k3 - Declaration of Independence (challenge_started) ==========
-
-  // Begin stage
-  { id: "msg_2k3_1", threadId: "thr_2_k3", stageId: "stg_2k3_b", role: "student", content: "The Declaration of Independence was adopted on July 4, 1776 by the Second Continental Congress. Its main ideas were that all men are created equal with unalienable rights to life, liberty, and the pursuit of happiness, and that government derives its power from the consent of the governed.", createdAt: "2024-01-06T11:10:00Z" },
-  { id: "msg_2k3_2", threadId: "thr_2_k3", stageId: "stg_2k3_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-06T11:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough stage - rich Socratic tutor flow
-  { id: "msg_2k3_3", threadId: "thr_2_k3", stageId: "stg_2k3_w", role: "tutor", content: "Good summary! Let's look at the structure more carefully. The Declaration has three main sections. Can you identify what the preamble does philosophically -- what argument is Jefferson building?", createdAt: "2024-01-06T11:20:00Z" },
-  { id: "msg_2k3_4", threadId: "thr_2_k3", stageId: "stg_2k3_w", role: "student", content: "The preamble lays out a philosophical framework based on Enlightenment ideas, especially John Locke's social contract theory. It argues that people have natural rights, that governments exist to protect those rights, and that when a government fails to do so, the people have the right to alter or abolish it. Jefferson is building a universal argument that makes revolution not just justified, but a moral duty.", createdAt: "2024-01-06T11:25:00Z" },
-  { id: "msg_2k3_5", threadId: "thr_2_k3", stageId: "stg_2k3_w", role: "tutor", content: "Excellent analysis of the rhetorical strategy! Now, the middle section lists specific grievances against King George III. Why did Jefferson focus on the king rather than Parliament?", createdAt: "2024-01-06T11:30:00Z" },
-  { id: "msg_2k3_6", threadId: "thr_2_k3", stageId: "stg_2k3_w", role: "student", content: "Jefferson blamed the king because the colonists had already rejected Parliament's authority over them. By framing the conflict as being between the colonies and the king personally -- listing 'He has...' grievances -- Jefferson made it a clear case of a tyrant violating a social contract. This also made it easier to justify breaking away from the Crown specifically.", createdAt: "2024-01-06T11:35:00Z" },
-  { id: "msg_2k3_7", threadId: "thr_2_k3", stageId: "stg_2k3_w", role: "tutor", content: "That's a sophisticated reading of the political strategy. Finally, how did Enlightenment thinkers like Locke directly influence the language and ideas Jefferson used?", createdAt: "2024-01-06T11:40:00Z" },
-  { id: "msg_2k3_8", threadId: "thr_2_k3", stageId: "stg_2k3_w", role: "student", content: "Locke wrote about 'life, liberty, and property' as natural rights and the idea that government is a social contract. Jefferson adapted this to 'life, liberty, and the pursuit of happiness,' broadening the concept. Locke also argued that people could overthrow a government that violated the social contract -- Jefferson used this as the logical foundation for the entire Declaration.", createdAt: "2024-01-06T11:45:00Z" },
-  { id: "msg_2k3_9", threadId: "thr_2_k3", stageId: "stg_2k3_w", role: "tutor", content: "Walkthrough complete", createdAt: "2024-01-06T11:50:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_complete" as const, isCompletionMessage: true } },
-  // Challenge stage - student working on it, not completed
-  { id: "msg_2k3_10", threadId: "thr_2_k3", stageId: "stg_2k3_c", role: "student", content: "The contradiction between 'all men are created equal' and slavery was significant. Jefferson himself enslaved over 600 people during his lifetime. He actually included a passage condemning the slave trade in his draft, but the Continental Congress removed it because delegates from South Carolina and Georgia objected, and Northern merchants who profited from the slave trade also opposed it.", createdAt: "2024-01-06T11:55:00Z" },
-  { id: "msg_2k3_11", threadId: "thr_2_k3", stageId: "stg_2k3_c", role: "tutor", content: "Good historical context! You've identified the political compromise. Can you now analyze the long-term consequences of this contradiction? How did the tension between the Declaration's ideals and the reality of slavery shape American history in the following decades?", createdAt: "2024-01-06T12:00:00Z" },
-
-  // ========== Thread 2_k4 - Key Battles (not_started - begin done, on walkthrough) ==========
-
-  // Begin stage
-  { id: "msg_2k4_1", threadId: "thr_2_k4", stageId: "stg_2k4_b", role: "student", content: "Three major battles: Lexington and Concord (April 1775) started the war with 'the shot heard round the world'; Saratoga (October 1777) was the turning point that convinced France to ally with America; Yorktown (October 1781) was the final major battle where Cornwallis surrendered, effectively ending the war.", createdAt: "2024-01-06T12:10:00Z" },
-  { id: "msg_2k4_2", threadId: "thr_2_k4", stageId: "stg_2k4_b", role: "tutor", content: "Walkthrough started", createdAt: "2024-01-06T12:15:00Z", metadata: { isSystemMessage: true, progressState: "walkthrough_started" as const, isCompletionMessage: true } },
-  // Walkthrough just started
-  { id: "msg_2k4_3", threadId: "thr_2_k4", stageId: "stg_2k4_w", role: "tutor", content: "Good choices! Let's start with Saratoga. What was the British strategy in 1777, and why did their plan fail so badly?", createdAt: "2024-01-06T12:20:00Z" },
-
-  // ========== Thread 2_k5 - Foreign Alliances (not_started) ==========
-  { id: "msg_2k5_0", threadId: "thr_2_k5", stageId: "stg_2k5_b", role: "tutor", content: "Hi! Let's explore foreign alliances during the Revolution. Which foreign nations helped the American colonies and why do you think they got involved?", createdAt: "2024-01-06T09:00:00Z" },
-
-  // ========== Thread 2_k6 - Treaty of Paris (not_started) ==========
-  { id: "msg_2k6_0", threadId: "thr_2_k6", stageId: "stg_2k6_b", role: "tutor", content: "Welcome! We're looking at the Treaty of Paris of 1783. What were the key terms of this treaty? Share what you know or your best guess.", createdAt: "2024-01-06T09:00:00Z" },
 
   // ========== Thread 2_s1 - Analyzing Political Cartoons (challenge_complete) ==========
 
@@ -1105,4 +669,189 @@ export const feedbackItems: FeedbackItem[] = [
 // Student-award mapping
 export const studentAwards: Record<string, string[]> = {
   stu_1: ["awd_1", "awd_2", "awd_3"],
+};
+
+// ============ KNOWLEDGE TOPICS (teacher-visible) ============
+export const knowledgeTopics: KnowledgeTopic[] = [
+  // -------- Unit 6 (Thermodynamics) — 5 topics --------
+  { id: "kt_6_1", unitId: "unit_ph_6", knowledgeTopic: "Laws of Thermodynamics", order: 1 },
+  { id: "kt_6_2", unitId: "unit_ph_6", knowledgeTopic: "Heat Transfer Mechanisms", order: 2 },
+  { id: "kt_6_3", unitId: "unit_ph_6", knowledgeTopic: "Entropy and Disorder", order: 3 },
+  { id: "kt_6_4", unitId: "unit_ph_6", knowledgeTopic: "Heat Engines and Efficiency", order: 4 },
+  { id: "kt_6_5", unitId: "unit_ph_6", knowledgeTopic: "Phase Transitions and Latent Heat", order: 5 },
+
+  // -------- Unit 8 (Magnetism) — 7 topics --------
+  { id: "kt_8_1", unitId: "unit_ph_8", knowledgeTopic: "Magnetic Fields Around Wires", order: 1 },
+  { id: "kt_8_2", unitId: "unit_ph_8", knowledgeTopic: "Electromagnets", order: 2 },
+  { id: "kt_8_3", unitId: "unit_ph_8", knowledgeTopic: "Electromagnetic Induction", order: 3 },
+  { id: "kt_8_4", unitId: "unit_ph_8", knowledgeTopic: "Lenz's Law", order: 4 },
+  { id: "kt_8_5", unitId: "unit_ph_8", knowledgeTopic: "Magnetic Flux", order: 5 },
+  { id: "kt_8_6", unitId: "unit_ph_8", knowledgeTopic: "Magnetic Materials / Ferromagnetism", order: 6 },
+  { id: "kt_8_7", unitId: "unit_ph_8", knowledgeTopic: "Earth's Magnetic Field", order: 7 },
+
+  // -------- Unit 1 (Colonial America) — 5 topics --------
+  { id: "kt_1_1", unitId: "unit_ah_1", knowledgeTopic: "Jamestown Settlement", order: 1 },
+  { id: "kt_1_2", unitId: "unit_ah_1", knowledgeTopic: "Mayflower Compact", order: 2 },
+  { id: "kt_1_3", unitId: "unit_ah_1", knowledgeTopic: "Colonial Government Forms", order: 3 },
+  { id: "kt_1_4", unitId: "unit_ah_1", knowledgeTopic: "Mercantilism and Navigation Acts", order: 4 },
+  { id: "kt_1_5", unitId: "unit_ah_1", knowledgeTopic: "Great Awakening", order: 5 },
+
+  // -------- Unit 2 (Revolutionary War) — 6 topics --------
+  { id: "kt_2_1", unitId: "unit_ah_2", knowledgeTopic: "Causes of the Revolution", order: 1 },
+  { id: "kt_2_2", unitId: "unit_ah_2", knowledgeTopic: "Boston Tea Party", order: 2 },
+  { id: "kt_2_3", unitId: "unit_ah_2", knowledgeTopic: "Declaration of Independence", order: 3 },
+  { id: "kt_2_4", unitId: "unit_ah_2", knowledgeTopic: "Key Battles of the Revolution", order: 4 },
+  { id: "kt_2_5", unitId: "unit_ah_2", knowledgeTopic: "Foreign Alliances", order: 5 },
+  { id: "kt_2_6", unitId: "unit_ah_2", knowledgeTopic: "Treaty of Paris 1783", order: 6 },
+];
+
+// ============ STUDENT KNOWLEDGE QUEUES ============
+// Key format: `${unitId}_${studentId}`
+// Only items with status !== "pending" are visible to the student.
+export const studentKnowledgeQueues: Record<string, KnowledgeQueueItem[]> = {
+  // -------- Unit 6 (Thermodynamics) — all 5 topics completed correctly --------
+  "unit_ph_6_stu_1": [
+    { id: "kqi_6_1", unitId: "unit_ph_6", studentId: "stu_1", knowledgeTopicId: "kt_6_1", labelIndex: 1, order: 1, status: "completed_correct", is_correct: true, questionPrompt: "State and explain all three laws of thermodynamics. How does the zeroth law relate to the others?", createdAt: "2024-01-05T09:00:00Z" },
+    { id: "kqi_6_2", unitId: "unit_ph_6", studentId: "stu_1", knowledgeTopicId: "kt_6_2", labelIndex: 2, order: 2, status: "completed_correct", is_correct: true, questionPrompt: "Compare conduction, convection, and radiation as heat transfer mechanisms. Give a real-world example of each and explain which is most efficient in a vacuum.", createdAt: "2024-01-05T09:10:00Z" },
+    { id: "kqi_6_3", unitId: "unit_ph_6", studentId: "stu_1", knowledgeTopicId: "kt_6_3", labelIndex: 3, order: 3, status: "completed_correct", is_correct: true, questionPrompt: "What is entropy and why does it always increase in an isolated system? How does this relate to the arrow of time?", createdAt: "2024-01-05T09:20:00Z" },
+    { id: "kqi_6_4", unitId: "unit_ph_6", studentId: "stu_1", knowledgeTopicId: "kt_6_4", labelIndex: 4, order: 4, status: "completed_correct", is_correct: true, questionPrompt: "Explain how a Carnot heat engine works and derive its maximum theoretical efficiency. Why can no real engine reach this limit?", createdAt: "2024-01-05T09:30:00Z" },
+    { id: "kqi_6_5", unitId: "unit_ph_6", studentId: "stu_1", knowledgeTopicId: "kt_6_5", labelIndex: 5, order: 5, status: "completed_correct", is_correct: true, questionPrompt: "What is latent heat? Explain what happens at the molecular level during a phase transition and why temperature stays constant during the transition.", createdAt: "2024-01-05T09:40:00Z" },
+  ],
+
+  // -------- Unit 8 (Magnetism) — in progress --------
+  // K1 correct, K2 correct, K3 incorrect (retry enqueued as K8), K4 active, K5-K7 + retry K8 pending
+  "unit_ph_8_stu_1": [
+    { id: "kqi_8_1", unitId: "unit_ph_8", studentId: "stu_1", knowledgeTopicId: "kt_8_1", labelIndex: 1, order: 1, status: "completed_correct", is_correct: true, questionPrompt: "Using the right-hand rule, explain how to determine the direction of the magnetic field around a current-carrying wire. How does field strength vary with distance from the wire?", createdAt: "2026-01-10T10:00:00Z" },
+    { id: "kqi_8_2", unitId: "unit_ph_8", studentId: "stu_1", knowledgeTopicId: "kt_8_2", labelIndex: 2, order: 2, status: "completed_correct", is_correct: true, questionPrompt: "Explain all the factors that affect the strength of an electromagnet and derive the relationship B = μ₀nI for a solenoid.", createdAt: "2026-01-10T10:10:00Z" },
+    { id: "kqi_8_3", unitId: "unit_ph_8", studentId: "stu_1", knowledgeTopicId: "kt_8_3", labelIndex: 3, order: 3, status: "completed_incorrect", is_correct: false, questionPrompt: "Describe Faraday's law of electromagnetic induction. What is the mathematical relationship between changing magnetic flux and the induced EMF?", createdAt: "2026-01-10T10:20:00Z" },
+    { id: "kqi_8_4", unitId: "unit_ph_8", studentId: "stu_1", knowledgeTopicId: "kt_8_4", labelIndex: 4, order: 4, status: "active", is_correct: undefined, questionPrompt: "What does Lenz's law tell us about the direction of an induced current? Give a concrete example showing how the induced current opposes the change in flux.", suggestedQuestions: ["What happens when you push a magnet into a coil?", "How does the induced current direction oppose change?", "How does Lenz's law apply to regenerative braking?"], createdAt: "2026-01-10T10:21:00Z" },
+    { id: "kqi_8_5", unitId: "unit_ph_8", studentId: "stu_1", knowledgeTopicId: "kt_8_5", labelIndex: 5, order: 5, status: "pending", is_correct: undefined, questionPrompt: "Define magnetic flux and explain how it changes when the angle between the magnetic field and a coil changes. What angle gives maximum flux?", createdAt: "2026-01-10T10:22:00Z" },
+    { id: "kqi_8_6", unitId: "unit_ph_8", studentId: "stu_1", knowledgeTopicId: "kt_8_6", labelIndex: 6, order: 6, status: "pending", is_correct: undefined, questionPrompt: "What makes a material ferromagnetic? Explain the role of magnetic domains and how an external field can permanently magnetize a material.", createdAt: "2026-01-10T10:23:00Z" },
+    { id: "kqi_8_7", unitId: "unit_ph_8", studentId: "stu_1", knowledgeTopicId: "kt_8_7", labelIndex: 7, order: 7, status: "pending", is_correct: undefined, questionPrompt: "Describe Earth's magnetic field: its approximate orientation, its origin in the liquid outer core, and why it is important for life on Earth.", createdAt: "2026-01-10T10:24:00Z" },
+    // Retry for kt_8_3 (Electromagnetic Induction) enqueued at end
+    { id: "kqi_8_8", unitId: "unit_ph_8", studentId: "stu_1", knowledgeTopicId: "kt_8_3", labelIndex: 8, order: 8, status: "pending", is_correct: undefined, questionPrompt: "Revisit Faraday's law: explain electromagnetic induction using the concept of magnetic flux. How does the number of coil turns (N) affect the induced EMF, and what is the significance of the negative sign in Faraday's equation?", createdAt: "2026-01-10T10:25:00Z" },
+  ],
+
+  // -------- Unit 1 (Colonial America) — all 5 topics completed correctly --------
+  "unit_ah_1_stu_1": [
+    { id: "kqi_1_1", unitId: "unit_ah_1", studentId: "stu_1", knowledgeTopicId: "kt_1_1", labelIndex: 1, order: 1, status: "completed_correct", is_correct: true, questionPrompt: "Explain the key challenges Jamestown faced in its early years and identify the single most important factor in its eventual survival. Justify your choice.", createdAt: "2024-01-02T09:00:00Z" },
+    { id: "kqi_1_2", unitId: "unit_ah_1", studentId: "stu_1", knowledgeTopicId: "kt_1_2", labelIndex: 2, order: 2, status: "completed_correct", is_correct: true, questionPrompt: "What was the Mayflower Compact and why was it written? Explain how it connects to modern democratic principles, including its limitations.", createdAt: "2024-01-02T10:00:00Z" },
+    { id: "kqi_1_3", unitId: "unit_ah_1", studentId: "stu_1", knowledgeTopicId: "kt_1_3", labelIndex: 3, order: 3, status: "completed_correct", is_correct: true, questionPrompt: "Compare royal, proprietary, and charter colonies. How did colonial assemblies like the House of Burgesses build a tradition of self-governance?", createdAt: "2024-01-02T11:00:00Z" },
+    { id: "kqi_1_4", unitId: "unit_ah_1", studentId: "stu_1", knowledgeTopicId: "kt_1_4", labelIndex: 4, order: 4, status: "completed_correct", is_correct: true, questionPrompt: "Explain mercantilism and analyze whether the Navigation Acts ultimately helped or hindered colonial economic development.", createdAt: "2024-01-02T12:00:00Z" },
+    { id: "kqi_1_5", unitId: "unit_ah_1", studentId: "stu_1", knowledgeTopicId: "kt_1_5", labelIndex: 5, order: 5, status: "completed_correct", is_correct: true, questionPrompt: "How did the Great Awakening contribute to a shared colonial identity and an anti-authoritarian spirit that later influenced the American Revolution?", createdAt: "2024-01-02T13:00:00Z" },
+  ],
+
+  // -------- Unit 2 (Revolutionary War) — K1+K2 correct, K3 active, K4-K6 pending --------
+  "unit_ah_2_stu_1": [
+    { id: "kqi_2_1", unitId: "unit_ah_2", studentId: "stu_1", knowledgeTopicId: "kt_2_1", labelIndex: 1, order: 1, status: "completed_correct", is_correct: true, questionPrompt: "Rank the top three causes of the American Revolution in order of importance and justify your ranking with specific evidence.", createdAt: "2024-01-06T09:00:00Z" },
+    { id: "kqi_2_2", unitId: "unit_ah_2", studentId: "stu_1", knowledgeTopicId: "kt_2_2", labelIndex: 2, order: 2, status: "completed_correct", is_correct: true, questionPrompt: "Was the Boston Tea Party justified political protest or criminal destruction of property? Argue from both the Patriot and Loyalist perspectives, then give your own verdict.", createdAt: "2024-01-06T10:00:00Z" },
+    { id: "kqi_2_3", unitId: "unit_ah_2", studentId: "stu_1", knowledgeTopicId: "kt_2_3", labelIndex: 3, order: 3, status: "active", is_correct: undefined, questionPrompt: "Analyze the Declaration of Independence: explain its philosophical foundations (especially Locke's influence), its rhetorical strategy of blaming the king, and the contradiction between its ideals and the reality of slavery.", suggestedQuestions: ["How did Locke's social contract theory influence Jefferson?", "Why did Jefferson blame the king rather than Parliament?", "How did slavery contradict the Declaration's 'all men are created equal'?"], createdAt: "2024-01-06T11:00:00Z" },
+    { id: "kqi_2_4", unitId: "unit_ah_2", studentId: "stu_1", knowledgeTopicId: "kt_2_4", labelIndex: 4, order: 4, status: "pending", is_correct: undefined, questionPrompt: "Explain why the Battle of Saratoga was the turning point of the Revolutionary War. What was the British strategy in 1777 and why did it fail?", createdAt: "2024-01-06T11:01:00Z" },
+    { id: "kqi_2_5", unitId: "unit_ah_2", studentId: "stu_1", knowledgeTopicId: "kt_2_5", labelIndex: 5, order: 5, status: "pending", is_correct: undefined, questionPrompt: "Why did France, Spain, and the Netherlands ally with the American colonies against Britain? What did each nation hope to gain?", createdAt: "2024-01-06T11:02:00Z" },
+    { id: "kqi_2_6", unitId: "unit_ah_2", studentId: "stu_1", knowledgeTopicId: "kt_2_6", labelIndex: 6, order: 6, status: "pending", is_correct: undefined, questionPrompt: "What were the key terms of the Treaty of Paris (1783)? How did these terms reflect the military and diplomatic outcome of the war?", createdAt: "2024-01-06T11:03:00Z" },
+  ],
+};
+
+// ============ KNOWLEDGE QUEUE MESSAGES ============
+// Pre-populated chat history for completed knowledge items.
+// Key = KnowledgeQueueItem.id. Uses the queue item id as threadId.
+export const knowledgeQueueMessages: Record<string, ChatMessage[]> = {
+
+  // ── Unit 6: Thermodynamics (all correct) ────────────────────────────────
+
+  "kqi_6_1": [
+    { id: "kqi_6_1_m1", threadId: "kqi_6_1", role: "student", content: "The zeroth law establishes what temperature means: if object A is in thermal equilibrium with C, and B is also with C, then A and B are in equilibrium with each other — this lets us define a temperature scale. The first law is energy conservation: ΔU = Q − W, meaning internal energy changes when heat flows in or work is done. The second law says entropy always increases in an isolated system, so processes like heat flowing from cold to hot never happen spontaneously. The third law states entropy approaches zero as temperature approaches absolute zero, making absolute zero unattainable.", createdAt: "2024-01-05T09:02:00Z" },
+    { id: "kqi_6_1_m2", threadId: "kqi_6_1", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-05T09:03:00Z" },
+    { id: "kqi_6_1_m3", threadId: "kqi_6_1", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-05T09:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_6_2": [
+    { id: "kqi_6_2_m1", threadId: "kqi_6_2", role: "student", content: "Conduction is heat moving through direct contact between particles — a metal spoon in hot soup is a classic example. Convection is transfer through fluid movement: hot air near a radiator becomes less dense and rises while cooler air sinks, creating a circulation loop. Radiation is electromagnetic wave energy transmission and needs no medium — the sun's warmth reaching Earth is pure radiation. In a vacuum, only radiation works since there are no particles to conduct or convect through.", createdAt: "2024-01-05T09:12:00Z" },
+    { id: "kqi_6_2_m2", threadId: "kqi_6_2", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-05T09:13:00Z" },
+    { id: "kqi_6_2_m3", threadId: "kqi_6_2", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-05T09:14:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_6_3": [
+    { id: "kqi_6_3_m1", threadId: "kqi_6_3", role: "student", content: "Entropy is a measure of the number of possible microscopic arrangements of a system — essentially its disorder. The second law says it always increases in an isolated system because there are vastly more disordered states than ordered ones, so random processes trend toward disorder. This gives time a direction: an ice cube melts but a puddle doesn't spontaneously freeze, and broken eggs don't reassemble. The arrow of time points in the direction of increasing entropy.", createdAt: "2024-01-05T09:22:00Z" },
+    { id: "kqi_6_3_m2", threadId: "kqi_6_3", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-05T09:23:00Z" },
+    { id: "kqi_6_3_m3", threadId: "kqi_6_3", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-05T09:24:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_6_4": [
+    { id: "kqi_6_4_m1", threadId: "kqi_6_4", role: "student", content: "A Carnot engine runs between a hot reservoir at T_H and a cold sink at T_C (in Kelvin). Its four-step cycle is: isothermal expansion (absorbs heat from T_H), adiabatic expansion (temperature drops to T_C), isothermal compression (releases heat to T_C), and adiabatic compression (returns to T_H). The maximum efficiency is η = 1 − T_C/T_H. No real engine can reach this because friction, imperfect insulation, and finite-speed processes all create irreversible entropy increases that eat into efficiency.", createdAt: "2024-01-05T09:32:00Z" },
+    { id: "kqi_6_4_m2", threadId: "kqi_6_4", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-05T09:33:00Z" },
+    { id: "kqi_6_4_m3", threadId: "kqi_6_4", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-05T09:34:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_6_5": [
+    { id: "kqi_6_5_m1", threadId: "kqi_6_5", role: "student", content: "Latent heat is the energy absorbed or released during a phase change without a temperature change. At the molecular level, during melting the added energy breaks intermolecular bonds rather than increasing kinetic energy — so temperature stays at 0°C while ice and liquid coexist. The same principle applies to vaporization. On a heating curve you see flat horizontal plateaus exactly at the phase transition temperatures, which is the visual signature of latent heat being absorbed at constant temperature.", createdAt: "2024-01-05T09:42:00Z" },
+    { id: "kqi_6_5_m2", threadId: "kqi_6_5", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-05T09:43:00Z" },
+    { id: "kqi_6_5_m3", threadId: "kqi_6_5", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-05T09:44:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  // ── Unit 8: Magnetism (K1 correct, K2 correct, K3 incorrect) ────────────
+
+  "kqi_8_1": [
+    { id: "kqi_8_1_m1", threadId: "kqi_8_1", role: "student", content: "The right-hand rule: point your thumb in the direction of conventional current flow, and your fingers curl in the direction of the magnetic field lines. For a wire with current flowing upward, the field circles counterclockwise when viewed from above. Field strength follows B = μ₀I / (2πr), so it's inversely proportional to the distance r — double the distance, halve the field.", createdAt: "2026-01-10T10:02:00Z" },
+    { id: "kqi_8_1_m2", threadId: "kqi_8_1", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2026-01-10T10:03:00Z" },
+    { id: "kqi_8_1_m3", threadId: "kqi_8_1", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2026-01-10T10:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_8_2": [
+    { id: "kqi_8_2_m1", threadId: "kqi_8_2", role: "student", content: "Electromagnet strength depends on: (1) current — more current, stronger field; (2) number of turns per unit length n — more coils concentrate the field; (3) core material — a ferromagnetic core like iron greatly amplifies strength through its permeability μ. For a solenoid, each loop contributes a B field, and with n turns per meter all fields add linearly: B = μ₀nI. With a core, it becomes B = μμ₀nI where μ can be hundreds or thousands for iron.", createdAt: "2026-01-10T10:12:00Z" },
+    { id: "kqi_8_2_m2", threadId: "kqi_8_2", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2026-01-10T10:13:00Z" },
+    { id: "kqi_8_2_m3", threadId: "kqi_8_2", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2026-01-10T10:14:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_8_3": [
+    { id: "kqi_8_3_m1", threadId: "kqi_8_3", role: "student", content: "Electromagnetic induction is when a moving magnet near a wire creates a current. Faraday discovered this. The faster you move the magnet the more current you get. I think the formula involves the velocity of the magnet times the magnetic field, like EMF = Bv, but I'm not sure about the exact relationship with flux.", createdAt: "2026-01-10T10:22:00Z" },
+    { id: "kqi_8_3_m2", threadId: "kqi_8_3", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2026-01-10T10:23:00Z" },
+    { id: "kqi_8_3_m3", threadId: "kqi_8_3", role: "tutor", content: "Good try, we'll revisit this.", createdAt: "2026-01-10T10:24:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  // ── Unit 1: Colonial America (all correct) ───────────────────────────────
+
+  "kqi_1_1": [
+    { id: "kqi_1_1_m1", threadId: "kqi_1_1", role: "student", content: "Jamestown faced starvation, disease (especially malaria in the swampy location), conflicts with the Powhatan Confederacy, and poor planning — too many gentlemen, not enough farmers. The most important factor in survival was John Rolfe's introduction of tobacco as a cash crop around 1612. Smith's discipline kept colonists alive short-term, but tobacco gave the Virginia Company a return on investment, which drew more settlers, supplies, and capital. Without that economic foundation, the colony had no reason to persist.", createdAt: "2024-01-02T09:02:00Z" },
+    { id: "kqi_1_1_m2", threadId: "kqi_1_1", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-02T09:03:00Z" },
+    { id: "kqi_1_1_m3", threadId: "kqi_1_1", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-02T09:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_1_2": [
+    { id: "kqi_1_2_m1", threadId: "kqi_1_2", role: "student", content: "The Mayflower Compact was a 1620 agreement signed by the Pilgrims because they had landed in Massachusetts without a valid charter — their Virginia Company patent didn't cover it. To prevent lawlessness among the non-Pilgrim 'Strangers,' they created a government by consent with majority rule. It connects to modern democracy through those principles, but was limited: only adult male church members could sign, excluding women, servants, and non-Separatists. It was a foundational step, not a full democracy.", createdAt: "2024-01-02T10:02:00Z" },
+    { id: "kqi_1_2_m2", threadId: "kqi_1_2", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-02T10:03:00Z" },
+    { id: "kqi_1_2_m3", threadId: "kqi_1_2", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-02T10:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_1_3": [
+    { id: "kqi_1_3_m1", threadId: "kqi_1_3", role: "student", content: "Royal colonies were governed directly by the Crown through an appointed governor — Virginia was one. Proprietary colonies were granted to individuals by the king, like Pennsylvania to William Penn. Charter colonies like Connecticut and Rhode Island elected their own governors and had the most self-governance. The House of Burgesses (1619) was crucial: as the first elected legislature in America, it gave colonists real experience governing themselves, and assemblies used control of taxation to build de facto power even in royal colonies.", createdAt: "2024-01-02T11:02:00Z" },
+    { id: "kqi_1_3_m2", threadId: "kqi_1_3", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-02T11:03:00Z" },
+    { id: "kqi_1_3_m3", threadId: "kqi_1_3", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-02T11:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_1_4": [
+    { id: "kqi_1_4_m1", threadId: "kqi_1_4", role: "student", content: "Mercantilism held that colonies existed to enrich the mother country — providing raw materials and buying manufactured goods. The Navigation Acts enforced this by requiring colonial trade to go through England on English ships. It hindered development more than it helped: it prevented manufacturing, raised costs, and kept colonies economically dependent. Yes, colonists had guaranteed markets and naval protection, but widespread smuggling shows they resented the restrictions. Ultimately it prevented economic diversification and generated the grievances that fueled revolution.", createdAt: "2024-01-02T12:02:00Z" },
+    { id: "kqi_1_4_m2", threadId: "kqi_1_4", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-02T12:03:00Z" },
+    { id: "kqi_1_4_m3", threadId: "kqi_1_4", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-02T12:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_1_5": [
+    { id: "kqi_1_5_m1", threadId: "kqi_1_5", role: "student", content: "The Great Awakening was a religious revival of the 1730s–1740s that spread across all colonies, creating a shared experience that crossed colonial boundaries. Preachers like Whitefield and Edwards challenged established church authority by saying individuals could have a direct relationship with God — this anti-authoritarian message later transferred to politics. By appealing to ordinary people regardless of social rank, it planted egalitarian seeds. The proliferation of new denominations also strengthened arguments for religious tolerance, which prefigured the First Amendment.", createdAt: "2024-01-02T13:02:00Z" },
+    { id: "kqi_1_5_m2", threadId: "kqi_1_5", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-02T13:03:00Z" },
+    { id: "kqi_1_5_m3", threadId: "kqi_1_5", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-02T13:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  // ── Unit 2: Revolutionary War (K1 correct, K2 correct) ──────────────────
+
+  "kqi_2_1": [
+    { id: "kqi_2_1_m1", threadId: "kqi_2_1", role: "student", content: "My ranking: 1) 'No taxation without representation' — this was the ideological glue that united diverse colonies around a shared grievance and gave the revolution moral legitimacy. 2) The Intolerable Acts — these transformed protest into revolution. By punishing all of Massachusetts collectively, Britain showed it could strip any colony of its rights, forcing previously hesitant colonies to unify. 3) The French and Indian War's debt — this was the root trigger, creating the financial pressure that led to every subsequent tax. Enlightenment ideas were essential as a framework but needed concrete grievances to activate.", createdAt: "2024-01-06T09:02:00Z" },
+    { id: "kqi_2_1_m2", threadId: "kqi_2_1", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-06T09:03:00Z" },
+    { id: "kqi_2_1_m3", threadId: "kqi_2_1", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-06T09:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
+
+  "kqi_2_2": [
+    { id: "kqi_2_2_m1", threadId: "kqi_2_2", role: "student", content: "Patriot view: justified resistance. Colonists had petitioned peacefully for years and been ignored. The Tea Act threatened both principle (taxing without consent) and livelihood (monopoly that cut out colonial merchants). The careful targeting — only tea destroyed, no personal harm, a broken padlock replaced — shows principled protest, not mob violence. Loyalist view: criminal. Legal channels existed; they could simply have refused to buy the tea. Destroying private property worth £10,000 set a dangerous precedent and directly provoked the Intolerable Acts that hurt ordinary colonists far more. I find the Patriot view more compelling, but acknowledge the Loyalists were right that property destruction escalated the crisis in ways the colonists couldn't fully control.", createdAt: "2024-01-06T10:02:00Z" },
+    { id: "kqi_2_2_m2", threadId: "kqi_2_2", role: "tutor", content: "Thanks for your response! When you're ready, click \"Grade my answer\" to submit.", createdAt: "2024-01-06T10:03:00Z" },
+    { id: "kqi_2_2_m3", threadId: "kqi_2_2", role: "tutor", content: "Correct! Great work on this topic.", createdAt: "2024-01-06T10:04:00Z", metadata: { isSystemMessage: true, isCompletionMessage: true } },
+  ],
 };

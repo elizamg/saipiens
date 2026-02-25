@@ -4,6 +4,9 @@ import type {
   UnitProgress,
   ProgressState,
   StageType,
+  KnowledgeTopic,
+  KnowledgeQueueItem,
+  KnowledgeProgress,
 } from "../types/domain";
 
 /**
@@ -137,4 +140,48 @@ export function stageLabel(stageType: StageType): string {
     case "challenge":
       return "Challenge";
   }
+}
+
+/**
+ * Compute knowledge progress for a unit from topics and visible queue items.
+ * correctCount/incorrectCount count unique topics, not retries.
+ */
+export function computeKnowledgeProgress(
+  unitId: string,
+  topics: KnowledgeTopic[],
+  queueItems: KnowledgeQueueItem[]
+): KnowledgeProgress {
+  const unitTopics = topics.filter((t) => t.unitId === unitId);
+  const totalTopics = unitTopics.length;
+
+  if (totalTopics === 0) {
+    return { unitId, totalTopics: 0, correctCount: 0, incorrectCount: 0, correctPercent: 0, incorrectPercent: 0 };
+  }
+
+  const correctTopicIds = new Set(
+    queueItems
+      .filter((item) => item.status === "completed_correct")
+      .map((item) => item.knowledgeTopicId)
+  );
+
+  const incorrectTopicIds = new Set(
+    queueItems
+      .filter((item) => item.status === "completed_incorrect")
+      .map((item) => item.knowledgeTopicId)
+  );
+  // A topic that has a retry pending should not be double-counted as incorrect
+  // if already retried correctly
+  correctTopicIds.forEach((id) => incorrectTopicIds.delete(id));
+
+  const correctCount = correctTopicIds.size;
+  const incorrectCount = incorrectTopicIds.size;
+
+  return {
+    unitId,
+    totalTopics,
+    correctCount,
+    incorrectCount,
+    correctPercent: Math.round((correctCount / totalTopics) * 100),
+    incorrectPercent: Math.round((incorrectCount / totalTopics) * 100),
+  };
 }
