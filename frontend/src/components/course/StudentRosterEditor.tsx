@@ -5,6 +5,9 @@ import Button from "../ui/Button";
 import { GRAY_500 } from "../../theme/colors";
 import type { Student } from "../../types/domain";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isValidEmail = (e: string) => EMAIL_REGEX.test(e.trim());
+
 interface StudentRosterEditorProps {
   allStudents: Student[];
   selectedIds: string[];
@@ -23,6 +26,11 @@ export default function StudentRosterEditor({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+
+  const emailError = emailTouched && email.trim() && !isValidEmail(email)
+    ? "Please enter a valid email address."
+    : null;
 
   const filtered = allStudents.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase())
@@ -37,7 +45,7 @@ export default function StudentRosterEditor({
   };
 
   const handleAddStudent = () => {
-    if (!firstName.trim() || !lastName.trim()) return;
+    if (!firstName.trim() || !lastName.trim() || !isValidEmail(email)) return;
     const newStudent: Student = {
       id: `ts-new-${Date.now()}`,
       name: `${firstName.trim()} ${lastName.trim()}`,
@@ -48,6 +56,7 @@ export default function StudentRosterEditor({
     setFirstName("");
     setLastName("");
     setEmail("");
+    setEmailTouched(false);
     setShowAddForm(false);
   };
 
@@ -169,23 +178,28 @@ export default function StudentRosterEditor({
               value={lastName}
               onChange={setLastName}
             />
-            <Input
-              label="Email"
-              placeholder="email@school.edu"
-              value={email}
-              onChange={setEmail}
-              type="email"
-            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <Input
+                label="Email"
+                placeholder="email@school.edu"
+                value={email}
+                onChange={(v) => { setEmail(v); setEmailTouched(true); }}
+                type="email"
+              />
+              {emailError && (
+                <span style={{ fontSize: 12, color: "#dc2626" }}>{emailError}</span>
+              )}
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <Button
               variant="primary"
               onClick={handleAddStudent}
-              disabled={!firstName.trim() || !lastName.trim()}
+              disabled={!firstName.trim() || !lastName.trim() || !isValidEmail(email)}
             >
               Add
             </Button>
-            <Button variant="ghost" onClick={() => setShowAddForm(false)}>
+            <Button variant="ghost" onClick={() => { setShowAddForm(false); setEmailTouched(false); setEmail(""); setFirstName(""); setLastName(""); }}>
               Cancel
             </Button>
           </div>

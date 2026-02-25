@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import ObjectiveRow from "../components/course/ObjectiveRow";
-import { GRAY_500, GRAY_900 } from "../theme/colors";
+import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
 import type { ObjectiveKind } from "../types/domain";
 import {
   mockInstructor,
@@ -11,6 +11,7 @@ import {
   teacherUnitsMap,
   teacherObjectivesMap,
 } from "../data/teacherMockData";
+import { updateUnitTitle } from "../services/api";
 
 const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
 
@@ -38,6 +39,34 @@ export default function CourseEditorPage() {
     });
     return map;
   });
+
+  const [unitTitle, setUnitTitle] = useState(unit?.title ?? "");
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  const handleTitleClick = () => {
+    setIsEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.select(), 0);
+  };
+
+  const handleTitleSave = async () => {
+    const trimmed = unitTitle.trim();
+    if (!trimmed || !unitId) {
+      setUnitTitle(unit?.title ?? "");
+      setIsEditingTitle(false);
+      return;
+    }
+    setIsEditingTitle(false);
+    await updateUnitTitle(unitId, trimmed);
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") handleTitleSave();
+    if (e.key === "Escape") {
+      setUnitTitle(unit?.title ?? "");
+      setIsEditingTitle(false);
+    }
+  };
 
   const grouped = useMemo(() => {
     const byKind: Record<ObjectiveKind, typeof objectives> = {
@@ -123,7 +152,49 @@ export default function CourseEditorPage() {
             Back to {course.title}
           </Link>
 
-          <h1 style={titleStyles}>{unit.title}</h1>
+          {isEditingTitle ? (
+            <input
+              ref={titleInputRef}
+              value={unitTitle}
+              onChange={(e) => setUnitTitle(e.target.value)}
+              onBlur={handleTitleSave}
+              onKeyDown={handleTitleKeyDown}
+              style={{
+                ...titleStyles,
+                border: `2px solid ${PRIMARY}`,
+                borderRadius: 8,
+                padding: "4px 10px",
+                outline: "none",
+                width: "100%",
+                boxSizing: "border-box",
+                background: "white",
+                fontFamily: "inherit",
+              }}
+              autoFocus
+            />
+          ) : (
+            <h1
+              style={{
+                ...titleStyles,
+                cursor: "text",
+                borderRadius: 8,
+                padding: "4px 10px",
+                marginLeft: -10,
+                border: `2px solid transparent`,
+                transition: "border-color 0.15s",
+              }}
+              onClick={handleTitleClick}
+              title="Click to edit unit name"
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = GRAY_300;
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = "transparent";
+              }}
+            >
+              {unitTitle}
+            </h1>
+          )}
 
           {SECTION_ORDER.map((kind) => {
             const items = grouped[kind];
