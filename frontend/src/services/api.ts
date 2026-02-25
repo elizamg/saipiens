@@ -12,6 +12,9 @@ import {
   chatMessages,
   studentAwards,
   agent,
+  knowledgeTopics,
+  studentKnowledgeQueues,
+  knowledgeQueueMessages,
 } from "../mock/db";
 import {
   teacherObjectivesMap,
@@ -40,8 +43,11 @@ import type {
   StageType,
   ProgressState,
   Agent,
+  KnowledgeTopic,
+  KnowledgeQueueItem,
+  KnowledgeProgress,
 } from "../types/domain";
-import { computeUnitProgress, buildProgressMap, getProgressState } from "../utils/progress";
+import { computeUnitProgress, buildProgressMap, getProgressState, computeKnowledgeProgress } from "../utils/progress";
 
 // Simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -395,6 +401,133 @@ export async function sendMessage(
   }
 
   return newMessage;
+}
+
+// ============ KNOWLEDGE TOPICS (teacher-visible) ============
+
+export async function listKnowledgeTopics(unitId: string): Promise<KnowledgeTopic[]> {
+  await delay(50);
+  return knowledgeTopics
+    .filter((t) => t.unitId === unitId)
+    .sort((a, b) => a.order - b.order);
+}
+
+// ============ KNOWLEDGE QUEUE (student-facing) ============
+
+/** Returns pre-existing + session messages for a knowledge queue item. */
+export async function listKnowledgeMessages(queueItemId: string): Promise<ChatMessage[]> {
+  await delay(50);
+  return (knowledgeQueueMessages[queueItemId] ?? []).slice();
+}
+
+/** Persist a new message to the knowledge queue item's message list. */
+export async function sendKnowledgeMessage(
+  queueItemId: string,
+  role: "student" | "tutor",
+  content: string,
+  metadata?: ChatMessage["metadata"]
+): Promise<ChatMessage> {
+  await delay(50);
+  const msg: ChatMessage = {
+    id: `kqi_msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    threadId: queueItemId,
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    ...(metadata ? { metadata } : {}),
+  };
+  if (!knowledgeQueueMessages[queueItemId]) {
+    knowledgeQueueMessages[queueItemId] = [];
+  }
+  knowledgeQueueMessages[queueItemId].push(msg);
+  return msg;
+}
+
+/** Returns visible (non-pending) queue items for the student, sorted by order. */
+export async function getKnowledgeQueue(
+  unitId: string,
+  studentId: string
+): Promise<KnowledgeQueueItem[]> {
+  await delay(50);
+  const key = `${unitId}_${studentId}`;
+  const queue = studentKnowledgeQueues[key] ?? [];
+  return queue
+    .filter((item) => item.status !== "pending")
+    .sort((a, b) => a.order - b.order);
+}
+
+/**
+ * Grade a knowledge queue item.
+ * - Updates item status to completed_correct or completed_incorrect.
+ * - If incorrect: appends a new pending retry item for the same topic.
+ * - Advances the next pending item to "active".
+ */
+export async function completeKnowledgeAttempt(
+  unitId: string,
+  studentId: string,
+  queueItemId: string,
+  is_correct: boolean
+): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }> {
+  await delay(100);
+  const key = `${unitId}_${studentId}`;
+  if (!studentKnowledgeQueues[key]) {
+    throw new Error(`No queue found for ${key}`);
+  }
+  const queue = studentKnowledgeQueues[key];
+
+  const idx = queue.findIndex((item) => item.id === queueItemId);
+  if (idx === -1) {
+    throw new Error(`Queue item ${queueItemId} not found`);
+  }
+
+  // Update the graded item
+  queue[idx] = {
+    ...queue[idx],
+    status: is_correct ? "completed_correct" : "completed_incorrect",
+    is_correct,
+  };
+  const updatedItem = queue[idx];
+
+  let newQueueItem: KnowledgeQueueItem | undefined;
+
+  // If incorrect, enqueue a retry
+  if (!is_correct) {
+    const maxLabelIndex = Math.max(...queue.map((i) => i.labelIndex));
+    const maxOrder = Math.max(...queue.map((i) => i.order));
+    newQueueItem = {
+      id: `kqi_retry_${Date.now()}`,
+      unitId,
+      studentId,
+      knowledgeTopicId: queue[idx].knowledgeTopicId,
+      labelIndex: maxLabelIndex + 1,
+      order: maxOrder + 1,
+      status: "pending",
+      is_correct: undefined,
+      questionPrompt: queue[idx].questionPrompt,
+      createdAt: new Date().toISOString(),
+    };
+    queue.push(newQueueItem);
+  }
+
+  // Advance the next pending item to active
+  const nextPending = queue.find((item) => item.status === "pending");
+  if (nextPending) {
+    const nextIdx = queue.findIndex((item) => item.id === nextPending.id);
+    queue[nextIdx] = { ...queue[nextIdx], status: "active" };
+  }
+
+  return { updatedItem, newQueueItem };
+}
+
+export async function getKnowledgeProgress(
+  unitId: string,
+  studentId: string
+): Promise<KnowledgeProgress> {
+  await delay(50);
+  const key = `${unitId}_${studentId}`;
+  const queue = studentKnowledgeQueues[key] ?? [];
+  const topics = knowledgeTopics.filter((t) => t.unitId === unitId);
+  return computeKnowledgeProgress(unitId, topics, queue);
 }
 
 // ============ TEACHER: OBJECTIVES ============

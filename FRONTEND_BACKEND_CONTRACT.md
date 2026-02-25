@@ -31,15 +31,18 @@ All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00
 |------|--------|--------|
 | **Course** | `id`, `title`, `icon?`, `instructorIds: string[]`, `enrolledStudentIds: string[]` | |
 | **Unit** | `id`, `courseId`, `title`, `status` | `status`: `"active"` \| `"completed"` \| `"locked"` |
-| **Objective** | `id`, `unitId`, `kind`, `title`, `order`, `description?`, `enabled?` | `kind`: `"knowledge"` \| `"skill"` \| `"capstone"`. `order` is a number used for sorting objectives within a unit. `description` is optional display text. `enabled` indicates whether students see the objective (default `true`). |
+| **Objective** | `id`, `unitId`, `kind`, `title`, `order`, `description?`, `enabled?` | `kind`: `"skill"` \| `"capstone"` only (knowledge is now a separate queue system). `order` is a number used for sorting within a unit. |
 | **ItemStage** | `id`, `itemId`, `stageType`, `order`, `prompt` | `itemId` is the parent objective's `id`. `stageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. Each objective has exactly 3 stages. `order` determines display order (1, 2, 3). `prompt` is the stage's question text. |
+| **KnowledgeTopic** | `id`, `unitId`, `knowledgeTopic`, `order` | Teacher-visible descriptive name (e.g. "Magnetic Fields Around Wires"). `order` is the display order within the unit. Not shown to students. |
+| **KnowledgeQueueItem** | `id`, `unitId`, `studentId`, `knowledgeTopicId`, `labelIndex`, `order`, `status`, `is_correct?`, `questionPrompt`, `suggestedQuestions?`, `createdAt` | Student-facing queue entry. `labelIndex` drives the "Knowledge N" student label. `status`: `"pending"` \| `"active"` \| `"completed_correct"` \| `"completed_incorrect"`. `is_correct` mirrors the `grade_info()` backend output field name. Only items with `status !== "pending"` are visible to students. `suggestedQuestions` are optional pill prompts shown when the student hasn't typed anything yet (active items only). |
 
 ### 2.3 Progress
 
 | Type | Fields | Notes |
 |------|--------|--------|
-| **StudentObjectiveProgress** | `studentId`, `objectiveId`, `earnedStars`, `currentStageType`, `updatedAt` | `earnedStars`: `0` \| `1` \| `2` \| `3`. Stars map to completed stages: 1 = begin done, 2 = walkthrough done, 3 = challenge done. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"` = the stage currently being worked on. |
-| **UnitProgress** (computed) | `unitId`, `totalObjectives`, `completedObjectives`, `progressPercent` | `completedObjectives` = count of objectives with `earnedStars === 3`. |
+| **StudentObjectiveProgress** | `studentId`, `objectiveId`, `progressState`, `currentStageType`, `updatedAt` | `progressState`: `"not_started"` \| `"walkthrough_started"` \| `"walkthrough_complete"` \| `"challenge_started"` \| `"challenge_complete"`. Applies to **skill** and **capstone** objectives only. |
+| **UnitProgress** (computed) | `unitId`, `totalObjectives`, `completedObjectives`, `progressPercent` | Covers **skill + capstone** objectives only (knowledge excluded). `completedObjectives` = count with `progressState === "challenge_complete"`. |
+| **KnowledgeProgress** (computed) | `unitId`, `totalTopics`, `correctCount`, `incorrectCount`, `correctPercent`, `incorrectPercent` | Counts unique knowledge topics, not queue retries. A topic retried correctly is removed from `incorrectCount`. Displayed as a separate dual-tone progress bar (green = correct, grey = incorrect). |
 
 ### 2.4 Awards & Feedback
 
@@ -52,11 +55,11 @@ All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00
 
 | Type | Fields | Notes |
 |------|--------|--------|
-| **ChatThread** | `id`, `unitId`, `courseId`, `objectiveId`, `title`, `kind`, `lastMessageAt` | One thread per objective. `kind`: `"knowledge"` \| `"skill"` \| `"capstone"`. |
-| **ThreadWithProgress** (computed) | ChatThread + `earnedStars`, `currentStageType`, `currentStageId`, `order` | Used in unit chat view. `earnedStars`: `0`–`3`. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. `currentStageId`: the `id` of the current `ItemStage`. `order`: from the parent objective. |
+| **ChatThread** | `id`, `unitId`, `courseId`, `objectiveId`, `title`, `kind`, `lastMessageAt` | One thread per objective. `kind`: `"skill"` \| `"capstone"` (knowledge items use the queue system, not threads). |
+| **ThreadWithProgress** (computed) | ChatThread + `progressState`, `currentStageType`, `currentStageId`, `order` | Used in unit chat view. `progressState`: `"not_started"` \| `"walkthrough_started"` \| `"walkthrough_complete"` \| `"challenge_started"` \| `"challenge_complete"`. `currentStageType`: `"begin"` \| `"walkthrough"` \| `"challenge"`. `currentStageId`: the `id` of the current `ItemStage`. `order`: from the parent objective. |
 | **ChatMessage** | `id`, `threadId`, `stageId?`, `role`, `content`, `createdAt`, `attachments?`, `metadata?` | `role`: `"student"` \| `"tutor"`. `stageId` scopes the message to a specific stage. Stage prompts are **not** stored as messages; they come from **ItemStage**. |
 | **ChatMessageAttachment** | `type` (`"image"` \| `"file"`), `url`, `name?` | Optional on messages. |
-| **ChatMessageMetadata** | `isFeedback?`, `isSystemMessage?`, `earnedStars?`, `isCompletionMessage?` | All fields optional booleans, except `earnedStars` which is a number. |
+| **ChatMessageMetadata** | `isFeedback?`, `isSystemMessage?`, `progressState?`, `isCompletionMessage?` | All fields optional. `progressState` records the `ProgressState` reached at a completion message. |
 
 ---
 
@@ -99,21 +102,25 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 
 ### 3.6 Objectives & Stages
 
+Note: **knowledge** items are no longer part of `Objectives`. They use the separate Knowledge Queue system (§3.16–3.17). `listObjectives` returns only `skill` and `capstone` objectives.
+
 | Frontend call | Expected backend behavior |
 |---------------|---------------------------|
-| `listObjectives(unitId)` | All objectives for the unit. Response: **Objective[]**. |
+| `listObjectives(unitId)` | All **skill + capstone** objectives for the unit. Response: **Objective[]**. |
 | `getObjective(objectiveId)` | One objective. Response: **Objective** or 404. |
 | `listItemStages(itemId)` | All stages for the objective (identified by `itemId` = objective id), **sorted by `order` ascending**. Response: **ItemStage[]**. |
 | `getStage(stageId)` | One stage by id. Response: **ItemStage** or 404. |
 
 ### 3.7 Student Progress
 
+`UnitProgress` covers skill + capstone objectives only. Knowledge progress is separate (see §3.17).
+
 | Frontend call | Expected backend behavior |
 |---------------|---------------------------|
 | `getStudentObjectiveProgress(studentId, objectiveId)` | Progress for that objective. Response: **StudentObjectiveProgress** or 404/undefined. |
 | `listStudentProgressForUnit(studentId, unitId)` | All objective progress for that student in that unit. Response: **StudentObjectiveProgress[]**. |
-| `getUnitProgress(studentId, unitId)` | Aggregated progress for the unit. Response: **UnitProgress** (can be computed server-side from objectives + progress). |
-| `advanceStage(studentId, itemId)` | Advance the student's progress on the objective to the next stage. Increments `earnedStars` and moves `currentStageType` forward (begin → walkthrough → challenge). If no progress exists, creates it with `earnedStars: 1` and `currentStageType: "walkthrough"`. Response: **StudentObjectiveProgress**. |
+| `getUnitProgress(studentId, unitId)` | Aggregated skill+capstone progress for the unit. Response: **UnitProgress**. |
+| `advanceStage(studentId, itemId)` | Advance the student's progress on the objective. Response: **StudentObjectiveProgress**. |
 
 ### 3.8 Awards
 
@@ -172,6 +179,22 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 | `updateCourseRoster(courseId, studentIds)` | Replace the course roster with the given student IDs. Response: `{ studentIds: string[] }`. |
 | `createNewStudent(firstName, lastName, email)` | Create a new student record. `email` is **required** and must be a valid email address (validated on the frontend before submission; backend should also validate). Response: **Student** (with generated `id`). |
 
+### 3.16 Knowledge Topics (teacher-visible)
+
+| Frontend call | Expected backend behavior |
+|---------------|---------------------------|
+| `listKnowledgeTopics(unitId)` | All knowledge topics for the unit, sorted by `order` asc. Response: **KnowledgeTopic[]**. Used in teacher views; not exposed to students. |
+
+### 3.17 Knowledge Queue (student-facing)
+
+| Frontend call | Expected backend behavior |
+|---------------|---------------------------|
+| `getKnowledgeQueue(unitId, studentId)` | Visible queue items (status ≠ `"pending"`), sorted by `order` asc. Response: **KnowledgeQueueItem[]**. The backend should infer `studentId` from JWT in production. |
+| `listKnowledgeMessages(queueItemId)` | All chat messages for a knowledge queue item, sorted by `createdAt` asc. Response: **ChatMessage[]**. The `threadId` field on each message equals `queueItemId`. |
+| `sendKnowledgeMessage(queueItemId, role, content, metadata?)` | Persist a single message for a knowledge queue item. `role`: `"student"` \| `"tutor"`. In production this is called by the frontend for student messages; tutor replies are generated by the backend. Response: **ChatMessage**. |
+| `completeKnowledgeAttempt(unitId, studentId, queueItemId, is_correct)` | Grade a queue item. Sets `status` to `completed_correct` or `completed_incorrect` and `is_correct`. If `is_correct: false`, creates a new `pending` retry item appended to the queue with a new `labelIndex`. Advances the next `pending` item to `active`. Response: `{ updatedItem: KnowledgeQueueItem, newQueueItem?: KnowledgeQueueItem }`. The `is_correct` field name mirrors the `grade_info()` backend function output. |
+| `getKnowledgeProgress(unitId, studentId)` | Knowledge progress summary. Response: **KnowledgeProgress**. Counts unique topics (not retries); a topic with a correct retry is removed from `incorrectCount`. |
+
 ---
 
 ## 4. Conventions and Behaviors
@@ -200,9 +223,10 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 
 ### 4.6 Stage progression model
 
-- Each **Objective** has exactly 3 **ItemStages**: begin (1 star), walkthrough (2 stars), challenge (3 stars).
-- Stars represent **progress milestones**, not difficulty. Completing each stage awards stars cumulatively.
+- Each **Objective** (skill or capstone) has exactly 3 **ItemStages**: `begin`, `walkthrough`, `challenge`.
+- Progress is tracked as a 5-state `ProgressState`: `not_started` → `walkthrough_started` → `walkthrough_complete` → `challenge_started` → `challenge_complete`.
 - Progression is linear: begin → walkthrough → challenge. A student cannot skip stages.
+- Knowledge items do not use stages or `ProgressState`; they use the `KnowledgeItemStatus` queue model instead.
 
 ---
 
@@ -212,9 +236,9 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 - [ ] **Courses**: List by student, get by id.
 - [ ] **Instructors**: List by ids.
 - [ ] **Units**: List by course, get by id. Update unit title (PATCH title field).
-- [ ] **Objectives**: List by unit, get by id. Include `order` field for sorting.
+- [ ] **Objectives**: List by unit (skill + capstone only — knowledge is separate), get by id. Include `order` field for sorting.
 - [ ] **ItemStages**: List by objective (sorted by order), get by id. Each objective has exactly 3 stages (begin, walkthrough, challenge) with a `prompt`.
-- [ ] **Progress**: Per-objective and per-unit progress for a student; support **UnitProgress** (computed or stored). Support **advanceStage** to move a student forward.
+- [ ] **Progress (skills)**: Per-objective and per-unit progress for a student; support **UnitProgress** (skill+capstone only). Support **advanceStage** to move a student forward.
 - [ ] **Awards**: List by student; optionally by student + course.
 - [ ] **Feedback**: List by student; list by course.
 - [ ] **Chat**: Threads for unit (with progress); get thread (with optional progress); list messages (optional filter by stage); send message and return created **ChatMessage**.
@@ -222,5 +246,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 - [ ] **Teacher Unit Upload**: Accept multipart file upload (up to 10 files) plus a `unitTitle` string field, process documents, return new `Unit` (with the provided title) + generated `Objective[]`.
 - [ ] **Teacher Courses**: Create a new course with title, icon, and initial roster.
 - [ ] **Teacher Roster**: List all students, get/update course roster, create new student (email required and validated).
+- [ ] **Knowledge Topics**: Store and retrieve **KnowledgeTopic** records per unit (teacher-visible descriptive names).
+- [ ] **Knowledge Queue**: Store **KnowledgeQueueItem** records per student per unit. Support `getKnowledgeQueue` (visible items only), `completeKnowledgeAttempt` (grade + retry logic + advance next item), and `getKnowledgeProgress` (unique-topic aggregation). `is_correct` field name must match `grade_info()` backend output.
 
 Once these are implemented and responses match (or are mapped to) the types in `frontend/src/types/domain.ts`, the frontend can switch from `mock/db` to the real backend with minimal changes to UI code.
