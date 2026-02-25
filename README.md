@@ -7,13 +7,36 @@
 <p align="center"><i>"SAIPIENS aims to improve education outcomes<br>
 using research-backed pedagogy<br>
 while reducing teacher and student workloads<br>
-through an AI-powered homework system."</i></p>
+through an AI-enabled homework system."</i></p>
 
 <br>
 
 ---
 
-# Sprint 2 Progress
+# Sprint 3 Progress
+
+## Testing Instructions (TODO)
+
+TODO
+
+## Team Updates
+
+### Ben - TODO
+
+TODO
+
+### Eliza - TODO
+
+TODO
+
+### Brooke - TODO
+
+TODO
+
+---
+<br>
+
+## Sprint 2 Progress
 
 ## Live App
 
@@ -115,7 +138,7 @@ All backend documentation lives in `/backend`:
 ---
 
 
-
+<br>
 
 
 ## Sprint 1 Progress
