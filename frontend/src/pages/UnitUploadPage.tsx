@@ -2,20 +2,19 @@ import React, { useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
-import type { Objective } from "../types/domain";
 import {
   mockInstructor,
   sidebarCourses,
   teacherCourses,
-  teacherUnitsMap,
-  teacherObjectivesMap,
 } from "../data/teacherMockData";
+import { createUnitFromUpload } from "../services/api";
 
 const ACCEPTED_TYPES = ".pdf,.txt,.docx,.doc,.md,.rtf";
 const MAX_FILES = 10;
 
-type Step = "upload" | "processing";
+type Step = "name" | "upload" | "processing";
 
 export default function UnitUploadPage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -24,7 +23,8 @@ export default function UnitUploadPage() {
 
   const course = teacherCourses.find((c) => c.id === courseId);
 
-  const [step, setStep] = useState<Step>("upload");
+  const [step, setStep] = useState<Step>("name");
+  const [unitName, setUnitName] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -68,45 +68,11 @@ export default function UnitUploadPage() {
     }
   };
 
-  const handleProcess = () => {
-    if (files.length === 0) return;
+  const handleProcess = async () => {
+    if (files.length === 0 || !courseId) return;
     setStep("processing");
-
-    // Simulate processing delay, then create mock unit + objectives
-    setTimeout(() => {
-      if (!courseId) return;
-
-      const existingUnits = teacherUnitsMap[courseId] ?? [];
-      const newUnitNum = existingUnits.length + 1;
-      const newUnitId = `u${courseId}-${newUnitNum}`;
-
-      const newUnit = {
-        id: newUnitId,
-        courseId,
-        title: `Unit ${newUnitNum}: Uploaded Content`,
-        status: "active" as const,
-      };
-
-      // Add unit to the map
-      if (!teacherUnitsMap[courseId]) {
-        teacherUnitsMap[courseId] = [];
-      }
-      teacherUnitsMap[courseId].push(newUnit);
-
-      // Generate mock objectives from "processed" documents
-      const generatedObjectives: Objective[] = [
-        { id: `${newUnitId}-o1`, unitId: newUnitId, kind: "knowledge", title: "Key Concepts Overview", description: "Identify and define the core concepts from the uploaded materials.", order: 1, enabled: true },
-        { id: `${newUnitId}-o2`, unitId: newUnitId, kind: "knowledge", title: "Terminology and Definitions", description: "Master the essential vocabulary introduced in the documents.", order: 2, enabled: true },
-        { id: `${newUnitId}-o3`, unitId: newUnitId, kind: "knowledge", title: "Historical Context", description: "Understand the background and context of the material.", order: 3, enabled: true },
-        { id: `${newUnitId}-o4`, unitId: newUnitId, kind: "skill", title: "Critical Analysis", description: "Analyze arguments and evidence presented in the source materials.", order: 4, enabled: true },
-        { id: `${newUnitId}-o5`, unitId: newUnitId, kind: "skill", title: "Synthesis and Connection", description: "Connect ideas across multiple documents to build understanding.", order: 5, enabled: true },
-        { id: `${newUnitId}-o6`, unitId: newUnitId, kind: "capstone", title: "Comprehensive Assessment", description: "Demonstrate mastery by applying concepts to a novel scenario.", order: 6, enabled: true },
-      ];
-
-      teacherObjectivesMap[newUnitId] = generatedObjectives;
-
-      navigate(`/teacher/course/${courseId}/unit/${newUnitId}`);
-    }, 2500);
+    const { unit } = await createUnitFromUpload(courseId, files, unitName);
+    navigate(`/teacher/course/${courseId}/unit/${unit.id}`);
   };
 
   // ---- Styles ----
@@ -219,6 +185,66 @@ export default function UnitUploadPage() {
     color: GRAY_500,
   };
 
+  if (step === "name") {
+    return (
+      <AppShell
+        student={mockInstructor}
+        activePath="/courses"
+        sidebarCourses={sidebarCourses}
+        routePrefix="/teacher"
+      >
+        {!course ? (
+          <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>
+            Course not found.
+          </div>
+        ) : (
+          <>
+            <a
+              onClick={() => navigate(`/teacher/course/${courseId}`)}
+              style={backLinkStyles}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back to {course.title}
+            </a>
+
+            <h1 style={titleStyles}>Name Your Unit</h1>
+            <p style={subtitleStyles}>
+              Give this unit a title before uploading your documents.
+            </p>
+
+            <div style={{ maxWidth: 480, marginBottom: 24 }}>
+              <Input
+                label="Unit Name"
+                placeholder="e.g. The American Revolution"
+                value={unitName}
+                onChange={setUnitName}
+              />
+            </div>
+
+            <Button
+              variant="primary"
+              onClick={() => setStep("upload")}
+              disabled={!unitName.trim()}
+            >
+              Continue to Upload
+            </Button>
+          </>
+        )}
+      </AppShell>
+    );
+  }
+
   if (step === "processing") {
     return (
       <AppShell
@@ -273,8 +299,7 @@ export default function UnitUploadPage() {
 
           <h1 style={titleStyles}>Upload Documents</h1>
           <p style={subtitleStyles}>
-            Upload up to {MAX_FILES} text-based files. Sam will generate
-            learning objectives from the content.
+            Unit: <strong>{unitName}</strong> — Upload up to {MAX_FILES} text-based files. Sam will generate learning objectives from the content.
           </p>
 
           <div

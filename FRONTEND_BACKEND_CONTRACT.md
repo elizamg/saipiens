@@ -95,6 +95,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 |---------------|---------------------------|
 | `listUnits(courseId)` | All units for the course. Response: **Unit[]**. |
 | `getUnit(unitId)` | One unit by id. Response: **Unit** or 404. |
+| `updateUnitTitle(unitId, title)` | Update the title of a unit. Called when a teacher edits the unit name inline on the unit editor page. Response: **Unit** (updated). |
 
 ### 3.6 Objectives & Stages
 
@@ -154,7 +155,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 
 | Frontend call | Expected backend behavior |
 |---------------|---------------------------|
-| `createUnitFromUpload(courseId, files)` | Accepts a `multipart/form-data` request with up to 10 text-based files (`.pdf`, `.txt`, `.docx`, `.doc`, `.md`, `.rtf`). The backend should process/parse the documents (potentially via LLM) and generate learning objectives. This is expected to be a **long-running request** (~seconds). Response: `{ unit: Unit, objectives: Objective[] }`. |
+| `createUnitFromUpload(courseId, files, unitTitle?)` | Accepts a `multipart/form-data` request with up to 10 text-based files (`.pdf`, `.txt`, `.docx`, `.doc`, `.md`, `.rtf`) and an optional `unitTitle` string. The teacher names the unit before uploading; this name should be used as the unit's `title`. The backend should process/parse the documents (potentially via LLM) and generate learning objectives. This is expected to be a **long-running request** (~seconds). Response: `{ unit: Unit, objectives: Objective[] }`. |
 
 ### 3.14 Teacher Courses
 
@@ -169,7 +170,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 | `listTeacherStudents()` | Return all students available for roster assignment. Response: **Student[]**. |
 | `getCourseRoster(courseId)` | Return the list of student IDs enrolled in the course. Response: **string[]**. |
 | `updateCourseRoster(courseId, studentIds)` | Replace the course roster with the given student IDs. Response: `{ studentIds: string[] }`. |
-| `createNewStudent(firstName, lastName, email)` | Create a new student record. Response: **Student** (with generated `id`). |
+| `createNewStudent(firstName, lastName, email)` | Create a new student record. `email` is **required** and must be a valid email address (validated on the frontend before submission; backend should also validate). Response: **Student** (with generated `id`). |
 
 ---
 
@@ -210,7 +211,7 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 - [ ] **Auth**: Endpoint or middleware that resolves current user and returns a **Student** (or equivalent) for the frontend.
 - [ ] **Courses**: List by student, get by id.
 - [ ] **Instructors**: List by ids.
-- [ ] **Units**: List by course, get by id.
+- [ ] **Units**: List by course, get by id. Update unit title (PATCH title field).
 - [ ] **Objectives**: List by unit, get by id. Include `order` field for sorting.
 - [ ] **ItemStages**: List by objective (sorted by order), get by id. Each objective has exactly 3 stages (begin, walkthrough, challenge) with a `prompt`.
 - [ ] **Progress**: Per-objective and per-unit progress for a student; support **UnitProgress** (computed or stored). Support **advanceStage** to move a student forward.
@@ -218,8 +219,8 @@ If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current
 - [ ] **Feedback**: List by student; list by course.
 - [ ] **Chat**: Threads for unit (with progress); get thread (with optional progress); list messages (optional filter by stage); send message and return created **ChatMessage**.
 - [ ] **Teacher Objectives**: List objectives for a unit (with `description` and `enabled`); toggle `enabled` on an objective.
-- [ ] **Teacher Unit Upload**: Accept multipart file upload (up to 10 files), process documents, return new `Unit` + generated `Objective[]`.
+- [ ] **Teacher Unit Upload**: Accept multipart file upload (up to 10 files) plus a `unitTitle` string field, process documents, return new `Unit` (with the provided title) + generated `Objective[]`.
 - [ ] **Teacher Courses**: Create a new course with title, icon, and initial roster.
-- [ ] **Teacher Roster**: List all students, get/update course roster, create new student.
+- [ ] **Teacher Roster**: List all students, get/update course roster, create new student (email required and validated).
 
 Once these are implemented and responses match (or are mapped to) the types in `frontend/src/types/domain.ts`, the frontend can switch from `mock/db` to the real backend with minimal changes to UI code.

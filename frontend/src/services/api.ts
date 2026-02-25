@@ -423,7 +423,8 @@ export async function updateObjectiveEnabled(
 
 export async function createUnitFromUpload(
   courseId: string,
-  _files: File[]
+  _files: File[],
+  unitTitle?: string
 ): Promise<{ unit: Unit; objectives: Objective[] }> {
   // Simulate long-running LLM processing
   await delay(2500);
@@ -435,7 +436,7 @@ export async function createUnitFromUpload(
   const unit: Unit = {
     id: newUnitId,
     courseId,
-    title: `Unit ${newUnitNum}: Uploaded Content`,
+    title: unitTitle?.trim() || `Unit ${newUnitNum}: Uploaded Content`,
     status: "active",
   };
 
@@ -455,6 +456,21 @@ export async function createUnitFromUpload(
   teacherObjectivesMap[newUnitId] = generatedObjectives;
 
   return { unit, objectives: generatedObjectives };
+}
+
+export async function updateUnitTitle(
+  unitId: string,
+  title: string
+): Promise<Unit> {
+  await delay(100);
+  for (const units of Object.values(teacherUnitsMap)) {
+    const unit = units.find((u) => u.id === unitId);
+    if (unit) {
+      unit.title = title;
+      return { ...unit };
+    }
+  }
+  throw new Error(`Unit ${unitId} not found`);
 }
 
 // ============ TEACHER: STUDENTS ============
