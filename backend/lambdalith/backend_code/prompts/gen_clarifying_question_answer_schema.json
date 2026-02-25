@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "tutor_response": {
+      "type": "string",
+      "description": "The tutor's concise response to the student's clarifying question, without giving away the answer."
+    }
+  },
+  "required": ["tutor_response"]
+}
