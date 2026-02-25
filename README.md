@@ -1,4 +1,17 @@
-## sApIens
+<p align="center">
+  <img src="frontend/src/assets/white-tree.png" alt="Alt text" width="300">
+</p>
+
+<h1 align="center">SAIPIENS</h1>
+
+<p align="center"><i>"SAIPIENS aims to improve education outcomes<br>
+using research-backed pedagogy<br>
+while reducing teacher and student workloads<br>
+through an AI-powered homework system."</i></p>
+
+<br>
+
+---
 
 # Sprint 2 Progress
 
