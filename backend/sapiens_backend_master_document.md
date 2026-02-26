@@ -70,18 +70,32 @@ Only IdToken is used for API Gateway validation.
 
 ## Development Authentication Mode
 
+### Student dev auth
+
 When:
 
     DEV_AUTH_ENABLED=true
 
 Headers used:
 
-    X-Dev-Student-Id
-    X-Dev-Token
+    X-Dev-Student-Id: <studentId>
+    X-Dev-Token: dev-secret
 
+### Instructor dev auth
+
+When:
+
+    DEV_INSTRUCTOR_ENABLED=true
+
+Headers used:
+
+    X-Dev-Instructor-Id: <instructorId>
+    X-Dev-Token: dev-secret
+
+Both student and instructor dev auth are currently enabled on the live Lambda.
 This enables full browser-based testing without AWS credentials.
 
-⚠ Dev authentication must be disabled before production deployment.
+⚠ Both dev auth modes must be disabled before production deployment.
 
 ------------------------------------------------------------------------
 
@@ -258,14 +272,15 @@ The backend is:
 
 All major domain surfaces are implemented:
 
--   Courses
--   Units
--   Objectives
--   Stages
--   Progress
+-   Courses (student read + instructor create)
+-   Units (student read + instructor create via upload + title edit)
+-   Objectives (student read + instructor toggle enabled)
+-   Stages (student read)
+-   Progress (student read + advance)
 -   Chat (with synchronous AI tutor pipeline)
 -   Awards
 -   Feedback
+-   Instructor/Teacher flows (current-instructor, course management, roster, student management, curriculum upload)
 
 ## AI Tutor Pipeline
 
@@ -285,6 +300,23 @@ Pipeline parameters:
 Model: `gemini-3-flash-preview` via Google GenAI SDK (`SAIPIENS_GEMINI_API_KEY` Lambda env var).
 
 Lambda timeout is 60s; memory is 512MB.
+
+## AI Curriculum Generation Pipeline
+
+`POST /courses/{courseId}/units/upload` accepts multipart PDF upload and runs the full `Gen_Curriculum_Pipeline`:
+
+1. Uploads PDF(s) to Gemini Files API
+2. Calls `identify_knowledge` → returns list of `{ type, description }` items
+3. Generates one question per item in parallel (concurrency=5)
+4. Persists to DynamoDB:
+   - `Units` — one new unit
+   - `Objectives` — one per knowledge item (`kind: "knowledge"|"skill"`)
+   - `ItemStages` — 3 per objective (`begin`/`walkthrough`/`challenge`)
+   - `Questions` — one per objective
+
+Returns `{ unit: Unit, objectives: Objective[] }`.
+
+⚠ This call can take 30–120s for large PDFs. The Lambda timeout may need to be increased (currently 60s) for production use.
 
 ------------------------------------------------------------------------
 

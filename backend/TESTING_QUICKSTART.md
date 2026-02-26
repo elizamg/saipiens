@@ -121,3 +121,88 @@ curl -X POST "$BASE/threads/thread-obj-demo-002/messages" \
 - `"walkthrough"` → tutors the student through the problem step by step
 - `"challenge"` → grades the student's answer and gives feedback
 - omit / `"begin"` → no AI, just stores the message
+
+---
+
+## Testing instructor / teacher routes
+
+Instructor routes use a separate dev header. Any string works as the instructor ID — a record is auto-created on first access.
+
+```javascript
+// Browser console — instructor helper
+const BASE = "https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod";
+const IID = "instructor_demo_1";
+const TOKEN = "dev-secret";
+
+async function iapi(path, options = {}) {
+  const res = await fetch(BASE + path, {
+    headers: {
+      "Content-Type": "application/json",
+      "X-Dev-Instructor-Id": IID,
+      "X-Dev-Token": TOKEN,
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+  const json = await res.json();
+  console.log(res.status, json);
+  return json;
+}
+
+// Who am I (instructor)?
+await iapi("/current-instructor");
+
+// List my courses
+await iapi("/instructor/courses");
+
+// Create a course
+const course = await iapi("/courses", {
+  method: "POST",
+  body: JSON.stringify({ title: "AP Chemistry" }),
+});
+
+// List all students
+await iapi("/students");
+
+// Create a student
+const student = await iapi("/students", {
+  method: "POST",
+  body: JSON.stringify({ name: "Jane Doe", yearLabel: "Year 1" }),
+});
+
+// Set roster (replace entirely)
+await iapi(`/courses/${course.id}/roster`, {
+  method: "PUT",
+  body: JSON.stringify({ studentIds: [student.id] }),
+});
+
+// Get roster
+await iapi(`/courses/${course.id}/roster`);
+
+// Rename a unit
+await iapi("/units/unit_demo_1/title", {
+  method: "PATCH",
+  body: JSON.stringify({ title: "Cell Division & Mitosis" }),
+});
+
+// Toggle an objective off
+await iapi("/objectives/obj_demo_1/enabled", {
+  method: "PATCH",
+  body: JSON.stringify({ enabled: false }),
+});
+```
+
+### Curriculum upload (curl)
+
+```bash
+BASE="https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod"
+
+curl -X POST "$BASE/courses/<courseId>/units/upload" \
+  -H "X-Dev-Instructor-Id: instructor_demo_1" \
+  -H "X-Dev-Token: dev-secret" \
+  -F "unitName=Chapter 3: Cellular Respiration" \
+  -F "grade=10" \
+  -F "files=@chapter3.pdf"
+```
+
+⚠ This call runs the full AI curriculum pipeline — expect 30–90s response time.
