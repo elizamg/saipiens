@@ -13,6 +13,8 @@ interface StudentRosterEditorProps {
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
   onAddStudent: (student: Student) => void;
+  /** If provided, called to persist the new student before onAddStudent. */
+  createStudent?: (firstName: string, lastName: string, email: string) => Promise<Student>;
 }
 
 export default function StudentRosterEditor({
@@ -20,6 +22,7 @@ export default function StudentRosterEditor({
   selectedIds,
   onSelectionChange,
   onAddStudent,
+  createStudent,
 }: StudentRosterEditorProps) {
   const [search, setSearch] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
@@ -27,6 +30,8 @@ export default function StudentRosterEditor({
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const emailError = emailTouched && email.trim() && !isValidEmail(email)
     ? "Please enter a valid email address."
@@ -44,20 +49,33 @@ export default function StudentRosterEditor({
     }
   };
 
-  const handleAddStudent = () => {
+  const handleAddStudent = async () => {
     if (!firstName.trim() || !lastName.trim() || !isValidEmail(email)) return;
-    const newStudent: Student = {
-      id: `ts-new-${Date.now()}`,
-      name: `${firstName.trim()} ${lastName.trim()}`,
-      yearLabel: "New",
-    };
-    onAddStudent(newStudent);
-    onSelectionChange([...selectedIds, newStudent.id]);
-    setFirstName("");
-    setLastName("");
-    setEmail("");
-    setEmailTouched(false);
-    setShowAddForm(false);
+    setAdding(true);
+    setAddError(null);
+    try {
+      let newStudent: Student;
+      if (createStudent) {
+        newStudent = await createStudent(firstName, lastName, email);
+      } else {
+        newStudent = {
+          id: `ts-new-${Date.now()}`,
+          name: `${firstName.trim()} ${lastName.trim()}`,
+          yearLabel: "New",
+        };
+      }
+      onAddStudent(newStudent);
+      onSelectionChange([...selectedIds, newStudent.id]);
+      setFirstName("");
+      setLastName("");
+      setEmail("");
+      setEmailTouched(false);
+      setShowAddForm(false);
+    } catch {
+      setAddError("Failed to create student. Please try again.");
+    } finally {
+      setAdding(false);
+    }
   };
 
   const searchIcon = (
@@ -191,15 +209,18 @@ export default function StudentRosterEditor({
               )}
             </div>
           </div>
+          {addError && (
+            <span style={{ fontSize: 12, color: "#dc2626" }}>{addError}</span>
+          )}
           <div style={{ display: "flex", gap: 8 }}>
             <Button
               variant="primary"
               onClick={handleAddStudent}
-              disabled={!firstName.trim() || !lastName.trim() || !isValidEmail(email)}
+              disabled={adding || !firstName.trim() || !lastName.trim() || !isValidEmail(email)}
             >
-              Add
+              {adding ? "Adding…" : "Add"}
             </Button>
-            <Button variant="ghost" onClick={() => { setShowAddForm(false); setEmailTouched(false); setEmail(""); setFirstName(""); setLastName(""); }}>
+            <Button variant="ghost" onClick={() => { setShowAddForm(false); setEmailTouched(false); setEmail(""); setFirstName(""); setLastName(""); setAddError(null); }}>
               Cancel
             </Button>
           </div>
