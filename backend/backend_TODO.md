@@ -11,73 +11,75 @@ This is the remaining work before the backend is ready to be "handed off" to the
 - Frontend `api.ts` fully wired to real AWS API Gateway (all student + teacher + knowledge routes)
 - `PATCH` added to allowed CORS methods
 - Schema docs added: `route_schema.md`, `table_schema.md`
+- Cognito user pool created (`sapiens`, `us-west-1_pzs7P5vGg`) with `instructors` group
+- Frontend `AuthContext` fully wired to Cognito (`amazon-cognito-identity-js`)
+- Login/signup pages wired to real Cognito auth with loading + error states
+- JWT token sent as `Authorization: Bearer <id_token>` on all API requests
+- **Lambda JWT verification implemented** — Lambda now verifies RS256 JWT signature from Cognito JWKS
+  - JWKS fetched from Cognito and cached in-memory for 1 hour
+  - `sub` extracted from verified JWT as user ID
+  - `cognito:groups` extracted to determine instructor vs. student role
+  - Dev header fallback still active (`DEV_AUTH_ENABLED=true`)
+- New student auto-provisioning on first JWT login (creates DynamoDB record with name from JWT)
+- Missing `STUDENT_OBJECTIVE_PROGRESS_TABLE` env var fixed (was causing Lambda crash on startup)
+- `COGNITO_CLIENT_ID` added to Lambda env vars
 
 ---
 
-## A) Turn on real auth (Cognito JWT) — NEXT
-- Create instructor Cognito user pool (or add instructor group to existing student pool)
-- Add JWT authorizers to API Gateway routes
-- Update Lambda to extract `sub` from JWT instead of dev headers
-- Update frontend to attach `Authorization: Bearer <token>` on all requests
-- Set `DEV_AUTH_ENABLED=false` and `DEV_INSTRUCTOR_ENABLED=false` in Lambda env vars
+## A) Turn off dev auth (production readiness) — NEXT
+Once JWT is confirmed working end-to-end from the browser:
+- Set `DEV_AUTH_ENABLED=false` in Lambda env vars
+- Set `DEV_INSTRUCTOR_ENABLED=false` in Lambda env vars
+- Remove `VITE_DEV_STUDENT_ID`, `VITE_DEV_TOKEN`, `VITE_DEV_INSTRUCTOR_ID` from frontend `.env.local`
 
-## B) CORS tightening
-- Replace `Access-Control-Allow-Origin: *` with actual frontend origin(s) in production.
-- Confirm preflight OPTIONS handling is correct for Authorization header.
+## B) Seed real demo content
+Currently `course-demo-001` exists with 2 units but no objectives, stages, or questions.
+Before the app is meaningful to test:
+- Add objectives to each unit (with `order` attribute)
+- Add 3 ItemStages per objective (`begin`, `walkthrough`, `challenge`) with `prompt` content
+- Optionally add questions per objective
 
-## C) Data integrity / authorization checks (beyond "current student")
-Currently, the API resolves a current student and enforces studentId path equality on `/students/{studentId}/courses`.
-Before production, add (or confirm) authorization rules such as:
-- Ensure student is enrolled in the course when accessing:
-  - `/courses/{courseId}` (optional)
-  - `/courses/{courseId}/units`
-  - `/units/{unitId}`, `/units/{unitId}/objectives`, `/units/{unitId}/threads`, `/units/{unitId}/progress*`
-  - `/threads/{threadId}*` and `/threads/{threadId}/messages*`
-This prevents a student from querying arbitrary IDs.
+## C) Auto-create Instructor DynamoDB record on first login
+When an instructor logs in for the first time, `/current-instructor` returns 404.
+Mirror the student auto-provisioning logic in `handle_current_instructor`.
 
-## D) Consistent error shape
-Contract allows flexible error handling, but a stable error schema helps frontend UX.
-Suggested:
-- `{ "message": string, "code"?: string }`
-Currently many errors are `{ "error": "..." }`.
+## D) CORS tightening
+- Replace `Access-Control-Allow-Origin: *` with actual frontend origin(s) in production
 
-## E) Deterministic data seeding and content completeness
-- Ensure every Objective has:
-  - `order`
-  - exactly 3 ItemStages with correct `stageType` + `order` + `prompt`
-- Ensure each objective has a corresponding ChatThread (either pre-seeded or auto-created; decide one approach).
+## E) Data integrity / authorization checks
+Currently the API enforces `studentId path == current student` on course listing.
+Before production, also check:
+- Student is enrolled in the course before accessing course content
+- Instructor owns the course before modifying roster / uploading units
 
-## F) Performance & limits
-- Confirm query_all usage is acceptable for expected list sizes.
-- If messages can grow large, consider adding:
-  - pagination params (limit, cursor) for `/threads/{threadId}/messages`
-  - optional time/window querying
+## F) Consistent error shape
+Many errors return `{ "error": "..." }` but some return `{ "message": "..." }` (API Gateway default).
+Standardize to `{ "error": string, "code"?: string }` throughout.
 
-## G) Observability
-- Add structured logs (request id, route, student id, latency).
-- Consider tracing (X-Ray) if needed.
+## G) Background tutor replies
+`sendMessage` persists student message only — no AI response.
+Define the tutor pipeline before production:
+- Synchronous (simple) vs async (recommended for long LLM calls)
+- How tutor messages are persisted and returned
+- Metadata fields (`earnedStars`, completion) when relevant
 
-## H) Background tutor replies
-`sendMessage` currently persists the student message only.
-Before production, define the tutor/AI response pipeline:
-- synchronous reply (simple) vs async (recommended)
-- persistence of tutor messages
-- metadata fields (earnedStars, completion messages) when relevant.
+## H) API Gateway JWT Authorizer (optional hardening)
+The Lambda now verifies JWTs itself. Adding a gateway-level JWT Authorizer would:
+- Reject invalid tokens before Lambda is invoked (saves cost)
+- Standard practice for production APIs
+This is optional since Lambda verification is already in place.
 
-## I) Hardening advanceStage
-- Decide whether to block advancing beyond 3 stars with 400 vs returning capped progress.
-- Optionally validate that the currentStageType matches expected progression and prevent skipping.
+## I) Observability
+- Add structured logs (request ID, route, student ID, latency)
+- Consider X-Ray tracing
 
 ---
 
-## "Ready for frontend integration" checklist
-Before telling frontend to switch off mocks, ensure:
-- JWT auth works end-to-end (no dev headers)
-- CORS matches frontend origin and includes Authorization
-- All routes return correct shapes with correct ordering:
-  - Objectives sorted by `order`
-  - Stages sorted by `order`
-  - Questions sorted by `difficultyStars`
-  - Messages sorted by `createdAt`
-- 404 semantics are consistent
-- Seeded content is complete for demo course(s)
+## "Ready for production" checklist
+- [ ] JWT auth works end-to-end from browser (no dev headers needed)
+- [ ] `DEV_AUTH_ENABLED=false` and `DEV_INSTRUCTOR_ENABLED=false` set in Lambda
+- [ ] CORS restricted to production frontend domain
+- [ ] Demo course has complete content (objectives + stages)
+- [ ] Instructor auto-provisioning on first login
+- [ ] All routes return correct shapes with correct ordering
+- [ ] 404 semantics are consistent

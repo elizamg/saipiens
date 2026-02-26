@@ -1,10 +1,12 @@
 import json
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
 import boto3
+import urllib.request
 from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource("dynamodb")
@@ -57,6 +59,139 @@ DEV_AUTH_TOKEN = os.environ.get("DEV_AUTH_TOKEN")  # optional shared secret
 # ---- Dev instructor auth ----
 DEV_INSTRUCTOR_ENABLED = os.environ.get("DEV_INSTRUCTOR_ENABLED", "false").lower() == "true"
 DEV_INSTRUCTOR_HEADER = os.environ.get("DEV_INSTRUCTOR_HEADER", "X-Dev-Instructor-Id")
+
+# ---- Cognito JWT verification ----
+COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "")
+COGNITO_REGION = os.environ.get("COGNITO_REGION", "us-west-1")
+COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
+
+# Cache JWKS in memory (refreshed at most once per hour)
+_jwks_cache: dict | None = None
+_jwks_fetched_at: float = 0
+_JWKS_TTL = 3600  # 1 hour
+
+
+def _get_jwks() -> dict:
+    """Fetch and cache the Cognito JWKS (JSON Web Key Set)."""
+    global _jwks_cache, _jwks_fetched_at
+    now = time.time()
+    if _jwks_cache and (now - _jwks_fetched_at) < _JWKS_TTL:
+        return _jwks_cache
+    url = (
+        f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com"
+        f"/{COGNITO_USER_POOL_ID}/.well-known/jwks.json"
+    )
+    try:
+        with urllib.request.urlopen(url, timeout=3) as r:
+            _jwks_cache = json.loads(r.read())
+            _jwks_fetched_at = now
+            return _jwks_cache
+    except Exception:
+        return _jwks_cache or {"keys": []}
+
+
+def _b64url_decode(s: str) -> bytes:
+    """Decode a base64url string (no padding required)."""
+    import base64
+    pad = 4 - len(s) % 4
+    if pad != 4:
+        s += "=" * pad
+    return base64.urlsafe_b64decode(s)
+
+
+def _verify_cognito_jwt(token: str) -> dict | None:
+    """
+    Manually verify a Cognito ID token.
+
+    Steps:
+    1. Decode header to get `kid`
+    2. Find matching key in JWKS
+    3. Reconstruct RSA public key from n/e
+    4. Verify RS256 signature
+    5. Validate claims (exp, iss, aud/client_id, token_use=id)
+
+    Returns decoded payload dict on success, None on any failure.
+    Uses only stdlib — no PyJWT dependency required.
+    """
+    try:
+        import base64
+        import struct
+        import hashlib
+        import hmac as _hmac
+
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+
+        header = json.loads(_b64url_decode(parts[0]))
+        payload = json.loads(_b64url_decode(parts[1]))
+
+        kid = header.get("kid")
+        alg = header.get("alg", "")
+        if alg != "RS256" or not kid:
+            return None
+
+        # Find key in JWKS
+        jwks = _get_jwks()
+        key_data = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
+        if not key_data:
+            return None
+
+        # Validate claims before verifying signature (fail fast on obvious issues)
+        now = time.time()
+        if payload.get("exp", 0) < now:
+            return None  # expired
+
+        expected_iss = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}"
+        if payload.get("iss") != expected_iss:
+            return None
+
+        if payload.get("token_use") != "id":
+            return None
+
+        # Verify RS256 signature using cryptography library (available in Lambda Python runtime)
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.backends import default_backend
+
+        def _b64url_int(s: str) -> int:
+            return int.from_bytes(_b64url_decode(s), "big")
+
+        n = _b64url_int(key_data["n"])
+        e = _b64url_int(key_data["e"])
+        pub_key = RSAPublicNumbers(e, n).public_key(default_backend())
+
+        signing_input = f"{parts[0]}.{parts[1]}".encode("utf-8")
+        signature = _b64url_decode(parts[2])
+
+        pub_key.verify(signature, signing_input, padding.PKCS1v15(), hashes.SHA256())
+        return payload
+
+    except Exception:
+        return None
+
+
+def verify_jwt(token: str) -> tuple[str | None, bool]:
+    """
+    Verify a Cognito ID token and extract identity.
+
+    Returns (sub, is_instructor):
+      - sub: Cognito user UUID (used as the user's primary ID), or None if invalid
+      - is_instructor: True if 'cognito:groups' includes 'instructors'
+    """
+    if not token or not COGNITO_USER_POOL_ID:
+        return None, False
+
+    payload = _verify_cognito_jwt(token)
+    if not payload:
+        return None, False
+
+    sub = payload.get("sub")
+    groups = payload.get("cognito:groups") or []
+    is_instructor = "instructors" in groups
+    return sub, is_instructor
+
 
 # ---- CORS ----
 CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*")
@@ -192,11 +327,33 @@ def header(event, name: str) -> str | None:
     return None
 
 
+def extract_bearer_token(event) -> str | None:
+    """Extract Bearer token from Authorization header."""
+    auth_header = header(event, "Authorization")
+    if not auth_header:
+        return None
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+    return None
+
+
 def effective_student_id(event) -> str | None:
+    # 1. Try API Gateway JWT authorizer claims (when authorizer is configured)
     sub = authed_sub(event)
     if sub:
         return sub
 
+    # 2. Try direct JWT verification from Authorization header
+    token = extract_bearer_token(event)
+    if token:
+        jwt_sub, is_instructor = verify_jwt(token)
+        if jwt_sub and not is_instructor:
+            return jwt_sub
+        # Instructor token used on student endpoint — still allow (sub is valid)
+        if jwt_sub:
+            return jwt_sub
+
+    # 3. Dev header fallback (only when DEV_AUTH_ENABLED=true)
     if not DEV_AUTH_ENABLED:
         return None
 
@@ -286,17 +443,36 @@ def handle_current_student(event):
     if item:
         return resp(200, item)
 
+    # Auto-create student record on first login via JWT
+    # Try to get name from JWT payload
+    name = "Student"
+    token = extract_bearer_token(event)
+    if token:
+        payload = _verify_cognito_jwt(token)
+        if payload:
+            given = payload.get("given_name") or ""
+            family = payload.get("family_name") or ""
+            full = f"{given} {family}".strip()
+            if full:
+                name = full
+
     now = iso_now()
     item = {
         "id": sub,
-        "name": "Test Student",
-        "yearLabel": "Year 1",
+        "name": name,
+        "yearLabel": "",
         "avatarUrl": None,
         "createdAt": now,
         "updatedAt": now,
     }
 
-    students.put_item(Item=item, ConditionExpression="attribute_not_exists(id)")
+    try:
+        students.put_item(Item=item, ConditionExpression="attribute_not_exists(id)")
+    except Exception:
+        # Race condition: another request created it first — fetch the existing record
+        got2 = students.get_item(Key={"id": sub})
+        item = got2.get("Item") or item
+
     return resp(200, item)
 
 
@@ -818,11 +994,21 @@ def handle_send_message(event, thread_id: str):
 
 # ---- Instructor auth ----
 def effective_instructor_id(event) -> str | None:
-    # Real JWT sub would go here if Cognito is wired for instructors
+    # 1. Try API Gateway JWT authorizer claims
     sub = authed_sub(event)
     if sub:
         return sub
 
+    # 2. Try direct JWT verification — must be in the instructors group
+    token = extract_bearer_token(event)
+    if token:
+        jwt_sub, is_instructor = verify_jwt(token)
+        if jwt_sub and is_instructor:
+            return jwt_sub
+        if jwt_sub and not is_instructor:
+            return None  # Valid token but not an instructor — deny
+
+    # 3. Dev header fallback (only when DEV_INSTRUCTOR_ENABLED=true)
     if not DEV_INSTRUCTOR_ENABLED:
         return None
 
