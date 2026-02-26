@@ -69,7 +69,83 @@ I also added basic retrying with tenacity to our LLM calls, made generating a cu
 
 ### Brooke - Infrastructure and Backend-Frontend Connecting
 
-For this sprint, Brooke worked on creating the infrastructure for our project and connecting the backend to the frontend by routing frontend requests through a single Lambda function to different code in the backend and DB requests.
+I completed the full backend integration, end-to-end authentication, and a comprehensive test suite. Here's a summary of what was shipped:
+
+ 1. Frontend → Real Backend 
+
+All ~50 functions in `api.ts` now call the live AWS API Gateway instead of returning hardcoded mock data. The client automatically attaches a Cognito JWT (`Authorization: Bearer <IdToken>`) on every request, with a dev-header fallback for local testing.
+
+ 2. AI Tutor Pipeline — Live in Chat
+
+`sendMessage` now invokes real AI models synchronously and returns both the student message and a tutor reply in a single response:
+
+| Stage | Pipeline | Model |
+|-------|----------|-------|
+| `walkthrough` | Scaffolded question step | Gemini Flash |
+| `challenge` (knowledge) | Info grading | Gemini Flash |
+| `challenge` (skill/capstone) | Skill grading | Gemini Flash |
+ 
+Both messages are persisted to DynamoDB before the response is returned. The chat UI shows a live typing indicator while the AI is thinking.
+
+ 3. Cognito JWT Authentication (students & instructors)
+**Cognito User Pool:** `us-west-1_pzs7P5vGg`
+**App Client:** `sapiens-public` (`34es28m8ocaom5rt55khms7p07`)
+**Student auth:** any valid JWT. Identity comes from the `sub` claim.
+**Instructor auth:** JWT + membership in the `instructors` Cognito Group. The `cognito:groups` claim is checked on every instructor route.
+The Lambda verifies RS256 JWT signatures directly (fetches and caches JWKS from Cognito), so no API Gateway JWT Authorizer is required.
+New users are auto-provisioned in DynamoDB on first request to `/current-student`, using `given_name`/`family_name` from the JWT.
+
+To promote a user to instructor:
+```bash
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id us-west-1_pzs7P5vGg \
+  --username <email> \
+  --group-name instructors \
+  --region us-west-1
+```
+ 4. Instructor/Teacher API Routes (19 new endpoints)
+
+All teacher-facing routes are now live in the Lambda:
+ 
+| Route | Description |
+|-------|-------------|
+| `GET /current-instructor` | Auto-creates instructor record on first login |
+| `GET /instructor/courses` | Lists courses owned by the instructor |
+| `POST /courses` | Creates a new course |
+| `GET /courses/{id}/roster` | Returns enrolled student IDs |
+| `PUT /courses/{id}/roster` | Replaces roster atomically |
+| `GET /students` | Lists all students (for roster UI) |
+| `POST /students` | Creates a new student |
+| `PATCH /units/{id}/title` | Renames a unit |
+| `PATCH /objectives/{id}/enabled` | Toggles objective visibility |
+| `POST /courses/{id}/units/upload` | PDF upload → AI curriculum pipeline → persists Unit + Objectives  Stages |
+
+ 5. Test Suite — 150 tests total
+ 
+| Suite | Tests | What it covers |
+|-------|-------|---------------|
+| Auth unit tests (pytest) | 42 | JWT parsing, student/instructor identity resolution, dev-header fallback, CORS |
+| Frontend auth tests (vitest) | 22 | Cognito service, AuthContext, RequireRole routing guards |
+| API integration tests (live) | 88 | Every route including AI pipeline, error handling, edge cases |
+| **Total** | **152** | |
+
+
+Backend Documentation
+ 
+All backend docs live in [`/backend`](backend/):
+ 
+| Document | Description |
+|----------|-------------|
+| [sapiens_backend_master_document.md](backend/sapiens_backend_master_document.md) | Architecture overview, auth model, design philosophy |
+| [route_schema.md](backend/route_schema.md) | Full API route reference (student + instructor routes) |
+| [table_schema.md](backend/table_schema.md) | DynamoDB table design |
+| [cognito_setup.md](backend/cognito_setup.md) | Cognito pool, app client, groups, dev accounts, auth flow |
+| [test_report.md](backend/test_report.md) | Auth test suite documentation (64 unit tests) |
+| [TESTING_QUICKSTART.md](backend/TESTING_QUICKSTART.md) | How to test the live API — no AWS credentials required |
+| [browser_testing_guide.md](backend/browser_testing_guide.md) | Browser console testing guide |
+| [backend_TODO.md](backend/backend_TODO.md) | Production hardening checklist |
+ 
+
 
 ---
 <br>
