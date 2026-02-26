@@ -360,8 +360,9 @@ export async function listMessages(
 export async function sendMessage(
   threadId: string,
   content: string,
-  stageId?: string
-): Promise<ChatMessage> {
+  stageId?: string,
+  stageType?: string
+): Promise<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }> {
   await delay(100);
   const newMessage: ChatMessage = {
     id: `msg_${Date.now()}`,
@@ -400,7 +401,21 @@ export async function sendMessage(
     }
   }
 
-  return newMessage;
+  // Mock tutor reply for walkthrough/challenge stages
+  let tutorMessage: ChatMessage | null = null;
+  if (stageType === "walkthrough" || stageType === "challenge") {
+    tutorMessage = {
+      id: `msg_${Date.now() + 1}`,
+      threadId,
+      stageId,
+      role: "tutor",
+      content: "Great response! Let me guide you through the next step.",
+      createdAt: new Date().toISOString(),
+    };
+    chatMessages.push(tutorMessage);
+  }
+
+  return { studentMessage: newMessage, tutorMessage };
 }
 
 // ============ KNOWLEDGE TOPICS (teacher-visible) ============

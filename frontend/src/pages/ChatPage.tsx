@@ -85,6 +85,7 @@ export default function ChatPage() {
   const [knowledgeMessages, setKnowledgeMessages] = useState<Record<string, ChatMessage[]>>({});
   const [gradingInProgress, setGradingInProgress] = useState(false);
   const [gradedItemIds, setGradedItemIds] = useState<Set<string>>(new Set());
+  const [isSending, setIsSending] = useState(false);
   // Track which item IDs we've already loaded messages for (avoid double-load)
   const loadedMessageItemIds = useRef<Set<string>>(new Set());
 
@@ -318,9 +319,19 @@ export default function ChatPage() {
     async (content: string) => {
       if (!selectedThreadId || !selectedStageId || !student || !selectedThread || !currentStage) return;
 
+      setIsSending(true);
       try {
-        const newMessage = await sendMessage(selectedThreadId, content, selectedStageId);
-        setMessages((prev) => [...prev, newMessage]);
+        const { studentMessage, tutorMessage } = await sendMessage(
+          selectedThreadId,
+          content,
+          selectedStageId,
+          currentStage.stageType
+        );
+        setMessages((prev) => {
+          const next = [...prev, studentMessage];
+          if (tutorMessage) next.push(tutorMessage);
+          return next;
+        });
 
         if (currentStage.stageType === "begin" && !isStageCompleted("begin", currentProgressState)) {
           await advanceStage(student.id, selectedThread.objectiveId);
@@ -339,6 +350,8 @@ export default function ChatPage() {
         }
       } catch (error) {
         console.error("Error sending message:", error);
+      } finally {
+        setIsSending(false);
       }
     },
     [selectedThreadId, selectedStageId, student, selectedThread, currentStage, currentProgressState, courseId, unitId]
@@ -798,7 +811,7 @@ export default function ChatPage() {
         ) : (
           // ── Thread (skill/capstone) chat area ──
           <div style={chatAreaStyles}>
-            <MessageList messages={displayMessages} agent={agentData ?? undefined} />
+            <MessageList messages={displayMessages} agent={agentData ?? undefined} isSending={isSending} />
             {currentStageCompleted && (
               <div style={ctaBarStyles}>
                 {hasNextStage ? (
@@ -840,7 +853,7 @@ export default function ChatPage() {
             )}
             <ChatComposer
               onSend={handleSendMessage}
-              disabled={!selectedThreadId || !selectedStageId || currentStageCompleted}
+              disabled={!selectedThreadId || !selectedStageId || currentStageCompleted || isSending}
               placeholder={currentStageCompleted ? "Stage completed" : undefined}
               externalValue={pillText}
               onExternalValueConsumed={() => setPillText("")}

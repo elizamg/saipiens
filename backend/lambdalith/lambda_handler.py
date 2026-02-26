@@ -1,11 +1,17 @@
 import json
 import os
+import sys
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
+
+# Add backend_code to path so pipeline modules can import `utils` correctly
+_BACKEND_CODE_DIR = os.path.join(os.path.dirname(__file__), "backend_code")
+if _BACKEND_CODE_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_CODE_DIR)
 
 dynamodb = boto3.resource("dynamodb")
 
@@ -758,6 +764,107 @@ def handle_list_messages(event, thread_id: str):
     return resp(200, items)
 
 
+def _get_thread_context(thread_id: str, student_id: str):
+    """Return (thread, course, objective, stage) dicts needed for pipeline calls, or None on error."""
+    threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
+    thread = threads_tbl.get_item(Key={"id": thread_id}).get("Item")
+    if not thread:
+        return None
+
+    objective_id = thread.get("objectiveId")
+    course_id = thread.get("courseId")
+    if not objective_id or not course_id:
+        return None
+
+    objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
+    objective = objectives_tbl.get_item(Key={"id": objective_id}).get("Item")
+    if not objective:
+        return None
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+    if not course:
+        return None
+
+    students_tbl = dynamodb.Table(T["STUDENTS"])
+    student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
+
+    return {
+        "thread": thread,
+        "course": course,
+        "objective": objective,
+        "student": student,
+    }
+
+
+def _load_conversation_history(thread_id: str, stage_id: str | None) -> list[dict]:
+    """Load prior messages for this thread/stage as [{"role": ..., "content": ...}]."""
+    msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+    items = query_all(
+        msgs_tbl,
+        key_condition=Key("threadId").eq(thread_id),
+        scan_forward=True,
+    )
+    if stage_id:
+        items = [m for m in items if m.get("stageId") == stage_id]
+    return [{"role": m["role"], "content": m["content"]} for m in items]
+
+
+def _call_tutor_pipeline(stage_type: str, objective: dict, course: dict, student: dict, conversation: list[dict], student_message: str) -> str | None:
+    """Call the appropriate AI pipeline and return tutor reply text, or None on failure."""
+    subject = course.get("title", "Unknown Subject")
+    grade = student.get("yearLabel", "Unknown Grade")
+    objective_kind = objective.get("kind", "knowledge")
+    objective_title = objective.get("title", "")
+
+    # Find the stage prompt (question text) — last tutor message in conversation or objective title
+    question = objective_title
+    for m in reversed(conversation):
+        if m["role"] == "tutor":
+            question = m["content"]
+            break
+
+    try:
+        if stage_type == "walkthrough":
+            from scaffolded_question_pipeline import scaffolded_question_step
+            result = scaffolded_question_step(
+                subject=subject,
+                grade=grade,
+                question=question,
+                conversation=conversation,
+            )
+            return result.get("Tutor_Response") if result else None
+
+        elif stage_type == "challenge":
+            if objective_kind == "knowledge":
+                from info_question_pipeline import grade_info
+                _is_correct, feedback = grade_info(
+                    grade=grade,
+                    subject=subject,
+                    information=objective_title,
+                    question=question,
+                    answer=student_message,
+                )
+                return feedback
+            else:
+                # skill or capstone
+                from challenge_question_pipeline import grade_skill
+                _category, feedback = grade_skill(
+                    grade=grade,
+                    subject=subject,
+                    skill=objective_title,
+                    question=question,
+                    answer=student_message,
+                )
+                return feedback
+
+    except Exception as e:
+        print(f"[pipeline error] stage={stage_type} kind={objective_kind}: {e}")
+        return None
+
+    return None
+
+
 def handle_send_message(event, thread_id: str):
     student_id = effective_student_id(event)
     if not student_id:
@@ -772,11 +879,12 @@ def handle_send_message(event, thread_id: str):
 
     content = body.get("content")
     stage_id = body.get("stageId")
+    stage_type = body.get("stageType")  # client sends this to avoid extra DB lookup
     if not isinstance(content, str) or not content.strip():
         return resp(400, {"error": "Missing content"})
 
     now = iso_now()
-    msg = {
+    student_msg = {
         "id": str(uuid.uuid4()),
         "threadId": thread_id,
         "stageId": stage_id,
@@ -786,7 +894,7 @@ def handle_send_message(event, thread_id: str):
     }
 
     msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
-    msgs_tbl.put_item(Item=msg)
+    msgs_tbl.put_item(Item=student_msg)
 
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
     try:
@@ -798,7 +906,33 @@ def handle_send_message(event, thread_id: str):
     except Exception:
         pass
 
-    return resp(200, msg)
+    # Generate tutor reply for walkthrough and challenge stages
+    tutor_msg = None
+    if stage_type in ("walkthrough", "challenge"):
+        ctx = _get_thread_context(thread_id, student_id)
+        if ctx:
+            conversation = _load_conversation_history(thread_id, stage_id)
+            tutor_text = _call_tutor_pipeline(
+                stage_type=stage_type,
+                objective=ctx["objective"],
+                course=ctx["course"],
+                student=ctx["student"],
+                conversation=conversation,
+                student_message=content,
+            )
+            if tutor_text:
+                tutor_now = iso_now()
+                tutor_msg = {
+                    "id": str(uuid.uuid4()),
+                    "threadId": thread_id,
+                    "stageId": stage_id,
+                    "role": "tutor",
+                    "content": tutor_text,
+                    "createdAt": tutor_now,
+                }
+                msgs_tbl.put_item(Item=tutor_msg)
+
+    return resp(200, {"studentMessage": student_msg, "tutorMessage": tutor_msg})
 
 
 # ---- Main router ----
