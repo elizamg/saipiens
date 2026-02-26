@@ -74,7 +74,16 @@ Test results: 19/19 instructor route tests passing.
 
 ---
 
-## “Ready for frontend integration” checklist
+## J) Vercel environment variables (must be set before frontend auth works)
+Add these in Vercel → Project Settings → Environment Variables:
+- `VITE_COGNITO_USER_POOL_ID` = `us-west-1_pzs7P5vGg`
+- `VITE_COGNITO_CLIENT_ID` = `34es28m8ocaom5rt55khms7p07`
+
+Note: `VITE_DEV_STUDENT_ID` and `VITE_DEV_TOKEN` are no longer used by the frontend and can be removed.
+
+---
+
+## "Ready for frontend integration" checklist
 Before telling frontend to switch off mocks, ensure:
 - JWT auth works end-to-end (no dev headers)
 - CORS matches frontend origin and includes Authorization
