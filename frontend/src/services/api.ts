@@ -1,30 +1,4 @@
-import {
-  students,
-  instructors,
-  courses,
-  units,
-  awards,
-  feedbackItems,
-  objectives,
-  itemStages,
-  studentObjectiveProgress,
-  chatThreads,
-  chatMessages,
-  studentAwards,
-  agent,
-  knowledgeTopics,
-  studentKnowledgeQueues,
-  knowledgeQueueMessages,
-} from "../mock/db";
-import {
-  teacherObjectivesMap,
-  teacherUnitsMap,
-  teacherStudents,
-  teacherCourses,
-  sidebarCourses,
-  courseRosterMap,
-  mockInstructor,
-} from "../data/teacherMockData";
+import { agent, knowledgeTopics, studentKnowledgeQueues, knowledgeQueueMessages } from "../mock/db";
 import type { TeacherCourse } from "../data/teacherMockData";
 import type {
   Student,
@@ -40,216 +14,256 @@ import type {
   ChatMessage,
   ThreadWithProgress,
   UnitProgress,
-  StageType,
   ProgressState,
   Agent,
   KnowledgeTopic,
   KnowledgeQueueItem,
   KnowledgeProgress,
 } from "../types/domain";
-import { computeUnitProgress, buildProgressMap, getProgressState, computeKnowledgeProgress } from "../utils/progress";
+import { computeKnowledgeProgress } from "../utils/progress";
 
-// Simulate network delay
+// ============ REAL API CLIENT ============
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod";
+
+// Token provider — set by AuthContext on mount so api.ts can get a fresh JWT
+let _getToken: (() => Promise<string | null>) | null = null;
+
+export function setTokenProvider(fn: () => Promise<string | null>) {
+  _getToken = fn;
+}
+
+async function buildHeaders(role: "student" | "instructor" = "student"): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  const token = _getToken ? await _getToken() : null;
+
+  if (token) {
+    // Real Cognito JWT auth
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    // Dev header fallback (DEV_AUTH_ENABLED=true on Lambda)
+    const DEV_STUDENT_ID = import.meta.env.VITE_DEV_STUDENT_ID ?? "";
+    const DEV_INSTRUCTOR_ID = import.meta.env.VITE_DEV_INSTRUCTOR_ID ?? "";
+    const DEV_TOKEN = import.meta.env.VITE_DEV_TOKEN ?? "";
+    if (role === "instructor" && DEV_INSTRUCTOR_ID) {
+      headers["X-Dev-Instructor-Id"] = DEV_INSTRUCTOR_ID;
+    } else if (role === "student" && DEV_STUDENT_ID) {
+      headers["X-Dev-Student-Id"] = DEV_STUDENT_ID;
+    }
+    if (DEV_TOKEN) headers["X-Dev-Token"] = DEV_TOKEN;
+  }
+
+  return headers;
+}
+
+async function apiFetch<T>(path: string, options?: RequestInit, role: "student" | "instructor" = "student"): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(await buildHeaders(role)),
+      ...(options?.headers ?? {}),
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API ${res.status}: ${body}`);
+  }
+
+  const text = await res.text();
+  if (!text) return undefined as unknown as T;
+  return JSON.parse(text) as T;
+}
+
+// ============ ADAPTER: earnedStars -> progressState ============
+//
+// The backend tracks progress via earnedStars (0–3):
+//   0 = not started (no stages completed)
+//   1 = begin stage done, now on walkthrough
+//   2 = walkthrough done, now on challenge
+//   3 = challenge done (fully complete)
+//
+// The frontend uses a 5-state ProgressState string. Mapping:
+//   earnedStars 0 → "not_started"
+//   earnedStars 1 → "walkthrough_started"
+//   earnedStars 2 → "challenge_started"
+//   earnedStars 3 → "challenge_complete"
+
+function earnedStarsToProgressState(earnedStars: number): ProgressState {
+  switch (earnedStars) {
+    case 0: return "not_started";
+    case 1: return "walkthrough_started";
+    case 2: return "challenge_started";
+    case 3: return "challenge_complete";
+    default: return earnedStars >= 3 ? "challenge_complete" : "not_started";
+  }
+}
+
+type BackendProgress = {
+  studentId: string;
+  objectiveId: string;
+  earnedStars: number;
+  currentStageType: ProgressType["currentStageType"];
+  updatedAt: string;
+};
+
+function adaptProgress(raw: BackendProgress): ProgressType {
+  return {
+    studentId: raw.studentId,
+    objectiveId: raw.objectiveId,
+    progressState: earnedStarsToProgressState(raw.earnedStars ?? 0),
+    currentStageType: raw.currentStageType ?? "begin",
+    updatedAt: raw.updatedAt,
+  };
+}
+
+// Mock delay (used only for mock endpoints)
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ============ AGENT ============
 
 export async function getAgent(): Promise<Agent> {
-  await delay(50);
   return agent;
 }
 
 // ============ STUDENT ============
 
 export async function getCurrentStudent(): Promise<Student> {
-  await delay(50);
-  const student = students[0];
-  if (!student) {
-    throw new Error("No student found");
-  }
-  return student;
+  return apiFetch<Student>("/current-student");
 }
 
 // ============ COURSES ============
 
 export async function listCoursesForStudent(studentId: string): Promise<Course[]> {
-  await delay(50);
-  return courses.filter((course) =>
-    course.enrolledStudentIds.includes(studentId)
-  );
+  return apiFetch<Course[]>(`/students/${encodeURIComponent(studentId)}/courses`);
 }
 
 export async function getCourse(courseId: string): Promise<Course | undefined> {
-  await delay(50);
-  return courses.find((course) => course.id === courseId);
+  try {
+    return await apiFetch<Course>(`/courses/${encodeURIComponent(courseId)}`);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("API 404")) return undefined;
+    throw e;
+  }
 }
 
 // ============ INSTRUCTORS ============
 
 export async function listInstructors(ids: string[]): Promise<Instructor[]> {
-  await delay(50);
-  return instructors.filter((instructor) => ids.includes(instructor.id));
+  if (ids.length === 0) return [];
+  return apiFetch<Instructor[]>("/instructors/batch", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
 }
 
 // ============ UNITS ============
 
 export async function listUnits(courseId: string): Promise<Unit[]> {
-  await delay(50);
-  return units.filter((unit) => unit.courseId === courseId);
+  return apiFetch<Unit[]>(`/courses/${encodeURIComponent(courseId)}/units`);
 }
 
 export async function getUnit(unitId: string): Promise<Unit | undefined> {
-  await delay(50);
-  return units.find((unit) => unit.id === unitId);
+  try {
+    return await apiFetch<Unit>(`/units/${encodeURIComponent(unitId)}`);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("API 404")) return undefined;
+    throw e;
+  }
 }
 
 // ============ OBJECTIVES (SIDEBAR ITEMS) ============
 
 export async function listObjectives(unitId: string): Promise<Objective[]> {
-  await delay(50);
-  return objectives.filter((obj) => obj.unitId === unitId);
+  return apiFetch<Objective[]>(`/units/${encodeURIComponent(unitId)}/objectives`);
 }
 
 export async function getObjective(objectiveId: string): Promise<Objective | undefined> {
-  await delay(50);
-  return objectives.find((obj) => obj.id === objectiveId);
+  try {
+    return await apiFetch<Objective>(`/objectives/${encodeURIComponent(objectiveId)}`);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("API 404")) return undefined;
+    throw e;
+  }
 }
 
 // ============ ITEM STAGES ============
 
 export async function listItemStages(itemId: string): Promise<ItemStage[]> {
-  await delay(50);
-  return itemStages
-    .filter((s) => s.itemId === itemId)
-    .sort((a, b) => a.order - b.order);
+  return apiFetch<ItemStage[]>(`/objectives/${encodeURIComponent(itemId)}/stages`);
 }
 
 export async function getStage(stageId: string): Promise<ItemStage | undefined> {
-  await delay(50);
-  return itemStages.find((s) => s.id === stageId);
+  try {
+    return await apiFetch<ItemStage>(`/stages/${encodeURIComponent(stageId)}`);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("API 404")) return undefined;
+    throw e;
+  }
 }
 
 // ============ STUDENT PROGRESS ============
 
 export async function getStudentObjectiveProgress(
-  studentId: string,
+  _studentId: string,
   objectiveId: string
 ): Promise<ProgressType | undefined> {
-  await delay(50);
-  return studentObjectiveProgress.find(
-    (p) => p.studentId === studentId && p.objectiveId === objectiveId
-  );
+  try {
+    const raw = await apiFetch<BackendProgress>(`/objectives/${encodeURIComponent(objectiveId)}/progress`);
+    return adaptProgress(raw);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("API 404")) return undefined;
+    throw e;
+  }
 }
 
 export async function listStudentProgressForUnit(
-  studentId: string,
+  _studentId: string,
   unitId: string
 ): Promise<ProgressType[]> {
-  await delay(50);
-  const unitObjectiveIds = objectives
-    .filter((obj) => obj.unitId === unitId)
-    .map((obj) => obj.id);
-  return studentObjectiveProgress.filter(
-    (p) => p.studentId === studentId && unitObjectiveIds.includes(p.objectiveId)
-  );
+  const raw = await apiFetch<BackendProgress[]>(`/units/${encodeURIComponent(unitId)}/progress/items`);
+  return raw.map(adaptProgress);
 }
 
 export async function getUnitProgress(
-  studentId: string,
+  _studentId: string,
   unitId: string
 ): Promise<UnitProgress> {
-  await delay(50);
-  const unitObjectives = objectives.filter((obj) => obj.unitId === unitId);
-  const progressList = studentObjectiveProgress.filter(
-    (p) => p.studentId === studentId && unitObjectives.some((obj) => obj.id === p.objectiveId)
-  );
-  const progressMap = buildProgressMap(progressList);
-  return computeUnitProgress(unitId, unitObjectives, progressMap);
+  return apiFetch<UnitProgress>(`/units/${encodeURIComponent(unitId)}/progress`);
 }
 
-/**
- * Advance a student's progress on an objective to the next stage.
- * Updates progressState and moves currentStageType forward.
- */
 export async function advanceStage(
-  studentId: string,
+  _studentId: string,
   itemId: string
 ): Promise<ProgressType> {
-  await delay(100);
-
-  const NEXT_STAGE: Record<StageType, StageType | null> = {
-    begin: "walkthrough",
-    walkthrough: "challenge",
-    challenge: null,
-  };
-
-  const STAGE_PROGRESS: Record<StageType, ProgressState> = {
-    begin: "not_started",
-    walkthrough: "walkthrough_complete",
-    challenge: "challenge_complete",
-  };
-
-  const idx = studentObjectiveProgress.findIndex(
-    (p) => p.studentId === studentId && p.objectiveId === itemId
-  );
-
-  if (idx === -1) {
-    // Create initial progress (begin completed → move to walkthrough, but progress stays not_started
-    // until student sends their first walkthrough message)
-    const newProgress: ProgressType = {
-      studentId,
-      objectiveId: itemId,
-      progressState: "not_started",
-      currentStageType: "walkthrough",
-      updatedAt: new Date().toISOString(),
-    };
-    studentObjectiveProgress.push(newProgress);
-    return newProgress;
-  }
-
-  const current = studentObjectiveProgress[idx];
-  const nextProgressState = STAGE_PROGRESS[current.currentStageType];
-  const next = NEXT_STAGE[current.currentStageType];
-
-  const updated: ProgressType = {
-    ...current,
-    progressState: nextProgressState,
-    currentStageType: next ?? current.currentStageType,
-    updatedAt: new Date().toISOString(),
-  };
-
-  studentObjectiveProgress[idx] = updated;
-  return updated;
+  const raw = await apiFetch<BackendProgress>(`/objectives/${encodeURIComponent(itemId)}/advance`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return adaptProgress(raw);
 }
 
 // ============ AWARDS ============
 
-export async function listAwards(studentId: string): Promise<Award[]> {
-  await delay(50);
-  const awardIds = studentAwards[studentId] ?? [];
-  return awards.filter((award) => awardIds.includes(award.id));
+export async function listAwards(_studentId: string): Promise<Award[]> {
+  return apiFetch<Award[]>("/awards");
 }
 
-export async function listAwardsForCourse(studentId: string, courseId: string): Promise<Award[]> {
-  await delay(50);
-  const awardIds = studentAwards[studentId] ?? [];
-  return awards.filter((award) => awardIds.includes(award.id) && award.courseId === courseId);
+export async function listAwardsForCourse(_studentId: string, courseId: string): Promise<Award[]> {
+  return apiFetch<Award[]>(`/courses/${encodeURIComponent(courseId)}/awards`);
 }
 
 // ============ FEEDBACK ============
 
-export async function listFeedback(studentId: string): Promise<FeedbackItem[]> {
-  await delay(50);
-  const studentCourses = courses.filter((course) =>
-    course.enrolledStudentIds.includes(studentId)
-  );
-  const courseIds = studentCourses.map((c) => c.id);
-  return feedbackItems.filter((fb) => courseIds.includes(fb.courseId));
+export async function listFeedback(_studentId: string): Promise<FeedbackItem[]> {
+  return apiFetch<FeedbackItem[]>("/feedback");
 }
 
 export async function listFeedbackForCourse(courseId: string): Promise<FeedbackItem[]> {
-  await delay(50);
-  return feedbackItems.filter((fb) => fb.courseId === courseId);
+  return apiFetch<FeedbackItem[]>(`/courses/${encodeURIComponent(courseId)}/feedback`);
 }
 
 // ============ CHAT THREADS ============
@@ -259,86 +273,28 @@ export async function listChatThreadsForUnit(params: {
   unitId: string;
   studentId: string;
 }): Promise<ThreadWithProgress[]> {
-  await delay(50);
-  const unitThreads = chatThreads.filter(
-    (thread) => thread.courseId === params.courseId && thread.unitId === params.unitId
-  );
-
-  const progressList = studentObjectiveProgress.filter(
-    (p) => p.studentId === params.studentId
-  );
-  const progressMap = buildProgressMap(progressList);
-
-  // Build objective order map
-  const objectiveMap: Record<string, Objective> = {};
-  objectives.forEach((obj) => {
-    objectiveMap[obj.id] = obj;
-  });
-
-  // Build stage map for looking up current stage IDs
-  const stagesByItem: Record<string, ItemStage[]> = {};
-  itemStages.forEach((s) => {
-    if (!stagesByItem[s.itemId]) stagesByItem[s.itemId] = [];
-    stagesByItem[s.itemId].push(s);
-  });
-
-  const hasStudentMessages = (threadId: string) =>
-    chatMessages.some((m) => m.threadId === threadId && m.role === "student");
-
-  return unitThreads.map((thread) => {
-    const objective = objectiveMap[thread.objectiveId];
-    const rawProgressState = getProgressState(thread.objectiveId, progressMap);
-    const progressState: ProgressState = hasStudentMessages(thread.id) ? rawProgressState : "not_started";
-
-    const currentStageType: StageType = progressMap[thread.objectiveId]?.currentStageType ?? "begin";
-    const stages = stagesByItem[thread.objectiveId] ?? [];
-    const currentStage = stages.find((s) => s.stageType === currentStageType);
-
-    return {
-      ...thread,
-      progressState,
-      currentStageType,
-      currentStageId: currentStage?.id ?? "",
-      order: objective?.order ?? 0,
-    };
-  });
+  return apiFetch<ThreadWithProgress[]>(`/units/${encodeURIComponent(params.unitId)}/threads`);
 }
 
 export async function getThread(threadId: string): Promise<ChatThread | undefined> {
-  await delay(50);
-  return chatThreads.find((thread) => thread.id === threadId);
+  try {
+    return await apiFetch<ChatThread>(`/threads/${encodeURIComponent(threadId)}`);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("API 404")) return undefined;
+    throw e;
+  }
 }
 
 export async function getThreadWithProgress(
   threadId: string,
-  studentId: string
+  _studentId: string
 ): Promise<ThreadWithProgress | undefined> {
-  await delay(50);
-  const thread = chatThreads.find((t) => t.id === threadId);
-  if (!thread) return undefined;
-
-  const progress = studentObjectiveProgress.find(
-    (p) => p.studentId === studentId && p.objectiveId === thread.objectiveId
-  );
-
-  const objective = objectives.find((obj) => obj.id === thread.objectiveId);
-  const rawProgressState = progress?.progressState ?? "not_started";
-  const hasStudent = chatMessages.some(
-    (m) => m.threadId === threadId && m.role === "student"
-  );
-  const progressState: ProgressState = hasStudent ? rawProgressState : "not_started";
-
-  const currentStageType: StageType = progress?.currentStageType ?? "begin";
-  const stages = itemStages.filter((s) => s.itemId === thread.objectiveId);
-  const currentStage = stages.find((s) => s.stageType === currentStageType);
-
-  return {
-    ...thread,
-    progressState,
-    currentStageType,
-    currentStageId: currentStage?.id ?? "",
-    order: objective?.order ?? 0,
-  };
+  try {
+    return await apiFetch<ThreadWithProgress>(`/threads/${encodeURIComponent(threadId)}/with-progress`);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("API 404")) return undefined;
+    throw e;
+  }
 }
 
 // ============ CHAT MESSAGES ============
@@ -347,14 +303,8 @@ export async function listMessages(
   threadId: string,
   stageId?: string
 ): Promise<ChatMessage[]> {
-  await delay(50);
-  return chatMessages
-    .filter(
-      (msg) =>
-        msg.threadId === threadId &&
-        (stageId == null || msg.stageId === stageId)
-    )
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const qs = stageId ? `?stageId=${encodeURIComponent(stageId)}` : "";
+  return apiFetch<ChatMessage[]>(`/threads/${encodeURIComponent(threadId)}/messages${qs}`);
 }
 
 export async function sendMessage(
@@ -363,71 +313,52 @@ export async function sendMessage(
   stageId?: string,
   stageType?: string
 ): Promise<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }> {
-  await delay(100);
-  const newMessage: ChatMessage = {
-    id: `msg_${Date.now()}`,
-    threadId,
-    stageId,
-    role: "student",
-    content,
-    createdAt: new Date().toISOString(),
-  };
-  chatMessages.push(newMessage);
-
-  // Update progress when student sends first message in a new stage
-  if (stageId) {
-    const stage = itemStages.find((s) => s.id === stageId);
-    const thread = chatThreads.find((t) => t.id === threadId);
-    if (stage && thread) {
-      const progressIdx = studentObjectiveProgress.findIndex(
-        (p) => p.objectiveId === thread.objectiveId
-      );
-      if (progressIdx !== -1) {
-        const progress = studentObjectiveProgress[progressIdx];
-        if (stage.stageType === "walkthrough" && progress.progressState === "not_started") {
-          studentObjectiveProgress[progressIdx] = {
-            ...progress,
-            progressState: "walkthrough_started",
-            updatedAt: new Date().toISOString(),
-          };
-        } else if (stage.stageType === "challenge" && progress.progressState === "walkthrough_complete") {
-          studentObjectiveProgress[progressIdx] = {
-            ...progress,
-            progressState: "challenge_started",
-            updatedAt: new Date().toISOString(),
-          };
-        }
-      }
+  return apiFetch<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }>(
+    `/threads/${encodeURIComponent(threadId)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        content,
+        ...(stageId ? { stageId } : {}),
+        ...(stageType ? { stageType } : {}),
+      }),
     }
-  }
-
-  // Mock tutor reply for walkthrough/challenge stages
-  let tutorMessage: ChatMessage | null = null;
-  if (stageType === "walkthrough" || stageType === "challenge") {
-    tutorMessage = {
-      id: `msg_${Date.now() + 1}`,
-      threadId,
-      stageId,
-      role: "tutor",
-      content: "Great response! Let me guide you through the next step.",
-      createdAt: new Date().toISOString(),
-    };
-    chatMessages.push(tutorMessage);
-  }
-
-  return { studentMessage: newMessage, tutorMessage };
+  );
 }
 
-// ============ KNOWLEDGE TOPICS (teacher-visible) ============
+// ============ KNOWLEDGE TOPICS ============
 
 export async function listKnowledgeTopics(unitId: string): Promise<KnowledgeTopic[]> {
-  await delay(50);
-  return knowledgeTopics
-    .filter((t) => t.unitId === unitId)
-    .sort((a, b) => a.order - b.order);
+  try {
+    return await apiFetch<KnowledgeTopic[]>(`/units/${encodeURIComponent(unitId)}/knowledge-topics`);
+  } catch {
+    // fall back to mock if not yet seeded
+    await delay(50);
+    return knowledgeTopics
+      .filter((t) => t.unitId === unitId)
+      .sort((a, b) => a.order - b.order);
+  }
 }
 
 // ============ KNOWLEDGE QUEUE (student-facing) ============
+
+type BackendKnowledgeQueueItem = {
+  id: string;
+  unitId: string;
+  studentId: string;
+  knowledgeTopicId: string;
+  labelIndex: number;
+  order: number;
+  status: "pending" | "active" | "completed_correct" | "completed_incorrect";
+  is_correct?: boolean;
+  questionPrompt: string;
+  createdAt: string;
+};
+
+type BackendCompleteResult = {
+  updatedItem: BackendKnowledgeQueueItem;
+  newQueueItem?: BackendKnowledgeQueueItem;
+};
 
 /** Returns pre-existing + session messages for a knowledge queue item. */
 export async function listKnowledgeMessages(queueItemId: string): Promise<ChatMessage[]> {
@@ -461,20 +392,28 @@ export async function sendKnowledgeMessage(
 /** Returns visible (non-pending) queue items for the student, sorted by order. */
 export async function getKnowledgeQueue(
   unitId: string,
-  studentId: string
+  _studentId: string
 ): Promise<KnowledgeQueueItem[]> {
-  await delay(50);
-  const key = `${unitId}_${studentId}`;
-  const queue = studentKnowledgeQueues[key] ?? [];
-  return queue
-    .filter((item) => item.status !== "pending")
-    .sort((a, b) => a.order - b.order);
+  try {
+    const items = await apiFetch<BackendKnowledgeQueueItem[]>(
+      `/units/${encodeURIComponent(unitId)}/knowledge-queue`
+    );
+    return items.sort((a, b) => a.order - b.order);
+  } catch {
+    // fall back to mock if not yet seeded
+    await delay(50);
+    const key = `${unitId}_${_studentId}`;
+    const queue = studentKnowledgeQueues[key] ?? [];
+    return queue
+      .filter((item) => item.status !== "pending")
+      .sort((a, b) => a.order - b.order);
+  }
 }
 
 /**
  * Grade a knowledge queue item.
  * - Updates item status to completed_correct or completed_incorrect.
- * - If incorrect: appends a new pending retry item for the same topic.
+ * - If incorrect: backend creates a retry item.
  * - Advances the next pending item to "active".
  */
 export async function completeKnowledgeAttempt(
@@ -483,211 +422,214 @@ export async function completeKnowledgeAttempt(
   queueItemId: string,
   is_correct: boolean
 ): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }> {
-  await delay(100);
-  const key = `${unitId}_${studentId}`;
-  if (!studentKnowledgeQueues[key]) {
-    throw new Error(`No queue found for ${key}`);
-  }
-  const queue = studentKnowledgeQueues[key];
+  try {
+    const result = await apiFetch<BackendCompleteResult>(
+      `/knowledge-queue/${encodeURIComponent(queueItemId)}/complete`,
+      {
+        method: "POST",
+        body: JSON.stringify({ is_correct }),
+      }
+    );
+    return result;
+  } catch {
+    // fall back to mock
+    await delay(100);
+    const key = `${unitId}_${studentId}`;
+    if (!studentKnowledgeQueues[key]) {
+      throw new Error(`No queue found for ${key}`);
+    }
+    const queue = studentKnowledgeQueues[key];
+    const idx = queue.findIndex((item) => item.id === queueItemId);
+    if (idx === -1) throw new Error(`Queue item ${queueItemId} not found`);
 
-  const idx = queue.findIndex((item) => item.id === queueItemId);
-  if (idx === -1) {
-    throw new Error(`Queue item ${queueItemId} not found`);
-  }
-
-  // Update the graded item
-  queue[idx] = {
-    ...queue[idx],
-    status: is_correct ? "completed_correct" : "completed_incorrect",
-    is_correct,
-  };
-  const updatedItem = queue[idx];
-
-  let newQueueItem: KnowledgeQueueItem | undefined;
-
-  // If incorrect, enqueue a retry
-  if (!is_correct) {
-    const maxLabelIndex = Math.max(...queue.map((i) => i.labelIndex));
-    const maxOrder = Math.max(...queue.map((i) => i.order));
-    newQueueItem = {
-      id: `kqi_retry_${Date.now()}`,
-      unitId,
-      studentId,
-      knowledgeTopicId: queue[idx].knowledgeTopicId,
-      labelIndex: maxLabelIndex + 1,
-      order: maxOrder + 1,
-      status: "pending",
-      is_correct: undefined,
-      questionPrompt: queue[idx].questionPrompt,
-      createdAt: new Date().toISOString(),
+    queue[idx] = {
+      ...queue[idx],
+      status: is_correct ? "completed_correct" : "completed_incorrect",
+      is_correct,
     };
-    queue.push(newQueueItem);
-  }
+    const updatedItem = queue[idx];
+    let newQueueItem: KnowledgeQueueItem | undefined;
 
-  // Advance the next pending item to active
-  const nextPending = queue.find((item) => item.status === "pending");
-  if (nextPending) {
-    const nextIdx = queue.findIndex((item) => item.id === nextPending.id);
-    queue[nextIdx] = { ...queue[nextIdx], status: "active" };
-  }
+    if (!is_correct) {
+      const maxLabelIndex = Math.max(...queue.map((i) => i.labelIndex));
+      const maxOrder = Math.max(...queue.map((i) => i.order));
+      newQueueItem = {
+        id: `kqi_retry_${Date.now()}`,
+        unitId,
+        studentId,
+        knowledgeTopicId: queue[idx].knowledgeTopicId,
+        labelIndex: maxLabelIndex + 1,
+        order: maxOrder + 1,
+        status: "pending",
+        is_correct: undefined,
+        questionPrompt: queue[idx].questionPrompt,
+        createdAt: new Date().toISOString(),
+      };
+      queue.push(newQueueItem);
+    }
 
-  return { updatedItem, newQueueItem };
+    const nextPending = queue.find((item) => item.status === "pending");
+    if (nextPending) {
+      const nextIdx = queue.findIndex((item) => item.id === nextPending.id);
+      queue[nextIdx] = { ...queue[nextIdx], status: "active" };
+    }
+
+    return { updatedItem, newQueueItem };
+  }
 }
 
 export async function getKnowledgeProgress(
   unitId: string,
   studentId: string
 ): Promise<KnowledgeProgress> {
-  await delay(50);
-  const key = `${unitId}_${studentId}`;
-  const queue = studentKnowledgeQueues[key] ?? [];
-  const topics = knowledgeTopics.filter((t) => t.unitId === unitId);
-  return computeKnowledgeProgress(unitId, topics, queue);
-}
-
-// ============ TEACHER: OBJECTIVES ============
-
-export async function listTeacherObjectives(unitId: string): Promise<Objective[]> {
-  await delay(100);
-  return teacherObjectivesMap[unitId] ?? [];
-}
-
-export async function updateObjectiveEnabled(
-  objectiveId: string,
-  enabled: boolean
-): Promise<Objective> {
-  await delay(100);
-  for (const objs of Object.values(teacherObjectivesMap)) {
-    const obj = objs.find((o) => o.id === objectiveId);
-    if (obj) {
-      obj.enabled = enabled;
-      return { ...obj };
-    }
+  try {
+    return await apiFetch<KnowledgeProgress>(
+      `/units/${encodeURIComponent(unitId)}/knowledge-progress`
+    );
+  } catch {
+    // fall back to mock
+    await delay(50);
+    const key = `${unitId}_${studentId}`;
+    const queue = studentKnowledgeQueues[key] ?? [];
+    const topics = knowledgeTopics.filter((t) => t.unitId === unitId);
+    return computeKnowledgeProgress(unitId, topics, queue);
   }
-  throw new Error(`Objective ${objectiveId} not found`);
 }
 
-// ============ TEACHER: UNIT UPLOAD ============
+// ============ TEACHER: CURRENT INSTRUCTOR ============
 
-export async function createUnitFromUpload(
-  courseId: string,
-  _files: File[],
-  unitTitle?: string
-): Promise<{ unit: Unit; objectives: Objective[] }> {
-  // Simulate long-running LLM processing
-  await delay(2500);
-
-  const existingUnits = teacherUnitsMap[courseId] ?? [];
-  const newUnitNum = existingUnits.length + 1;
-  const newUnitId = `u${courseId}-${newUnitNum}`;
-
-  const unit: Unit = {
-    id: newUnitId,
-    courseId,
-    title: unitTitle?.trim() || `Unit ${newUnitNum}: Uploaded Content`,
-    status: "active",
-  };
-
-  const generatedObjectives: Objective[] = [
-    { id: `${newUnitId}-o1`, unitId: newUnitId, kind: "knowledge", title: "Key Concepts Overview", description: "Identify and define the core concepts from the uploaded materials.", order: 1, enabled: true },
-    { id: `${newUnitId}-o2`, unitId: newUnitId, kind: "knowledge", title: "Terminology and Definitions", description: "Master the essential vocabulary introduced in the documents.", order: 2, enabled: true },
-    { id: `${newUnitId}-o3`, unitId: newUnitId, kind: "knowledge", title: "Historical Context", description: "Understand the background and context of the material.", order: 3, enabled: true },
-    { id: `${newUnitId}-o4`, unitId: newUnitId, kind: "skill", title: "Critical Analysis", description: "Analyze arguments and evidence presented in the source materials.", order: 4, enabled: true },
-    { id: `${newUnitId}-o5`, unitId: newUnitId, kind: "skill", title: "Synthesis and Connection", description: "Connect ideas across multiple documents to build understanding.", order: 5, enabled: true },
-    { id: `${newUnitId}-o6`, unitId: newUnitId, kind: "capstone", title: "Comprehensive Assessment", description: "Demonstrate mastery by applying concepts to a novel scenario.", order: 6, enabled: true },
-  ];
-
-  if (!teacherUnitsMap[courseId]) {
-    teacherUnitsMap[courseId] = [];
-  }
-  teacherUnitsMap[courseId].push(unit);
-  teacherObjectivesMap[newUnitId] = generatedObjectives;
-
-  return { unit, objectives: generatedObjectives };
-}
-
-export async function updateUnitTitle(
-  unitId: string,
-  title: string
-): Promise<Unit> {
-  await delay(100);
-  for (const units of Object.values(teacherUnitsMap)) {
-    const unit = units.find((u) => u.id === unitId);
-    if (unit) {
-      unit.title = title;
-      return { ...unit };
-    }
-  }
-  throw new Error(`Unit ${unitId} not found`);
-}
-
-// ============ TEACHER: STUDENTS ============
-
-export async function listTeacherStudents(): Promise<Student[]> {
-  await delay(100);
-  return [...teacherStudents];
-}
-
-// ============ TEACHER: ROSTER ============
-
-export async function getCourseRoster(courseId: string): Promise<string[]> {
-  await delay(100);
-  return courseRosterMap[courseId] ?? [];
-}
-
-export async function updateCourseRoster(
-  courseId: string,
-  studentIds: string[]
-): Promise<{ studentIds: string[] }> {
-  await delay(150);
-  courseRosterMap[courseId] = [...studentIds];
-  const tc = teacherCourses.find((c) => c.id === courseId);
-  if (tc) tc.studentCount = studentIds.length;
-  return { studentIds };
+export async function getCurrentInstructor(): Promise<Student> {
+  return apiFetch<Student>("/current-instructor", undefined, "instructor");
 }
 
 // ============ TEACHER: COURSES ============
+
+export async function listInstructorCourses(): Promise<Course[]> {
+  return apiFetch<Course[]>("/instructor/courses", undefined, "instructor");
+}
 
 export async function createCourse(params: {
   title: string;
   icon: string;
   studentIds: string[];
 }): Promise<TeacherCourse> {
-  await delay(200);
-  const newId = `course-${Date.now()}`;
-  const newCourse: TeacherCourse = {
-    id: newId,
-    title: params.title,
+  const course = await apiFetch<Course>("/courses", {
+    method: "POST",
+    body: JSON.stringify({ title: params.title }),
+  }, "instructor");
+
+  // Enroll students if any provided
+  if (params.studentIds.length > 0) {
+    await apiFetch(`/courses/${encodeURIComponent(course.id)}/roster`, {
+      method: "PUT",
+      body: JSON.stringify({ studentIds: params.studentIds }),
+    }, "instructor");
+  }
+
+  return {
+    id: course.id,
+    title: course.title,
     studentCount: params.studentIds.length,
     icon: params.icon,
   };
-  teacherCourses.push(newCourse);
-  sidebarCourses.push({
-    id: newId,
-    title: params.title,
-    icon: params.icon,
-    instructorIds: [mockInstructor.id],
-    enrolledStudentIds: [],
-  });
-  courseRosterMap[newId] = [...params.studentIds];
-  teacherUnitsMap[newId] = [];
-  return newCourse;
 }
 
-// ============ TEACHER: NEW STUDENT ============
+// ============ TEACHER: ROSTER ============
+
+export async function getCourseRoster(courseId: string): Promise<string[]> {
+  const result = await apiFetch<{ courseId: string; studentIds: string[] }>(
+    `/courses/${encodeURIComponent(courseId)}/roster`,
+    undefined,
+    "instructor"
+  );
+  return result.studentIds;
+}
+
+export async function updateCourseRoster(
+  courseId: string,
+  studentIds: string[]
+): Promise<{ studentIds: string[] }> {
+  const result = await apiFetch<{ courseId: string; studentIds: string[] }>(
+    `/courses/${encodeURIComponent(courseId)}/roster`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ studentIds }),
+    },
+    "instructor"
+  );
+  return { studentIds: result.studentIds };
+}
+
+// ============ TEACHER: STUDENTS ============
+
+export async function listTeacherStudents(): Promise<Student[]> {
+  return apiFetch<Student[]>("/students", undefined, "instructor");
+}
 
 export async function createNewStudent(
   firstName: string,
   lastName: string,
-  email: string
+  _email: string
 ): Promise<Student> {
-  await delay(100);
-  const student: Student = {
-    id: `ts-new-${Date.now()}`,
-    name: `${firstName} ${lastName}`,
-    yearLabel: "New",
-  };
-  teacherStudents.push(student);
-  void email; // will be used by backend
-  return student;
+  return apiFetch<Student>("/students", {
+    method: "POST",
+    body: JSON.stringify({ name: `${firstName} ${lastName}` }),
+  }, "instructor");
+}
+
+// ============ TEACHER: UNITS ============
+
+export async function createUnitFromUpload(
+  courseId: string,
+  files: File[],
+  unitTitle?: string
+): Promise<{ unit: Unit; objectives: Objective[] }> {
+  const formData = new FormData();
+  formData.append("unitName", unitTitle?.trim() ?? "Untitled Unit");
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  // Build instructor headers without Content-Type (browser sets it for multipart)
+  const allHeaders = await buildHeaders("instructor");
+  const { "Content-Type": _ct, ...headers } = allHeaders; // strip Content-Type for multipart
+
+  const res = await fetch(`${BASE_URL}/courses/${encodeURIComponent(courseId)}/units/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API ${res.status}: ${body}`);
+  }
+
+  return res.json();
+}
+
+export async function updateUnitTitle(
+  unitId: string,
+  title: string
+): Promise<Unit> {
+  return apiFetch<Unit>(`/units/${encodeURIComponent(unitId)}/title`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  }, "instructor");
+}
+
+// ============ TEACHER: OBJECTIVES ============
+
+export async function listTeacherObjectives(unitId: string): Promise<Objective[]> {
+  return apiFetch<Objective[]>(`/units/${encodeURIComponent(unitId)}/objectives`, undefined, "instructor");
+}
+
+export async function updateObjectiveEnabled(
+  objectiveId: string,
+  enabled: boolean
+): Promise<Objective> {
+  return apiFetch<Objective>(`/objectives/${encodeURIComponent(objectiveId)}/enabled`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  }, "instructor");
 }
