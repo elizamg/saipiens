@@ -17,7 +17,7 @@ through an AI-enabled homework system."</i></p>
 ## Live App
 
 **App Link:**  
-[https://sapiens-pp4l.vercel.app/](https://sapiens-f402hfs6b-lizzyg2003-1130s-projects.vercel.app)
+[https://sapiens-pp4l.vercel.app/](https://sapiens-pp4l.vercel.app/)
 
 Or run locally:
 
