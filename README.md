@@ -15,7 +15,27 @@ through an AI-enabled homework system."</i></p>
 
 # Sprint 3 Progress
 
-## Testing Instructions (TODO)
+## Testing Instructions
+
+## Current Student Flow
+
+1. Click **Get Started**
+2. Log in
+3. Explore courses
+4. Enter a unit
+5. Look through questions at different stages of progress
+
+
+## Current Student Flow
+1. From login/ sign in click "i am an instructor"
+2. click on any courses to view them
+3. click new course
+4. name the course
+5. click students to add them to course
+6. click create course
+7. click new unit
+8. upload unit materials
+9. click or unclick learning objectives depending on what you want the students to see
 
 TODO
 
@@ -27,7 +47,8 @@ TODO
 
 ### Eliza - TODO
 
-TODO
+1. iterated on frontend lesson design based on group meeting conversation regarding the structure of knowledge objectives. Implemented a queue system that dynamically displays knowledge questions based on if it was answered right or wrong. Additionally, I took in feedback from teammates to get rid of the walkthrough component of the knowledge questions, only leaving that component for skills.
+2. Implemented the teacher frontend. Worked on teacher flow based on group discussions. Implemented flows for creating and editing courses and units. Iterated based on testing and feedback from the team.
 
 ### Brooke - TODO
 
