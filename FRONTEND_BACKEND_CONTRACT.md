@@ -241,7 +241,7 @@ Note: **knowledge** items are no longer part of `Objectives`. They use the separ
 - [ ] **Progress (skills)**: Per-objective and per-unit progress for a student; support **UnitProgress** (skill+capstone only). Support **advanceStage** to move a student forward.
 - [ ] **Awards**: List by student; optionally by student + course.
 - [ ] **Feedback**: List by student; list by course.
-- [ ] **Chat**: Threads for unit (with progress); get thread (with optional progress); list messages (optional filter by stage); send message and return created **ChatMessage**.
+- [x] **Chat**: Threads for unit (with progress); get thread (with optional progress); list messages (optional filter by stage); send message returns `{ studentMessage, tutorMessage | null }` with synchronous AI tutor reply.
 - [ ] **Teacher Objectives**: List objectives for a unit (with `description` and `enabled`); toggle `enabled` on an objective.
 - [ ] **Teacher Unit Upload**: Accept multipart file upload (up to 10 files) plus a `unitTitle` string field, process documents, return new `Unit` (with the provided title) + generated `Objective[]`.
 - [ ] **Teacher Courses**: Create a new course with title, icon, and initial roster.

@@ -51,7 +51,21 @@ Currently many errors are `{ "error": "..." }`.
 Both messages are persisted to DynamoDB before the response is returned.
 Remaining consideration: for very long AI calls, consider async with polling if Lambda timeout becomes an issue.
 
-## I) Hardening advanceStage
+## I) Teacher/Instructor routes (not yet implemented in Lambda)
+The frontend `api.ts` calls several instructor-facing routes that are not yet in the Lambda handler:
+- `GET /current-instructor` (dev: `X-Dev-Instructor-Id` + `X-Dev-Token`)
+- `GET /instructor/courses`
+- `POST /courses` (create course)
+- `GET/PUT /courses/{courseId}/roster`
+- `GET /students` (list all students for roster assignment)
+- `POST /students` (create student)
+- `PATCH /units/{unitId}/title`
+- `PATCH /objectives/{objectiveId}/enabled`
+- `POST /courses/{courseId}/units/upload` (multipart file → AI curriculum generation)
+
+These need to be added to `lambda_handler.py` before teacher flows work end-to-end.
+
+## K) Hardening advanceStage
 - Decide whether to block advancing beyond 3 stars with 400 vs returning capped progress.
 - Optionally validate that the currentStageType matches expected progression and prevent skipping.
 
