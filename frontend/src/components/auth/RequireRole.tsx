@@ -8,11 +8,16 @@ interface RequireRoleProps {
 
 /**
  * Route guard that checks the user's role from AuthContext.
- * Redirects students trying to access teacher pages to /home,
- * and teachers trying to access student pages to /teacher.
+ * - While auth is loading (session restore in progress), renders nothing.
+ * - If not authenticated, redirects to /login.
+ * - If wrong role, redirects to the correct home for their role.
  */
 export default function RequireRole({ role, children }: RequireRoleProps) {
-  const { role: currentRole } = useAuth();
+  const { role: currentRole, isLoading, isAuthenticated } = useAuth();
+
+  if (isLoading) return null;
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   if (currentRole !== role) {
     const redirectTo = currentRole === "instructor" ? "/teacher" : "/home";

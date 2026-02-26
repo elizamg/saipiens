@@ -29,6 +29,9 @@ export const GREEN_GRADIENT_VERTICAL = `linear-gradient(180deg, ${LAVENDER} 0%, 
 export const RADIAL_GREEN = `radial-gradient(circle, ${LAVENDER}, ${PRIMARY})`;
 export const WHITE_GREEN_GRADIENT = `linear-gradient(180deg, #ffffff, ${LAVENDER})`;
 
+// Error
+export const RED_500 = "#ef4444";
+
 // Neutral Colors
 export const WHITE = "#ffffff";
 export const GRAY_50 = "#f9fafb";

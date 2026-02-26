@@ -25,26 +25,37 @@ import { computeKnowledgeProgress } from "../utils/progress";
 // ============ REAL API CLIENT ============
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod";
-const DEV_STUDENT_ID = import.meta.env.VITE_DEV_STUDENT_ID ?? "";
-const DEV_INSTRUCTOR_ID = import.meta.env.VITE_DEV_INSTRUCTOR_ID ?? "";
-const DEV_TOKEN = import.meta.env.VITE_DEV_TOKEN ?? "";
 
-function buildHeaders(role: "student" | "instructor" = "student"): Record<string, string> {
+// Token provider — set by AuthContext on mount so api.ts can get a fresh JWT
+let _getToken: (() => Promise<string | null>) | null = null;
+
+export function setTokenProvider(fn: () => Promise<string | null>) {
+  _getToken = fn;
+}
+
+async function buildHeaders(role: "student" | "instructor" = "student"): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (role === "instructor") {
-    if (DEV_INSTRUCTOR_ID) {
-      headers["X-Dev-Instructor-Id"] = DEV_INSTRUCTOR_ID;
-    }
+
+  const token = _getToken ? await _getToken() : null;
+
+  if (token) {
+    // Real Cognito JWT auth
+    headers["Authorization"] = `Bearer ${token}`;
   } else {
-    if (DEV_STUDENT_ID) {
+    // Dev header fallback (DEV_AUTH_ENABLED=true on Lambda)
+    const DEV_STUDENT_ID = import.meta.env.VITE_DEV_STUDENT_ID ?? "";
+    const DEV_INSTRUCTOR_ID = import.meta.env.VITE_DEV_INSTRUCTOR_ID ?? "";
+    const DEV_TOKEN = import.meta.env.VITE_DEV_TOKEN ?? "";
+    if (role === "instructor" && DEV_INSTRUCTOR_ID) {
+      headers["X-Dev-Instructor-Id"] = DEV_INSTRUCTOR_ID;
+    } else if (role === "student" && DEV_STUDENT_ID) {
       headers["X-Dev-Student-Id"] = DEV_STUDENT_ID;
     }
+    if (DEV_TOKEN) headers["X-Dev-Token"] = DEV_TOKEN;
   }
-  if (DEV_TOKEN) {
-    headers["X-Dev-Token"] = DEV_TOKEN;
-  }
+
   return headers;
 }
 
@@ -52,7 +63,7 @@ async function apiFetch<T>(path: string, options?: RequestInit, role: "student" 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      ...buildHeaders(role),
+      ...(await buildHeaders(role)),
       ...(options?.headers ?? {}),
     },
   });
@@ -572,9 +583,8 @@ export async function createUnitFromUpload(
   }
 
   // Build instructor headers without Content-Type (browser sets it for multipart)
-  const headers: Record<string, string> = {};
-  if (DEV_INSTRUCTOR_ID) headers["X-Dev-Instructor-Id"] = DEV_INSTRUCTOR_ID;
-  if (DEV_TOKEN) headers["X-Dev-Token"] = DEV_TOKEN;
+  const allHeaders = await buildHeaders("instructor");
+  const { "Content-Type": _ct, ...headers } = allHeaders; // strip Content-Type for multipart
 
   const res = await fetch(`${BASE_URL}/courses/${encodeURIComponent(courseId)}/units/upload`, {
     method: "POST",
