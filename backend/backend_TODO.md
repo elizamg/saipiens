@@ -43,12 +43,13 @@ Currently many errors are `{ "error": "..." }`.
 - Add structured logs (request id, route, student id, latency).
 - Consider tracing (X-Ray) if needed.
 
-## H) Background tutor replies
-`sendMessage` currently persists the student message only.
-Before production, define the tutor/AI response pipeline:
-- synchronous reply (simple) vs async (recommended)
-- persistence of tutor messages
-- metadata fields (earnedStars, completion messages) when relevant.
+## H) ~~Background tutor replies~~ ✅ DONE
+`sendMessage` now invokes the AI tutor synchronously and returns `{ studentMessage, tutorMessage }`.
+- `walkthrough` → `scaffolded_question_step` (Gemini 3 Flash)
+- `challenge` + `knowledge` → `grade_info`
+- `challenge` + `skill`/`capstone` → `grade_skill`
+Both messages are persisted to DynamoDB before the response is returned.
+Remaining consideration: for very long AI calls, consider async with polling if Lambda timeout becomes an issue.
 
 ## I) Hardening advanceStage
 - Decide whether to block advancing beyond 3 stars with 400 vs returning capped progress.

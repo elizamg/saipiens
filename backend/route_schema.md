@@ -85,7 +85,10 @@ Identity:
 
 ### Messages
 - **GET** `/threads/{threadId}/messages?stageId=...` → `ChatMessage[]` (sorted by createdAt asc)
-- **POST** `/threads/{threadId}/messages` body: `{ "content": string, "stageId"?: string }` → created `ChatMessage`
+- **POST** `/threads/{threadId}/messages`
+  - Body: `{ "content": string, "stageId"?: string, "stageType"?: "walkthrough" | "challenge" }`
+  - Response: `{ "studentMessage": ChatMessage, "tutorMessage": ChatMessage | null }`
+  - `stageType` drives AI pipeline selection: `walkthrough` → scaffolded tutor, `challenge` + objective `kind` → grading pipeline. `tutorMessage` is `null` when no pipeline applies (e.g. `begin` stage or unknown `stageType`).
 
 ---
 

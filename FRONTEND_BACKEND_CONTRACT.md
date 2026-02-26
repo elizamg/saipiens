@@ -149,7 +149,7 @@ Note: **knowledge** items are no longer part of `Objectives`. They use the separ
 | Frontend call | Expected backend behavior |
 |---------------|---------------------------|
 | `listMessages(threadId, stageId?)` | Messages in the thread; if `stageId` is provided, filter to that stage. **Sorted by `createdAt` ascending.** Response: **ChatMessage[]**. |
-| `sendMessage(threadId, content, stageId?)` | Create a student message; backend should persist it and (if applicable) trigger tutor/AI reply. Response: **ChatMessage** (the created message). |
+| `sendMessage(threadId, content, stageId?, stageType?)` | Create a student message and trigger the AI tutor pipeline. `stageType` (`"walkthrough"` \| `"challenge"`) tells the backend which pipeline to run. Response: `{ studentMessage: ChatMessage, tutorMessage: ChatMessage \| null }`. `tutorMessage` is `null` only when no pipeline applies (e.g. `begin` stage). |
 
 ### 3.12 Teacher Objectives
 

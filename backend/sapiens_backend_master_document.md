@@ -21,7 +21,7 @@ The Sapiens backend is a fully serverless architecture built on AWS.
 ## High-Level Topology
 
 → API Gateway (HTTP API v2)\
-→ Lambda (`sapiens-api`, Python 3.14)\
+→ Lambda (`sapiens-api`, Python 3.12)\
 → DynamoDB (multi-table design)
 
 All routes share a single Lambda integration.
@@ -33,7 +33,7 @@ All routes share a single Lambda integration.
 ## Cloud Stack
 
 -   API Gateway: HTTP API (v2)
--   Lambda Runtime: Python 3.12
+-   Lambda Runtime: Python 3.12 (manylinux2014_x86_64 compiled deps required)
 -   Database: DynamoDB (multi-table, access-pattern driven)
 -   Authentication: Cognito User Pool + JWT Authorizer
 -   Billing Mode: On-demand (PAY_PER_REQUEST)
@@ -58,11 +58,11 @@ All routes share a single Lambda integration.
 
 User Pool ID:
 
-    us-west-1_YCOEOrnke
+    us-west-1_pzs7P5vGg
 
 Issuer:
 
-    https://cognito-idp.us-west-1.amazonaws.com/us-west-1_YCOEOrnke
+    https://cognito-idp.us-west-1.amazonaws.com/us-west-1_pzs7P5vGg
 
 Only IdToken is used for API Gateway validation.
 
@@ -263,9 +263,28 @@ All major domain surfaces are implemented:
 -   Objectives
 -   Stages
 -   Progress
--   Chat
+-   Chat (with synchronous AI tutor pipeline)
 -   Awards
 -   Feedback
+
+## AI Tutor Pipeline
+
+`POST /threads/{threadId}/messages` now invokes the AI tutor synchronously:
+
+-   `walkthrough` stage → `scaffolded_question_step` (Gemini 3 Flash) walks the student through the problem step by step
+-   `challenge` stage + `knowledge` objective → `grade_info` grades a factual recall answer
+-   `challenge` stage + `skill`/`capstone` objective → `grade_skill` grades an applied skill answer
+
+Response shape: `{ "studentMessage": ChatMessage, "tutorMessage": ChatMessage | null }`
+
+Pipeline parameters:
+-   `subject` = course title (`Courses.title`)
+-   `grade` = student year label (`Students.yearLabel`)
+-   `information`/`skill`/`question` = objective title (`Objectives.title`)
+
+Model: `gemini-3-flash-preview` via Google GenAI SDK (`SAIPIENS_GEMINI_API_KEY` Lambda env var).
+
+Lambda timeout is 60s; memory is 512MB.
 
 ------------------------------------------------------------------------
 
