@@ -1,11 +1,21 @@
+import base64
+import cgi
+import io
 import json
 import os
+import sys
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
+
+# Add backend_code to path so pipeline modules can import `utils` correctly
+_BACKEND_CODE_DIR = os.path.join(os.path.dirname(__file__), "backend_code")
+if _BACKEND_CODE_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_CODE_DIR)
 
 dynamodb = boto3.resource("dynamodb")
 
@@ -36,22 +46,29 @@ IDX = {
 
     "ITEM_STAGES_BY_ITEM": os.environ["ITEM_STAGES_BY_ITEM_INDEX"],
     "UNIT_THREADS": os.environ["UNIT_THREADS_INDEX"],
+    "INSTRUCTOR_COURSES": os.environ["INSTRUCTOR_COURSES_INDEX"],
+    "COURSE_ENROLLMENTS": "CourseEnrollmentsIndex",
 }
 
-# ---- Dev auth (Option A) ----
+# ---- Dev auth (Option A) — students ----
 DEV_AUTH_ENABLED = os.environ.get("DEV_AUTH_ENABLED", "false").lower() == "true"
 DEV_AUTH_HEADER = os.environ.get("DEV_AUTH_HEADER", "X-Dev-Student-Id")
 DEV_AUTH_TOKEN = os.environ.get("DEV_AUTH_TOKEN")  # optional shared secret
+
+# ---- Dev auth — instructors ----
+DEV_INSTRUCTOR_ENABLED = os.environ.get("DEV_INSTRUCTOR_ENABLED", "false").lower() == "true"
+DEV_INSTRUCTOR_HEADER = os.environ.get("DEV_INSTRUCTOR_HEADER", "X-Dev-Instructor-Id")
+DEV_INSTRUCTOR_TOKEN = os.environ.get("DEV_AUTH_TOKEN")  # reuse same shared secret
 
 # ---- CORS ----
 CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*")
 CORS_ALLOW_HEADERS = os.environ.get(
     "CORS_ALLOW_HEADERS",
-    "Content-Type,Authorization,X-Dev-Student-Id,X-Dev-Token",
+    "Content-Type,Authorization,X-Dev-Student-Id,X-Dev-Instructor-Id,X-Dev-Token",
 )
 CORS_ALLOW_METHODS = os.environ.get(
     "CORS_ALLOW_METHODS",
-    "GET,POST,PUT,DELETE,OPTIONS",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 )
 
 # ---- Helpers ----
@@ -192,6 +209,24 @@ def effective_student_id(event) -> str | None:
     if DEV_AUTH_TOKEN:
         tok = header(event, "X-Dev-Token")
         if tok != DEV_AUTH_TOKEN:
+            return None
+
+    return dev_id
+
+
+def effective_instructor_id(event) -> str | None:
+    """Return the authenticated instructor id, or None if not authorized."""
+    # In production, instructors would have their own JWT claim; for now dev-header only.
+    if not DEV_INSTRUCTOR_ENABLED:
+        return None
+
+    dev_id = header(event, DEV_INSTRUCTOR_HEADER)
+    if not dev_id:
+        return None
+
+    if DEV_INSTRUCTOR_TOKEN:
+        tok = header(event, "X-Dev-Token")
+        if tok != DEV_INSTRUCTOR_TOKEN:
             return None
 
     return dev_id
@@ -758,6 +793,107 @@ def handle_list_messages(event, thread_id: str):
     return resp(200, items)
 
 
+def _get_thread_context(thread_id: str, student_id: str):
+    """Return (thread, course, objective, stage) dicts needed for pipeline calls, or None on error."""
+    threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
+    thread = threads_tbl.get_item(Key={"id": thread_id}).get("Item")
+    if not thread:
+        return None
+
+    objective_id = thread.get("objectiveId")
+    course_id = thread.get("courseId")
+    if not objective_id or not course_id:
+        return None
+
+    objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
+    objective = objectives_tbl.get_item(Key={"id": objective_id}).get("Item")
+    if not objective:
+        return None
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+    if not course:
+        return None
+
+    students_tbl = dynamodb.Table(T["STUDENTS"])
+    student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
+
+    return {
+        "thread": thread,
+        "course": course,
+        "objective": objective,
+        "student": student,
+    }
+
+
+def _load_conversation_history(thread_id: str, stage_id: str | None) -> list[dict]:
+    """Load prior messages for this thread/stage as [{"role": ..., "content": ...}]."""
+    msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+    items = query_all(
+        msgs_tbl,
+        key_condition=Key("threadId").eq(thread_id),
+        scan_forward=True,
+    )
+    if stage_id:
+        items = [m for m in items if m.get("stageId") == stage_id]
+    return [{"role": m["role"], "content": m["content"]} for m in items]
+
+
+def _call_tutor_pipeline(stage_type: str, objective: dict, course: dict, student: dict, conversation: list[dict], student_message: str) -> str | None:
+    """Call the appropriate AI pipeline and return tutor reply text, or None on failure."""
+    subject = course.get("title", "Unknown Subject")
+    grade = student.get("yearLabel", "Unknown Grade")
+    objective_kind = objective.get("kind", "knowledge")
+    objective_title = objective.get("title", "")
+
+    # Find the stage prompt (question text) — last tutor message in conversation or objective title
+    question = objective_title
+    for m in reversed(conversation):
+        if m["role"] == "tutor":
+            question = m["content"]
+            break
+
+    try:
+        if stage_type == "walkthrough":
+            from scaffolded_question_pipeline import scaffolded_question_step
+            result = scaffolded_question_step(
+                subject=subject,
+                grade=grade,
+                question=question,
+                conversation=conversation,
+            )
+            return result.get("Tutor_Response") if result else None
+
+        elif stage_type == "challenge":
+            if objective_kind == "knowledge":
+                from info_question_pipeline import grade_info
+                _is_correct, feedback = grade_info(
+                    grade=grade,
+                    subject=subject,
+                    information=objective_title,
+                    question=question,
+                    answer=student_message,
+                )
+                return feedback
+            else:
+                # skill or capstone
+                from challenge_question_pipeline import grade_skill
+                _category, feedback = grade_skill(
+                    grade=grade,
+                    subject=subject,
+                    skill=objective_title,
+                    question=question,
+                    answer=student_message,
+                )
+                return feedback
+
+    except Exception as e:
+        print(f"[pipeline error] stage={stage_type} kind={objective_kind}: {e}")
+        return None
+
+    return None
+
+
 def handle_send_message(event, thread_id: str):
     student_id = effective_student_id(event)
     if not student_id:
@@ -772,11 +908,12 @@ def handle_send_message(event, thread_id: str):
 
     content = body.get("content")
     stage_id = body.get("stageId")
+    stage_type = body.get("stageType")  # client sends this to avoid extra DB lookup
     if not isinstance(content, str) or not content.strip():
         return resp(400, {"error": "Missing content"})
 
     now = iso_now()
-    msg = {
+    student_msg = {
         "id": str(uuid.uuid4()),
         "threadId": thread_id,
         "stageId": stage_id,
@@ -786,7 +923,7 @@ def handle_send_message(event, thread_id: str):
     }
 
     msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
-    msgs_tbl.put_item(Item=msg)
+    msgs_tbl.put_item(Item=student_msg)
 
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
     try:
@@ -798,7 +935,430 @@ def handle_send_message(event, thread_id: str):
     except Exception:
         pass
 
-    return resp(200, msg)
+    # Generate tutor reply for walkthrough and challenge stages
+    tutor_msg = None
+    if stage_type in ("walkthrough", "challenge"):
+        ctx = _get_thread_context(thread_id, student_id)
+        if ctx:
+            conversation = _load_conversation_history(thread_id, stage_id)
+            tutor_text = _call_tutor_pipeline(
+                stage_type=stage_type,
+                objective=ctx["objective"],
+                course=ctx["course"],
+                student=ctx["student"],
+                conversation=conversation,
+                student_message=content,
+            )
+            if tutor_text:
+                tutor_now = iso_now()
+                tutor_msg = {
+                    "id": str(uuid.uuid4()),
+                    "threadId": thread_id,
+                    "stageId": stage_id,
+                    "role": "tutor",
+                    "content": tutor_text,
+                    "createdAt": tutor_now,
+                }
+                msgs_tbl.put_item(Item=tutor_msg)
+
+    return resp(200, {"studentMessage": student_msg, "tutorMessage": tutor_msg})
+
+
+# ---- Instructor routes ----
+
+def handle_current_instructor(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    instructors_tbl = dynamodb.Table(T["INSTRUCTORS"])
+    got = instructors_tbl.get_item(Key={"id": instructor_id})
+    item = got.get("Item")
+
+    if item:
+        return resp(200, item)
+
+    # Auto-create instructor record on first access (dev convenience)
+    now = iso_now()
+    item = {
+        "id": instructor_id,
+        "name": "Instructor",
+        "avatarUrl": None,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    instructors_tbl.put_item(Item=item, ConditionExpression="attribute_not_exists(id)")
+    return resp(200, item)
+
+
+def handle_list_instructor_courses(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    items = query_all(
+        courses_tbl,
+        index_name=IDX["INSTRUCTOR_COURSES"],
+        key_condition=Key("instructorId").eq(instructor_id),
+        scan_forward=True,
+    )
+    return resp(200, items)
+
+
+def handle_create_course(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    title = (body.get("title") or "").strip() if isinstance(body, dict) else ""
+    if not title:
+        return resp(400, {"error": "Missing title"})
+
+    now = iso_now()
+    course_id = str(uuid.uuid4())
+    item = {
+        "id": course_id,
+        "title": title,
+        "instructorId": instructor_id,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    dynamodb.Table(T["COURSES"]).put_item(Item=item)
+    return resp(201, item)
+
+
+def handle_get_course_roster(event, course_id: str):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    enrollments_tbl = dynamodb.Table(T["ENROLLMENTS"])
+    items = query_all(
+        enrollments_tbl,
+        index_name=IDX["COURSE_ENROLLMENTS"],
+        key_condition=Key("courseId").eq(course_id),
+        scan_forward=True,
+    )
+    student_ids = [it["studentId"] for it in items if it.get("studentId")]
+    return resp(200, {"courseId": course_id, "studentIds": student_ids})
+
+
+def handle_update_course_roster(event, course_id: str):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    student_ids = body.get("studentIds") if isinstance(body, dict) else None
+    if not isinstance(student_ids, list):
+        return resp(400, {"error": "Missing studentIds array"})
+
+    enrollments_tbl = dynamodb.Table(T["ENROLLMENTS"])
+
+    # Remove existing enrollments for this course
+    existing = query_all(
+        enrollments_tbl,
+        index_name=IDX["COURSE_ENROLLMENTS"],
+        key_condition=Key("courseId").eq(course_id),
+        scan_forward=True,
+    )
+    with enrollments_tbl.batch_writer() as batch:
+        for item in existing:
+            batch.delete_item(Key={"studentId": item["studentId"], "courseId": course_id})
+
+    # Write new enrollments
+    now = iso_now()
+    with enrollments_tbl.batch_writer() as batch:
+        for sid in student_ids:
+            batch.put_item(Item={"studentId": sid, "courseId": course_id, "enrolledAt": now})
+
+    return resp(200, {"courseId": course_id, "studentIds": student_ids})
+
+
+def handle_list_students(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    students_tbl = dynamodb.Table(T["STUDENTS"])
+    result = students_tbl.scan()
+    items = result.get("Items", [])
+    # Handle pagination for scan
+    while result.get("LastEvaluatedKey"):
+        result = students_tbl.scan(ExclusiveStartKey=result["LastEvaluatedKey"])
+        items.extend(result.get("Items", []))
+    return resp(200, items)
+
+
+def handle_create_student(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    name = (body.get("name") or "").strip() if isinstance(body, dict) else ""
+    if not name:
+        return resp(400, {"error": "Missing name"})
+
+    now = iso_now()
+    student_id = str(uuid.uuid4())
+    item = {
+        "id": student_id,
+        "name": name,
+        "yearLabel": body.get("yearLabel") or "Year 1",
+        "avatarUrl": None,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    dynamodb.Table(T["STUDENTS"]).put_item(Item=item)
+    return resp(201, item)
+
+
+def handle_update_unit_title(event, unit_id: str):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    title = (body.get("title") or "").strip() if isinstance(body, dict) else ""
+    if not title:
+        return resp(400, {"error": "Missing title"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    now = iso_now()
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET title = :t, updatedAt = :u",
+        ExpressionAttributeValues={":t": title, ":u": now},
+    )
+    updated = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+    return resp(200, updated)
+
+
+def handle_update_objective_enabled(event, objective_id: str):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    if not isinstance(body, dict) or "enabled" not in body:
+        return resp(400, {"error": "Missing enabled field"})
+
+    enabled = bool(body["enabled"])
+
+    objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
+    got = objectives_tbl.get_item(Key={"id": objective_id})
+    if not got.get("Item"):
+        return resp_not_found("Objective")
+
+    now = iso_now()
+    objectives_tbl.update_item(
+        Key={"id": objective_id},
+        UpdateExpression="SET enabled = :e, updatedAt = :u",
+        ExpressionAttributeValues={":e": enabled, ":u": now},
+    )
+    updated = objectives_tbl.get_item(Key={"id": objective_id}).get("Item")
+    return resp(200, updated)
+
+
+def _parse_multipart(event) -> tuple[dict, list[tuple[str, bytes]]]:
+    """
+    Parse a multipart/form-data Lambda event.
+    Returns (fields: {name: value}, files: [(filename, bytes)]).
+    API Gateway v2 base64-encodes binary payloads when isBase64Encoded=True.
+    """
+    raw_body = event.get("body") or ""
+    is_b64 = event.get("isBase64Encoded", False)
+    body_bytes = base64.b64decode(raw_body) if is_b64 else raw_body.encode("utf-8")
+
+    content_type = header(event, "content-type") or ""
+
+    # Use cgi.FieldStorage to parse multipart
+    environ = {
+        "REQUEST_METHOD": "POST",
+        "CONTENT_TYPE": content_type,
+        "CONTENT_LENGTH": str(len(body_bytes)),
+    }
+    fp = io.BytesIO(body_bytes)
+    fs = cgi.FieldStorage(fp=fp, environ=environ, keep_blank_values=True)
+
+    fields: dict = {}
+    files: list[tuple[str, bytes]] = []
+
+    for key in fs.keys():
+        item = fs[key]
+        if isinstance(item, list):
+            items = item
+        else:
+            items = [item]
+        for part in items:
+            if part.filename:
+                files.append((part.filename, part.file.read()))
+            else:
+                fields[key] = part.value
+
+    return fields, files
+
+
+def handle_create_unit_from_upload(event, course_id: str):
+    """
+    POST /courses/{courseId}/units/upload
+    Multipart form: unitName (string), files (one or more PDFs).
+    Runs the Gen_Curriculum_Pipeline on the uploaded files, then persists:
+      - Unit
+      - Objectives (one per identified knowledge item)
+      - ItemStages (3 per objective: begin / walkthrough / challenge)
+      - Questions (one per objective, from the pipeline)
+    Returns { unit, objectives }.
+    """
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    try:
+        fields, files = _parse_multipart(event)
+    except Exception as e:
+        return resp(400, {"error": f"Failed to parse multipart body: {e}"})
+
+    if not files:
+        return resp(400, {"error": "No files uploaded"})
+
+    unit_name = (fields.get("unitName") or "Untitled Unit").strip()
+
+    # Verify the course exists
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+    if not course:
+        return resp_not_found("Course")
+
+    subject = course.get("title", "Unknown Subject")
+    grade = fields.get("grade") or "Unknown Grade"
+
+    # Write uploaded files to /tmp
+    tmp_paths: list[str] = []
+    try:
+        for filename, data in files:
+            suffix = os.path.splitext(filename)[1] or ".pdf"
+            fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+            try:
+                os.write(fd, data)
+            finally:
+                os.close(fd)
+            tmp_paths.append(tmp_path)
+
+        # Run the curriculum pipeline on each uploaded file
+        from gen_curriculum_pipeline import Gen_Curriculum_Pipeline
+        pipeline = Gen_Curriculum_Pipeline()
+
+        all_knowledge: list[dict] = []
+        for tmp_path in tmp_paths:
+            knowledge = pipeline.run(tmp_path, subject=subject, grade=grade)
+            all_knowledge.extend(knowledge)
+
+    except Exception as e:
+        return resp(500, {"error": f"Curriculum pipeline failed: {e}"})
+    finally:
+        for p in tmp_paths:
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
+
+    if not all_knowledge:
+        return resp(422, {"error": "No knowledge items identified from uploaded content"})
+
+    now = iso_now()
+    unit_id = str(uuid.uuid4())
+
+    # Persist the unit
+    unit_item = {
+        "id": unit_id,
+        "courseId": course_id,
+        "title": unit_name,
+        "order": 0,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    dynamodb.Table(T["UNITS"]).put_item(Item=unit_item)
+
+    # Persist objectives, stages, and questions
+    objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
+    stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
+    questions_tbl = dynamodb.Table(T["QUESTIONS"])
+
+    created_objectives: list[dict] = []
+    STAGE_TYPES = ["begin", "walkthrough", "challenge"]
+
+    for order_idx, k in enumerate(all_knowledge):
+        knowledge_type = k.get("knowledge_type", "information")
+        description = k.get("knowledge_description", "")
+        question_text = k.get("question", "")
+
+        # Map pipeline type to our kind
+        obj_kind = "skill" if knowledge_type == "skill" else "knowledge"
+
+        obj_id = str(uuid.uuid4())
+        obj_item = {
+            "id": obj_id,
+            "unitId": unit_id,
+            "title": description,
+            "kind": obj_kind,
+            "order": order_idx,
+            "enabled": True,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        objectives_tbl.put_item(Item=obj_item)
+        created_objectives.append(obj_item)
+
+        # Create 3 ItemStages for this objective
+        for stage_order, stage_type in enumerate(STAGE_TYPES):
+            stage_id = str(uuid.uuid4())
+            stage_item = {
+                "id": stage_id,
+                "itemId": obj_id,
+                "stageType": stage_type,
+                "order": stage_order,
+                "prompt": description,  # use the description as the stage prompt
+                "createdAt": now,
+            }
+            stages_tbl.put_item(Item=stage_item)
+
+        # Create one Question for this objective
+        if question_text:
+            q_id = str(uuid.uuid4())
+            q_item = {
+                "id": q_id,
+                "objectiveId": obj_id,
+                "text": question_text,
+                "kind": obj_kind,
+                "difficultyStars": 1,
+                "createdAt": now,
+            }
+            questions_tbl.put_item(Item=q_item)
+
+    return resp(201, {"unit": unit_item, "objectives": created_objectives})
 
 
 # ---- Main router ----
@@ -828,7 +1388,7 @@ def handler(event, context):
                 return resp(400, {"error": "Missing courseId"})
             return handle_list_units(course_id)
 
-        if method == "GET" and path.startswith("/courses/") and "/units" not in path and "/awards" not in path and "/feedback" not in path:
+        if method == "GET" and path.startswith("/courses/") and "/units" not in path and "/awards" not in path and "/feedback" not in path and "/roster" not in path:
             course_id = params.get("courseId")
             if not course_id:
                 return resp(400, {"error": "Missing courseId"})
@@ -947,6 +1507,53 @@ def handler(event, context):
             if not thread_id:
                 return resp(400, {"error": "Missing threadId"})
             return handle_get_thread(thread_id)
+
+        # ---- Instructor routes ----
+
+        if method == "GET" and path == "/current-instructor":
+            return handle_current_instructor(event)
+
+        if method == "GET" and path == "/instructor/courses":
+            return handle_list_instructor_courses(event)
+
+        if method == "POST" and path == "/courses":
+            return handle_create_course(event)
+
+        if method == "GET" and path.endswith("/roster") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_get_course_roster(event, course_id)
+
+        if method == "PUT" and path.endswith("/roster") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_update_course_roster(event, course_id)
+
+        if method == "GET" and path == "/students":
+            return handle_list_students(event)
+
+        if method == "POST" and path == "/students":
+            return handle_create_student(event)
+
+        if method == "PATCH" and path.endswith("/title") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_update_unit_title(event, unit_id)
+
+        if method == "PATCH" and path.endswith("/enabled") and path.startswith("/objectives/"):
+            objective_id = params.get("objectiveId")
+            if not objective_id:
+                return resp(400, {"error": "Missing objectiveId"})
+            return handle_update_objective_enabled(event, objective_id)
+
+        if method == "POST" and path.endswith("/units/upload") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_create_unit_from_upload(event, course_id)
 
         return resp(404, {"error": "Route not found", "method": method, "path": path})
     except Exception as e:

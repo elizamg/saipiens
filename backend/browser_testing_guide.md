@@ -13,7 +13,7 @@ Example base URL:
 
 Example test student:
 
-    4919d94e-7071-7088-9db7-207099f7498f
+    student_demo_1
 
 Example dev token:
 
@@ -39,7 +39,7 @@ Paste this once into the console:
 
 ``` javascript
 const BASE = "https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod";
-const SID = "4919d94e-7071-7088-9db7-207099f7498f";
+const SID = "student_demo_1";
 const TOKEN = "dev-secret";
 
 async function api(path, options = {}) {
@@ -73,7 +73,7 @@ Expected: Student object.
 ## 2. Courses
 
 ``` javascript
-await api(`/students/${SID}/courses`);
+await api(`/students/${SID}/courses`);  // returns courses for student_demo_1
 ```
 
 Expected: Array of courses.
@@ -83,7 +83,7 @@ Expected: Array of courses.
 ## 3. Units
 
 ``` javascript
-await api("/courses/course-demo-001/units");
+await api("/courses/course_demo_1/units");
 ```
 
 ------------------------------------------------------------------------
@@ -91,7 +91,7 @@ await api("/courses/course-demo-001/units");
 ## 4. Objectives (sorted by order)
 
 ``` javascript
-await api("/units/unit-demo-001/objectives");
+await api("/units/unit_demo_1/objectives");
 ```
 
 Verify `order` is ascending.
@@ -101,7 +101,7 @@ Verify `order` is ascending.
 ## 5. Stages (must be 1,2,3 order)
 
 ``` javascript
-await api("/objectives/obj-demo-001/stages");
+await api("/objectives/obj_demo_1/stages");
 ```
 
 ------------------------------------------------------------------------
@@ -109,7 +109,7 @@ await api("/objectives/obj-demo-001/stages");
 ## 6. Objective Progress
 
 ``` javascript
-await api("/objectives/obj-demo-001/progress");
+await api("/objectives/obj_demo_1/progress");
 ```
 
 ------------------------------------------------------------------------
@@ -117,7 +117,7 @@ await api("/objectives/obj-demo-001/progress");
 ## 7. Advance Stage
 
 ``` javascript
-await api("/objectives/obj-demo-001/advance", {
+await api("/objectives/obj_demo_1/advance", {
   method: "POST",
   body: JSON.stringify({})
 });
@@ -128,7 +128,7 @@ await api("/objectives/obj-demo-001/advance", {
 ## 8. Unit Progress (aggregate)
 
 ``` javascript
-await api("/units/unit-demo-001/progress");
+await api("/units/unit_demo_1/progress");
 ```
 
 ------------------------------------------------------------------------
@@ -136,7 +136,7 @@ await api("/units/unit-demo-001/progress");
 ## 9. Chat Threads
 
 ``` javascript
-await api("/units/unit-demo-001/threads");
+await api("/units/unit_demo_1/threads");
 ```
 
 Verify: - `order` present - `currentStageId` not null
@@ -146,7 +146,7 @@ Verify: - `order` present - `currentStageId` not null
 ## 10. Chat Messages
 
 ``` javascript
-await api("/threads/thread-obj-demo-001/messages");
+await api("/threads/thread-obj_demo_1/messages");
 ```
 
 Verify messages are chronological.
@@ -155,12 +155,14 @@ Verify messages are chronological.
 
 ## 11. Send Chat Message
 
+Response is `{ studentMessage, tutorMessage }`. `tutorMessage` is non-null when `stageType` is `"walkthrough"` or `"challenge"`.
+
 ``` javascript
-await api("/threads/thread-obj-demo-001/messages", {
+await api("/threads/thread-obj_demo_1/messages", {
   method: "POST",
   body: JSON.stringify({
     content: "Testing from browser",
-    stageId: "stage-obj-demo-001-begin"
+    stageType: "walkthrough"
   })
 });
 ```
@@ -171,7 +173,7 @@ await api("/threads/thread-obj-demo-001/messages", {
 
 ``` javascript
 await api("/awards");
-await api("/courses/course-demo-001/awards");
+await api("/courses/course_demo_1/awards");
 ```
 
 ------------------------------------------------------------------------
@@ -180,7 +182,7 @@ await api("/courses/course-demo-001/awards");
 
 ``` javascript
 await api("/feedback");
-await api("/courses/course-demo-001/feedback");
+await api("/courses/course_demo_1/feedback");
 ```
 
 ------------------------------------------------------------------------
