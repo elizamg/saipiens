@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import AppShell from "../components/layout/AppShell";
 import TeacherCourseCard from "../components/dashboard/TeacherCourseCard";
 import NewCourseCard from "../components/dashboard/NewCourseCard";
@@ -6,14 +6,26 @@ import {
   GREEN_GRADIENT_VERTICAL,
   WHITE,
   GRAY_900,
+  GRAY_500,
 } from "../theme/colors";
-import {
-  mockInstructor,
-  teacherCourses,
-  sidebarCourses,
-} from "../data/teacherMockData";
+import { getCurrentInstructor, listTeacherCourses } from "../services/api";
+import type { Course, Instructor } from "../types/domain";
 
 export default function InstructorHomePage() {
+  const [instructor, setInstructor] = useState<Instructor | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getCurrentInstructor(), listTeacherCourses()])
+      .then(([instr, c]) => {
+        setInstructor(instr);
+        setCourses(c);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
   const bannerStyles: React.CSSProperties = {
     background: GREEN_GRADIENT_VERTICAL,
     borderRadius: 16,
@@ -50,29 +62,40 @@ export default function InstructorHomePage() {
     gap: 20,
   };
 
+  const firstName = instructor?.name?.split(" ")[0] ?? "there";
+
   return (
-    <AppShell student={mockInstructor} activePath="/teacher" sidebarCourses={sidebarCourses} routePrefix="/teacher">
+    <AppShell
+      student={instructor ? { ...instructor, yearLabel: "" } : { id: "", name: "", yearLabel: "" }}
+      activePath="/teacher"
+      sidebarCourses={loading ? [] : courses}
+      routePrefix="/teacher"
+    >
       <div style={bannerStyles}>
-        <h1 style={greetingStyles}>Welcome back, Ms. Gallagher!</h1>
+        <h1 style={greetingStyles}>Welcome back, {firstName}!</h1>
         <p style={subtitleStyles}>
-          {teacherCourses.length} courses &bull; Ready to inspire!
+          {loading ? "Loading…" : `${courses.length} course${courses.length !== 1 ? "s" : ""} • Ready to inspire!`}
         </p>
       </div>
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={headingStyles}>Your Courses</h2>
-        <div style={gridStyles}>
-          {teacherCourses.map((course) => (
-            <TeacherCourseCard
-              key={course.id}
-              id={course.id}
-              title={course.title}
-              studentCount={course.studentCount}
-              icon={course.icon}
-            />
-          ))}
-          <NewCourseCard />
-        </div>
+        {loading ? (
+          <p style={{ fontSize: 14, color: GRAY_500 }}>Loading courses…</p>
+        ) : (
+          <div style={gridStyles}>
+            {courses.map((course) => (
+              <TeacherCourseCard
+                key={course.id}
+                id={course.id}
+                title={course.title}
+                studentCount={0}
+                icon={course.icon ?? ""}
+              />
+            ))}
+            <NewCourseCard />
+          </div>
+        )}
       </section>
     </AppShell>
   );
