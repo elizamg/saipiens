@@ -30,7 +30,7 @@ npm run dev
 
 ## Testing Instructions
 
-## Current Student Flow
+### Testing The Student Flow
 
 1. Click **Get Started**
 2. Log in
@@ -39,33 +39,37 @@ npm run dev
 5. Look through questions at different stages of progress
 
 
-## Current Student Flow
+### Testing The Teacher Flow
 1. From login/ sign in click "i am an instructor"
-2. click on any courses to view them
-3. click new course
-4. name the course
-5. click students to add them to course
-6. click create course
-7. click new unit
-8. upload unit materials
-9. click or unclick learning objectives depending on what you want the students to see
+2. Click on any courses to view them
+3. Click new course
+4. Name the course
+5. Click students to add them to course
+6. Click create course
+7. Click new unit
+8. Upload unit materials
+9. Click or unclick learning objectives depending on what you want the students to see
 
-TODO
+### Testing The Backend
+
+Running the individual `*\pipeline.py` files in `backend/lambdalith/backend_code/` runs a small test/demo for each of the pipelines. You can also see pre-generated results of some of these tests in the `example_\.md` files.
 
 ## Team Updates
 
-### Ben - TODO
+### Ben - Backend Pipelines
 
-TODO
+This sprint, I implemented the backend code for grading and giving feedback on skill answers (challenge_question_pipeline.py); coming up with clarifying questions and answering clarifying questions for skills (gen_clarifying_questions_pipeline.py); grading and creating feedback for info questions (info_question_pipeline.py); a scaffolded question walkthrough agent (scaffolded_question_pipeline.py); and creating info and skill questions (gen_curriculum_pipeline.py). I also wrote the MVP prompts for these pipelines (besides the one for identify knowledge, which is Brooke’s).
+
+I also added basic retrying with tenacity to our LLM calls, made generating a curriculum’s questions faster by generating a number of questions in parallel, and added test/example code to each of the pipeline files.
 
 ### Eliza - Frontend
 
 1. iterated on frontend lesson design based on group meeting conversation regarding the structure of knowledge objectives. Implemented a queue system that dynamically displays knowledge questions based on if it was answered right or wrong. Additionally, I took in feedback from teammates to get rid of the walkthrough component of the knowledge questions, only leaving that component for skills.
 2. Implemented the teacher frontend. Worked on teacher flow based on group discussions. Implemented flows for creating and editing courses and units. Iterated based on testing and feedback from the team.
 
-### Brooke - TODO
+### Brooke - Infrastructure and Backend-Frontend Connecting
 
-TODO
+For this sprint, Brooke worked on creating the infrastructure for our project and connecting the backend to the frontend by routing frontend requests through a single Lambda function to different code in the backend and DB requests.
 
 ---
 <br>
