@@ -159,6 +159,45 @@ def authed_sub(event) -> str | None:
     return claims(event).get("sub")
 
 
+def _cognito_groups(event) -> list[str]:
+    """Return the list of Cognito groups from the JWT claims (may be absent)."""
+    raw = claims(event).get("cognito:groups")
+    if not raw:
+        return []
+    # API Gateway JWT claims stringify list values as space-separated tokens.
+    if isinstance(raw, list):
+        return raw
+    return [g.strip() for g in raw.split() if g.strip()]
+
+
+def effective_instructor_id(event) -> str | None:
+    """
+    Resolve the caller as an instructor.
+
+    Production: JWT sub + must be in the 'instructors' Cognito group.
+    Dev mode:   X-Dev-Instructor-Id header (DEV_AUTH_ENABLED=true only).
+    Returns None if the caller is not an authenticated instructor.
+    """
+    sub = authed_sub(event)
+    if sub:
+        groups = _cognito_groups(event)
+        return sub if "instructors" in groups else None
+
+    if not DEV_AUTH_ENABLED:
+        return None
+
+    dev_id = header(event, "X-Dev-Instructor-Id")
+    if not dev_id:
+        return None
+
+    if DEV_AUTH_TOKEN:
+        tok = header(event, "X-Dev-Token")
+        if tok != DEV_AUTH_TOKEN:
+            return None
+
+    return dev_id
+
+
 def query_all(table, *, index_name: str | None = None, key_condition=None, scan_forward: bool = True):
     """
     Fetch all pages for a DynamoDB Query (frontend does not paginate yet).

@@ -4,10 +4,10 @@ import AuthLayout from "../components/auth/AuthLayout";
 import AuthCard from "../components/auth/AuthCard";
 import Input, { EyeIcon, EyeOffIcon } from "../components/ui/Input";
 import Button from "../components/ui/Button";
-import Checkbox from "../components/ui/Checkbox";
 import GoogleButton from "../components/auth/GoogleButton";
 import { PRIMARY, GRAY_600 } from "../theme/colors";
 import { useAuth } from "../contexts/AuthContext";
+import { signIn } from "../services/cognitoAuth";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -15,7 +15,8 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isInstructor, setIsInstructor] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const forgotLinkStyles: React.CSSProperties = {
     background: "none",
@@ -44,9 +45,22 @@ export default function LoginPage() {
     fontSize: 14,
   };
 
-  const handleLogin = () => {
-    setRole(isInstructor ? "instructor" : "student");
-    navigate(isInstructor ? "/teacher" : "/home");
+  const handleLogin = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { role, newPasswordRequired } = await signIn(email, password);
+      if (newPasswordRequired) {
+        setError("A new password is required. Please contact your administrator.");
+        return;
+      }
+      setRole(role);
+      navigate(role === "instructor" ? "/teacher" : "/home");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Sign in failed.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const footer = (
@@ -86,19 +100,17 @@ export default function LoginPage() {
         <button type="button" style={forgotLinkStyles}>
           Forgot password?
         </button>
-        <Checkbox
-          id="login-instructor"
-          label="I am an instructor"
-          checked={isInstructor}
-          onChange={setIsInstructor}
-        />
+        {error && (
+          <p style={{ color: "red", fontSize: 13, margin: 0 }}>{error}</p>
+        )}
         <Button
           variant="primary"
           fullWidth
           style={{ marginTop: 8 }}
           onClick={handleLogin}
+          disabled={submitting}
         >
-          Log In
+          {submitting ? "Signing in…" : "Log In"}
         </Button>
         <GoogleButton />
       </AuthCard>
