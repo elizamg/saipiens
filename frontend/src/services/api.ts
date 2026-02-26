@@ -102,6 +102,14 @@ export function listInstructors(ids: string[]): Promise<Instructor[]> {
   return post<Instructor[]>("/instructors/batch", { ids });
 }
 
+export function getCurrentInstructor(): Promise<Instructor> {
+  return get<Instructor>("/current-instructor");
+}
+
+export function listTeacherCourses(): Promise<Course[]> {
+  return get<Course[]>("/instructor/courses");
+}
+
 // ---------------------------------------------------------------------------
 // Units
 // ---------------------------------------------------------------------------
@@ -334,18 +342,22 @@ export function updateUnitTitle(unitId: string, title: string): Promise<Unit> {
 // ---------------------------------------------------------------------------
 
 export function listTeacherStudents(): Promise<Student[]> {
-  return Promise.resolve([]);
+  return get<Student[]>("/students");
 }
 
-export function getCourseRoster(_courseId: string): Promise<string[]> {
-  return Promise.resolve([]);
+export function getCourseRoster(courseId: string): Promise<string[]> {
+  return get<{ courseId: string; studentIds: string[] }>(`/courses/${courseId}/roster`)
+    .then((r) => r.studentIds);
 }
 
 export function updateCourseRoster(
-  _courseId: string,
-  _studentIds: string[]
+  courseId: string,
+  studentIds: string[]
 ): Promise<{ studentIds: string[] }> {
-  return Promise.reject(new Error("Roster update not yet implemented on backend"));
+  return apiFetch<{ courseId: string; studentIds: string[] }>(
+    `/courses/${courseId}/roster`,
+    { method: "PUT", body: JSON.stringify({ studentIds }) }
+  ).then((r) => ({ studentIds: r.studentIds }));
 }
 
 export async function createCourse(_params: {
@@ -357,9 +369,9 @@ export async function createCourse(_params: {
 }
 
 export async function createNewStudent(
-  _firstName: string,
-  _lastName: string,
+  firstName: string,
+  lastName: string,
   _email: string
 ): Promise<Student> {
-  return Promise.reject(new Error("Student creation not yet implemented on backend"));
+  return post<Student>("/students", { name: `${firstName.trim()} ${lastName.trim()}` });
 }

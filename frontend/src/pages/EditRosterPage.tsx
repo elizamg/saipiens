@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
@@ -6,35 +6,64 @@ import StudentRosterEditor from "../components/course/StudentRosterEditor";
 import { GRAY_500, GRAY_900 } from "../theme/colors";
 import type { Student } from "../types/domain";
 import {
-  mockInstructor,
-  teacherCourses,
-  sidebarCourses,
-  teacherStudents,
-  courseRosterMap,
-} from "../data/teacherMockData";
+  listTeacherStudents,
+  getCourseRoster,
+  updateCourseRoster,
+  createNewStudent,
+  getCurrentInstructor,
+  listTeacherCourses,
+} from "../services/api";
 
 export default function EditRosterPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
 
-  const course = teacherCourses.find((c) => c.id === courseId);
-  const initialIds = courseId ? courseRosterMap[courseId] ?? [] : [];
+  const [instructor, setInstructor] = useState<{ id: string; name: string } | null>(null);
+  const [courseTitle, setCourseTitle] = useState<string>("");
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [allStudents, setAllStudents] = useState<Student[]>([...teacherStudents]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([...initialIds]);
+  useEffect(() => {
+    if (!courseId) return;
+    setLoading(true);
+    Promise.all([
+      getCurrentInstructor(),
+      listTeacherStudents(),
+      getCourseRoster(courseId),
+      listTeacherCourses(),
+    ])
+      .then(([instr, students, rosterIds, courses]) => {
+        setInstructor(instr);
+        setAllStudents(students);
+        setSelectedIds(rosterIds);
+        const course = courses.find((c) => c.id === courseId);
+        if (course) setCourseTitle(course.title);
+      })
+      .catch(() => setError("Failed to load roster data."))
+      .finally(() => setLoading(false));
+  }, [courseId]);
 
-  const handleAddStudent = (student: Student) => {
+  const handleAddStudent = async (student: Student) => {
+    // Optimistically add to the list; createNewStudent already persisted it.
     setAllStudents((prev) => [...prev, student]);
+    setSelectedIds((prev) => [...prev, student.id]);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!courseId) return;
-    courseRosterMap[courseId] = [...selectedIds];
-    const tc = teacherCourses.find((c) => c.id === courseId);
-    if (tc) {
-      tc.studentCount = selectedIds.length;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateCourseRoster(courseId, selectedIds);
+      navigate(`/teacher/course/${courseId}`);
+    } catch {
+      setError("Failed to save roster. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    navigate(`/teacher/course/${courseId}`);
   };
 
   const backLinkStyles: React.CSSProperties = {
@@ -57,42 +86,56 @@ export default function EditRosterPage() {
     marginBottom: 24,
   };
 
+  if (loading) {
+    return (
+      <AppShell
+        student={instructor ? { ...instructor, yearLabel: "" } : { id: "", name: "", yearLabel: "" }}
+        activePath="/courses"
+        sidebarCourses={[]}
+        routePrefix="/teacher"
+      >
+        <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Loading roster…</div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
-      student={mockInstructor}
+      student={instructor ? { ...instructor, yearLabel: "" } : { id: "", name: "", yearLabel: "" }}
       activePath="/courses"
-      sidebarCourses={sidebarCourses}
+      sidebarCourses={[]}
       routePrefix="/teacher"
     >
-      {!course ? (
-        <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Course not found.</div>
-      ) : (
-        <>
-          <div
-            style={backLinkStyles}
-            onClick={() => navigate(`/teacher/course/${courseId}`)}
-            role="link"
-            tabIndex={0}
-          >
-            &larr; Back
-          </div>
+      <div
+        style={backLinkStyles}
+        onClick={() => navigate(`/teacher/course/${courseId}`)}
+        role="link"
+        tabIndex={0}
+      >
+        &larr; Back
+      </div>
 
-          <h1 style={titleStyles}>Edit Roster &mdash; {course.title}</h1>
+      <h1 style={titleStyles}>
+        Edit Roster{courseTitle ? ` — ${courseTitle}` : ""}
+      </h1>
 
-          <div style={sectionStyles}>
-            <StudentRosterEditor
-              allStudents={allStudents}
-              selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
-              onAddStudent={handleAddStudent}
-            />
-          </div>
-
-          <Button variant="primary" onClick={handleSave}>
-            Save Changes
-          </Button>
-        </>
+      {error && (
+        <p style={{ color: "#dc2626", fontSize: 14, marginBottom: 16 }}>{error}</p>
       )}
+
+      <div style={sectionStyles}>
+        <StudentRosterEditor
+          allStudents={allStudents}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
+          onAddStudent={handleAddStudent}
+          createStudent={createNewStudent}
+        />
+      </div>
+
+      <Button variant="primary" onClick={handleSave} disabled={saving}>
+        {saving ? "Saving…" : "Save Changes"}
+      </Button>
     </AppShell>
   );
 }
