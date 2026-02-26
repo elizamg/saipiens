@@ -14,6 +14,19 @@ through an AI-enabled homework system."</i></p>
 ---
 
 # Sprint 3 Progress
+## Live App
+
+**App Link:**  
+[https://sapiens-pp4l.vercel.app/](https://sapiens-f402hfs6b-lizzyg2003-1130s-projects.vercel.app)
+
+Or run locally:
+
+```bash
+git clone https://github.com/elizamg/sapiens.git
+cd sapiens/frontend
+npm install
+npm run dev
+````
 
 ## Testing Instructions
 
@@ -45,7 +58,7 @@ TODO
 
 TODO
 
-### Eliza - TODO
+### Eliza - Frontend
 
 1. iterated on frontend lesson design based on group meeting conversation regarding the structure of knowledge objectives. Implemented a queue system that dynamically displays knowledge questions based on if it was answered right or wrong. Additionally, I took in feedback from teammates to get rid of the walkthrough component of the knowledge questions, only leaving that component for skills.
 2. Implemented the teacher frontend. Worked on teacher flow based on group discussions. Implemented flows for creating and editing courses and units. Iterated based on testing and feedback from the team.
