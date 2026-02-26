@@ -1,17 +1,31 @@
 # backend_TODO
 
-This is the remaining work before the backend is ready to be “handed off” to the frontend as a stable, production-ready API.
+This is the remaining work before the backend is ready to be "handed off" to the frontend as a stable, production-ready API.
 
-## A) Turn on real auth (Cognito JWT) and remove dev auth
-- Re-enable JWT authorizers on all non-health routes in API Gateway.
-- Set `DEV_AUTH_ENABLED=false` in Lambda (and ideally remove dev-header logic entirely).
-- Verify the frontend can attach a valid token and that `sub` is used consistently as `studentId`.
+## ✅ Done
+
+- Lambda handler name mismatch fixed (`lambda_function` → `lambda_handler`)
+- Knowledge queue + knowledge topic routes added to `lambda_handler.py`
+- Instructor auth routes added (`/current-instructor`, `/instructor/courses`, `/courses/{id}/roster`, etc.)
+- `X-Dev-Instructor-Id` header support added to Lambda + CORS
+- Frontend `api.ts` fully wired to real AWS API Gateway (all student + teacher + knowledge routes)
+- `PATCH` added to allowed CORS methods
+- Schema docs added: `route_schema.md`, `table_schema.md`
+
+---
+
+## A) Turn on real auth (Cognito JWT) — NEXT
+- Create instructor Cognito user pool (or add instructor group to existing student pool)
+- Add JWT authorizers to API Gateway routes
+- Update Lambda to extract `sub` from JWT instead of dev headers
+- Update frontend to attach `Authorization: Bearer <token>` on all requests
+- Set `DEV_AUTH_ENABLED=false` and `DEV_INSTRUCTOR_ENABLED=false` in Lambda env vars
 
 ## B) CORS tightening
-- Replace `Access-Control-Allow-Origin: *` with the actual frontend origin(s) in production.
+- Replace `Access-Control-Allow-Origin: *` with actual frontend origin(s) in production.
 - Confirm preflight OPTIONS handling is correct for Authorization header.
 
-## C) Data integrity / authorization checks (beyond “current student”)
+## C) Data integrity / authorization checks (beyond "current student")
 Currently, the API resolves a current student and enforces studentId path equality on `/students/{studentId}/courses`.
 Before production, add (or confirm) authorization rules such as:
 - Ensure student is enrolled in the course when accessing:
@@ -56,7 +70,7 @@ Before production, define the tutor/AI response pipeline:
 
 ---
 
-## “Ready for frontend integration” checklist
+## "Ready for frontend integration" checklist
 Before telling frontend to switch off mocks, ensure:
 - JWT auth works end-to-end (no dev headers)
 - CORS matches frontend origin and includes Authorization

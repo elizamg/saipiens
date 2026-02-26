@@ -26,6 +26,10 @@ T = {
     "CHAT_MESSAGES": os.environ["CHAT_MESSAGES_TABLE"],
     "AWARDS": os.environ["AWARDS_TABLE"],
     "FEEDBACK_ITEMS": os.environ["FEEDBACK_ITEMS_TABLE"],
+
+    # knowledge
+    "KNOWLEDGE_TOPICS": os.environ["KNOWLEDGE_TOPICS_TABLE"],
+    "KNOWLEDGE_QUEUE_ITEMS": os.environ["KNOWLEDGE_QUEUE_ITEMS_TABLE"],
 }
 
 # ---- Indexes (env vars) ----
@@ -36,6 +40,13 @@ IDX = {
 
     "ITEM_STAGES_BY_ITEM": os.environ["ITEM_STAGES_BY_ITEM_INDEX"],
     "UNIT_THREADS": os.environ["UNIT_THREADS_INDEX"],
+
+    # knowledge
+    "UNIT_KNOWLEDGE_TOPICS": os.environ["UNIT_KNOWLEDGE_TOPICS_INDEX"],
+    "UNIT_QUEUE": os.environ["UNIT_QUEUE_INDEX"],
+
+    # instructor courses
+    "INSTRUCTOR_COURSES": os.environ["INSTRUCTOR_COURSES_INDEX"],
 }
 
 # ---- Dev auth (Option A) ----
@@ -43,15 +54,19 @@ DEV_AUTH_ENABLED = os.environ.get("DEV_AUTH_ENABLED", "false").lower() == "true"
 DEV_AUTH_HEADER = os.environ.get("DEV_AUTH_HEADER", "X-Dev-Student-Id")
 DEV_AUTH_TOKEN = os.environ.get("DEV_AUTH_TOKEN")  # optional shared secret
 
+# ---- Dev instructor auth ----
+DEV_INSTRUCTOR_ENABLED = os.environ.get("DEV_INSTRUCTOR_ENABLED", "false").lower() == "true"
+DEV_INSTRUCTOR_HEADER = os.environ.get("DEV_INSTRUCTOR_HEADER", "X-Dev-Instructor-Id")
+
 # ---- CORS ----
 CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*")
 CORS_ALLOW_HEADERS = os.environ.get(
     "CORS_ALLOW_HEADERS",
-    "Content-Type,Authorization,X-Dev-Student-Id,X-Dev-Token",
+    "Content-Type,Authorization,X-Dev-Student-Id,X-Dev-Token,X-Dev-Instructor-Id",
 )
 CORS_ALLOW_METHODS = os.environ.get(
     "CORS_ALLOW_METHODS",
-    "GET,POST,PUT,DELETE,OPTIONS",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 )
 
 # ---- Helpers ----
@@ -801,6 +816,505 @@ def handle_send_message(event, thread_id: str):
     return resp(200, msg)
 
 
+# ---- Instructor auth ----
+def effective_instructor_id(event) -> str | None:
+    # Real JWT sub would go here if Cognito is wired for instructors
+    sub = authed_sub(event)
+    if sub:
+        return sub
+
+    if not DEV_INSTRUCTOR_ENABLED:
+        return None
+
+    dev_id = header(event, DEV_INSTRUCTOR_HEADER)
+    if not dev_id:
+        return None
+
+    # Reuse the same shared token as student dev auth
+    if DEV_AUTH_TOKEN:
+        tok = header(event, "X-Dev-Token")
+        if tok != DEV_AUTH_TOKEN:
+            return None
+
+    return dev_id
+
+
+# ---- Teacher / instructor route handlers ----
+
+def handle_current_instructor(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    instructors = dynamodb.Table(T["INSTRUCTORS"])
+    got = instructors.get_item(Key={"id": instructor_id})
+    item = got.get("Item")
+    if not item:
+        return resp_not_found("Instructor")
+    return resp(200, item)
+
+
+def handle_list_instructor_courses(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    courses = dynamodb.Table(T["COURSES"])
+    items = query_all(
+        courses,
+        index_name=IDX["INSTRUCTOR_COURSES"],
+        key_condition=Key("instructorId").eq(instructor_id),
+        scan_forward=True,
+    )
+    return resp(200, items)
+
+
+def handle_create_course(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    title = (body.get("title") or "").strip()
+    if not title:
+        return resp(400, {"error": "title is required"})
+
+    now = iso_now()
+    course_id = str(uuid.uuid4())
+    item = {
+        "id": course_id,
+        "title": title,
+        "subject": body.get("subject") or "",
+        "gradeLabel": body.get("gradeLabel") or "",
+        "instructorId": instructor_id,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    dynamodb.Table(T["COURSES"]).put_item(Item=item)
+    return resp(201, item)
+
+
+def handle_get_course_roster(event, course_id: str):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    # Verify course belongs to this instructor
+    courses = dynamodb.Table(T["COURSES"])
+    got = courses.get_item(Key={"id": course_id})
+    course = got.get("Item")
+    if not course:
+        return resp_not_found("Course")
+    if course.get("instructorId") != instructor_id:
+        return resp(403, {"error": "Forbidden"})
+
+    enrollments = dynamodb.Table(T["ENROLLMENTS"])
+    # Enrollments PK=studentId, so we need a GSI on courseId — fall back to scan filter
+    # Use the existing COURSE_ENROLLMENTS pattern if GSI exists, otherwise scan
+    try:
+        course_enr_idx = os.environ.get("COURSE_ENROLLMENTS_INDEX")
+        if course_enr_idx:
+            items = query_all(
+                enrollments,
+                index_name=course_enr_idx,
+                key_condition=Key("courseId").eq(course_id),
+                scan_forward=True,
+            )
+        else:
+            scan_resp = enrollments.scan(
+                FilterExpression=boto3.dynamodb.conditions.Attr("courseId").eq(course_id)
+            )
+            items = scan_resp.get("Items", [])
+    except Exception:
+        scan_resp = enrollments.scan(
+            FilterExpression=boto3.dynamodb.conditions.Attr("courseId").eq(course_id)
+        )
+        items = scan_resp.get("Items", [])
+
+    student_ids = [it.get("studentId") for it in items if it.get("studentId")]
+    return resp(200, {"courseId": course_id, "studentIds": student_ids})
+
+
+def handle_update_course_roster(event, course_id: str):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    # Verify course belongs to this instructor
+    courses = dynamodb.Table(T["COURSES"])
+    got = courses.get_item(Key={"id": course_id})
+    course = got.get("Item")
+    if not course:
+        return resp_not_found("Course")
+    if course.get("instructorId") != instructor_id:
+        return resp(403, {"error": "Forbidden"})
+
+    new_student_ids = body.get("studentIds") if isinstance(body, dict) else None
+    if not isinstance(new_student_ids, list):
+        return resp(400, {"error": "studentIds array is required"})
+
+    enrollments = dynamodb.Table(T["ENROLLMENTS"])
+
+    # Read existing enrollments for this course (scan — same as get_roster)
+    try:
+        course_enr_idx = os.environ.get("COURSE_ENROLLMENTS_INDEX")
+        if course_enr_idx:
+            existing_items = query_all(
+                enrollments,
+                index_name=course_enr_idx,
+                key_condition=Key("courseId").eq(course_id),
+                scan_forward=True,
+            )
+        else:
+            scan_resp = enrollments.scan(
+                FilterExpression=boto3.dynamodb.conditions.Attr("courseId").eq(course_id)
+            )
+            existing_items = scan_resp.get("Items", [])
+    except Exception:
+        scan_resp = enrollments.scan(
+            FilterExpression=boto3.dynamodb.conditions.Attr("courseId").eq(course_id)
+        )
+        existing_items = scan_resp.get("Items", [])
+
+    existing_ids = {it.get("studentId") for it in existing_items if it.get("studentId")}
+    new_set = set(new_student_ids)
+
+    to_add = new_set - existing_ids
+    to_remove = existing_ids - new_set
+
+    now = iso_now()
+    with enrollments.batch_writer() as batch:
+        for sid in to_add:
+            batch.put_item(Item={"studentId": sid, "courseId": course_id, "enrolledAt": now})
+        for sid in to_remove:
+            batch.delete_item(Key={"studentId": sid, "courseId": course_id})
+
+    return resp(200, {"courseId": course_id, "studentIds": list(new_set)})
+
+
+def handle_update_unit_title(event, unit_id: str):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    title = (body.get("title") or "").strip() if isinstance(body, dict) else ""
+    if not title:
+        return resp(400, {"error": "title is required"})
+
+    units = dynamodb.Table(T["UNITS"])
+    got = units.get_item(Key={"id": unit_id})
+    unit = got.get("Item")
+    if not unit:
+        return resp_not_found("Unit")
+
+    now = iso_now()
+    units.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET #t = :t, updatedAt = :ua",
+        ExpressionAttributeNames={"#t": "title"},
+        ExpressionAttributeValues={":t": title, ":ua": now},
+    )
+    unit["title"] = title
+    unit["updatedAt"] = now
+    return resp(200, unit)
+
+
+def handle_update_objective_enabled(event, objective_id: str):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    if not isinstance(body, dict) or "enabled" not in body:
+        return resp(400, {"error": "enabled (boolean) is required"})
+
+    enabled = bool(body["enabled"])
+
+    objectives = dynamodb.Table(T["OBJECTIVES"])
+    got = objectives.get_item(Key={"id": objective_id})
+    obj = got.get("Item")
+    if not obj:
+        return resp_not_found("Objective")
+
+    now = iso_now()
+    objectives.update_item(
+        Key={"id": objective_id},
+        UpdateExpression="SET enabled = :e, updatedAt = :ua",
+        ExpressionAttributeValues={":e": enabled, ":ua": now},
+    )
+    obj["enabled"] = enabled
+    obj["updatedAt"] = now
+    return resp(200, obj)
+
+
+def handle_create_unit_from_upload(event, course_id: str):
+    """
+    Accepts multipart/form-data with:
+      - unitName: string field
+      - files: one or more file parts (content ignored in mock)
+    Returns a Unit + list of mock Objectives.
+    """
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    # Verify course exists
+    courses = dynamodb.Table(T["COURSES"])
+    got = courses.get_item(Key={"id": course_id})
+    course = got.get("Item")
+    if not course:
+        return resp_not_found("Course")
+
+    # Extract unitName from multipart body (best-effort plain parse)
+    # API Gateway base64-encodes binary bodies; for multipart we look for unitName in body text
+    body_raw = event.get("body") or ""
+    is_b64 = event.get("isBase64Encoded", False)
+    if is_b64:
+        import base64
+        try:
+            body_raw = base64.b64decode(body_raw).decode("utf-8", errors="replace")
+        except Exception:
+            body_raw = ""
+
+    # Naive multipart field extraction: find "unitName" field value
+    unit_name = ""
+    try:
+        idx = body_raw.find('name="unitName"')
+        if idx == -1:
+            idx = body_raw.find("name=unitName")
+        if idx != -1:
+            after = body_raw[idx:]
+            # Skip past the blank line that separates headers from value
+            nl = after.find("\r\n\r\n")
+            if nl == -1:
+                nl = after.find("\n\n")
+            if nl != -1:
+                value_start = after[nl + 4 if "\r\n\r\n" in after else nl + 2:]
+                end = value_start.find("\r\n--")
+                if end == -1:
+                    end = value_start.find("\n--")
+                unit_name = (value_start[:end] if end != -1 else value_start[:200]).strip()
+    except Exception:
+        unit_name = ""
+
+    if not unit_name:
+        unit_name = "Untitled Unit"
+
+    now = iso_now()
+    unit_id = str(uuid.uuid4())
+
+    # Count how many units already exist in this course to set order
+    units_table = dynamodb.Table(T["UNITS"])
+    existing_units = query_all(
+        units_table,
+        index_name=IDX["COURSE_UNITS"],
+        key_condition=Key("courseId").eq(course_id),
+    )
+    unit_order = len(existing_units) + 1
+
+    unit = {
+        "id": unit_id,
+        "courseId": course_id,
+        "title": unit_name,
+        "order": unit_order,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    units_table.put_item(Item=unit)
+
+    # Mock objectives — realistic placeholders so the teacher can see the flow
+    mock_objective_titles = [
+        f"Understand the core concepts of {unit_name}",
+        f"Identify key terminology related to {unit_name}",
+        f"Apply foundational principles of {unit_name}",
+    ]
+    objectives_table = dynamodb.Table(T["OBJECTIVES"])
+    objectives = []
+    for i, title in enumerate(mock_objective_titles, start=1):
+        obj_id = str(uuid.uuid4())
+        obj = {
+            "id": obj_id,
+            "unitId": unit_id,
+            "title": title,
+            "order": i,
+            "enabled": True,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        objectives_table.put_item(Item=obj)
+        objectives.append(obj)
+
+    return resp(201, {"unit": unit, "objectives": objectives})
+
+
+def handle_list_all_students(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    students = dynamodb.Table(T["STUDENTS"])
+    scan_resp = students.scan()
+    items = scan_resp.get("Items", [])
+    # Handle pagination
+    while "LastEvaluatedKey" in scan_resp:
+        scan_resp = students.scan(ExclusiveStartKey=scan_resp["LastEvaluatedKey"])
+        items.extend(scan_resp.get("Items", []))
+    return resp(200, items)
+
+
+def handle_create_student(event):
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    name = (body.get("name") or "").strip() if isinstance(body, dict) else ""
+    if not name:
+        return resp(400, {"error": "name is required"})
+
+    now = iso_now()
+    student_id = str(uuid.uuid4())
+    item = {
+        "id": student_id,
+        "name": name,
+        "yearLabel": body.get("yearLabel") or "",
+        "avatarUrl": body.get("avatarUrl") or None,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    dynamodb.Table(T["STUDENTS"]).put_item(Item=item)
+    return resp(201, item)
+
+
+# ---- Knowledge topic handlers ----
+
+def handle_list_knowledge_topics(unit_id: str):
+    topics = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    items = query_all(
+        topics,
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
+    )
+    items.sort(key=lambda t: int(t.get("order") or 0))
+    return resp(200, items)
+
+
+def handle_get_knowledge_queue(event, unit_id: str):
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    queue_table = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    items = query_all(
+        queue_table,
+        index_name=IDX["UNIT_QUEUE"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
+    )
+    # Filter to this student's items only
+    student_items = [it for it in items if it.get("studentId") == student_id]
+    student_items.sort(key=lambda x: int(x.get("order") or 0))
+    return resp(200, student_items)
+
+
+def handle_complete_knowledge_attempt(event, item_id: str):
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    status = (body.get("status") or "").strip() if isinstance(body, dict) else ""
+    valid_statuses = {"completed_correct", "completed_incorrect"}
+    if status not in valid_statuses:
+        return resp(400, {"error": f"status must be one of {list(valid_statuses)}"})
+
+    queue_table = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    got = queue_table.get_item(Key={"studentId": student_id, "id": item_id})
+    item = got.get("Item")
+    if not item:
+        return resp_not_found("KnowledgeQueueItem")
+
+    if item.get("studentId") != student_id:
+        return resp(403, {"error": "Forbidden"})
+
+    now = iso_now()
+    queue_table.update_item(
+        Key={"studentId": student_id, "id": item_id},
+        UpdateExpression="SET #s = :s, completedAt = :ca, updatedAt = :ua",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": status, ":ca": now, ":ua": now},
+    )
+    item["status"] = status
+    item["completedAt"] = now
+    item["updatedAt"] = now
+    return resp(200, item)
+
+
+def handle_get_knowledge_progress(event, unit_id: str):
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    # Get all topics for the unit
+    topics = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topic_items = query_all(
+        topics,
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
+    )
+    total_topics = len(topic_items)
+    topic_ids = {t["id"] for t in topic_items if t.get("id")}
+
+    # Get completed queue items for this student in this unit
+    queue_table = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    unit_items = query_all(
+        queue_table,
+        index_name=IDX["UNIT_QUEUE"],
+        key_condition=Key("unitId").eq(unit_id),
+        scan_forward=True,
+    )
+    student_items = [it for it in unit_items if it.get("studentId") == student_id and it.get("knowledgeTopicId") in topic_ids]
+
+    correct_topic_ids = {it["knowledgeTopicId"] for it in student_items if it.get("status") == "completed_correct"}
+    incorrect_topic_ids = {it["knowledgeTopicId"] for it in student_items if it.get("status") == "completed_incorrect"}
+    # If a topic was retried correctly, remove it from incorrect
+    incorrect_topic_ids -= correct_topic_ids
+
+    correct_count = len(correct_topic_ids)
+    incorrect_count = len(incorrect_topic_ids)
+
+    return resp(200, {
+        "unitId": unit_id,
+        "totalTopics": total_topics,
+        "correctCount": correct_count,
+        "incorrectCount": incorrect_count,
+        "correctPercent": round((correct_count / total_topics) * 100) if total_topics else 0,
+        "incorrectPercent": round((incorrect_count / total_topics) * 100) if total_topics else 0,
+    })
+
+
 # ---- Main router ----
 def handler(event, context):
     try:
@@ -947,6 +1461,77 @@ def handler(event, context):
             if not thread_id:
                 return resp(400, {"error": "Missing threadId"})
             return handle_get_thread(thread_id)
+
+        # ---- Teacher / instructor routes ----
+
+        if method == "GET" and path == "/current-instructor":
+            return handle_current_instructor(event)
+
+        if method == "GET" and path == "/instructor/courses":
+            return handle_list_instructor_courses(event)
+
+        if method == "POST" and path == "/courses":
+            return handle_create_course(event)
+
+        if method == "GET" and path.endswith("/roster") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_get_course_roster(event, course_id)
+
+        if method == "PUT" and path.endswith("/roster") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_update_course_roster(event, course_id)
+
+        if method == "PATCH" and path.endswith("/title") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_update_unit_title(event, unit_id)
+
+        if method == "PATCH" and path.endswith("/enabled") and path.startswith("/objectives/"):
+            objective_id = params.get("objectiveId")
+            if not objective_id:
+                return resp(400, {"error": "Missing objectiveId"})
+            return handle_update_objective_enabled(event, objective_id)
+
+        if method == "POST" and path.endswith("/units/upload") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_create_unit_from_upload(event, course_id)
+
+        if method == "GET" and path == "/students":
+            return handle_list_all_students(event)
+
+        if method == "POST" and path == "/students":
+            return handle_create_student(event)
+
+        if method == "GET" and path.endswith("/knowledge-topics") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_list_knowledge_topics(unit_id)
+
+        if method == "GET" and path.endswith("/knowledge-queue") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_knowledge_queue(event, unit_id)
+
+        if method == "POST" and path.endswith("/complete") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_complete_knowledge_attempt(event, item_id)
+
+        if method == "GET" and path.endswith("/knowledge-progress") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_knowledge_progress(event, unit_id)
 
         return resp(404, {"error": "Route not found", "method": method, "path": path})
     except Exception as e:

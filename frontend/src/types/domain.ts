@@ -23,7 +23,7 @@ export interface Course {
   title: string;
   icon?: string;
   instructorIds: string[];
-  enrolledStudentIds: string[];
+  enrolledStudentIds?: string[];
 }
 
 export type UnitStatus = "active" | "completed" | "locked";
