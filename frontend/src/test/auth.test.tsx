@@ -100,7 +100,7 @@ import RequireRole from '../components/auth/RequireRole';
 // Helper: seed Cognito user state before each test.
 // ---------------------------------------------------------------------------
 const setCognitoUser = (groups: string[] | null) =>
-  (globalThis as Record<string, unknown>).__setCognitoUser(groups);
+  (globalThis as unknown as { __setCognitoUser: (groups: string[] | null) => void }).__setCognitoUser(groups);
 
 beforeEach(() => {
   setCognitoUser(null); // signed out by default

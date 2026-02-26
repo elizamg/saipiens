@@ -14,6 +14,7 @@ import {
   CognitoUser,
   AuthenticationDetails,
   CognitoUserSession,
+  CognitoUserAttribute,
 } from "amazon-cognito-identity-js";
 import type { UserRole } from "../contexts/AuthContext";
 
@@ -115,10 +116,10 @@ export function signUp(
       email,
       password,
       [
-        {
+        new CognitoUserAttribute({
           Name: "custom:role",
           Value: isInstructor ? "instructor" : "student",
-        },
+        }),
       ],
       [],
       (err, result) => {

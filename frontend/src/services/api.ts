@@ -229,9 +229,13 @@ export function listMessages(threadId: string, stageId?: string): Promise<ChatMe
 export function sendMessage(
   threadId: string,
   content: string,
-  stageId?: string
-): Promise<ChatMessage> {
-  return post<ChatMessage>(`/threads/${threadId}/messages`, { content, stageId });
+  stageId?: string,
+  stageType?: string
+): Promise<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }> {
+  return post<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }>(
+    `/threads/${threadId}/messages`,
+    { content, stageId, stageType }
+  );
 }
 
 // ---------------------------------------------------------------------------
