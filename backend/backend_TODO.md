@@ -55,7 +55,7 @@ Remaining consideration: for very long AI calls, consider async with polling if 
 All instructor-facing routes are now implemented in `lambda_handler.py`:
 - `GET /current-instructor` — auto-creates instructor record on first access
 - `GET /instructor/courses` — lists courses owned by the instructor (via `InstructorCoursesIndex`)
-- `POST /courses` — creates a new course (body: `{ title }`)
+- `POST /courses` — creates a new course with title, icon, and initial student roster (body: `{ title, icon?, studentIds? }`) → returns `{ id, title, studentCount, icon }`
 - `GET /courses/{courseId}/roster` — returns `{ courseId, studentIds[] }`
 - `PUT /courses/{courseId}/roster` — replaces full roster atomically (body: `{ studentIds[] }`)
 - `GET /students` — lists all students (for roster assignment UI)
@@ -64,9 +64,17 @@ All instructor-facing routes are now implemented in `lambda_handler.py`:
 - `PATCH /objectives/{objectiveId}/enabled` — toggles objective visibility (body: `{ enabled: bool }`)
 - `POST /courses/{courseId}/units/upload` — multipart PDF upload → runs `Gen_Curriculum_Pipeline` → persists Unit + Objectives + ItemStages (3 per obj) + Questions → returns `{ unit, objectives }`
 
-Dev auth: instructor routes accept `X-Dev-Instructor-Id` + `X-Dev-Token: dev-secret` headers (controlled by `DEV_INSTRUCTOR_ENABLED` env var, currently `true`).
+**Instructor auth** (production): JWT `sub` + `instructors` Cognito group membership. Dev fallback: `X-Dev-Instructor-Id` + `X-Dev-Token: dev-secret` (controlled by `DEV_AUTH_ENABLED` env var).
 
 Test results: 19/19 instructor route tests passing.
+
+## K-0) ~~Fix duplicate `effective_instructor_id` and instructor auth~~ ✅ DONE
+`lambda_handler.py` had two definitions of `effective_instructor_id()`. The first (correct) version checked JWT `sub` + `cognito:groups` for the `instructors` group with dev-header fallback. The second (incorrect) version only supported `DEV_INSTRUCTOR_ENABLED` dev headers and overwrote the first, silently breaking production JWT auth for all instructor routes.
+
+Fix:
+- Removed the duplicate (dev-header-only) definition.
+- Removed unused `DEV_INSTRUCTOR_ENABLED`, `DEV_INSTRUCTOR_HEADER`, `DEV_INSTRUCTOR_TOKEN` env var references.
+- The single remaining `effective_instructor_id()` supports both production JWT auth (Cognito groups) and dev-header fallback (under `DEV_AUTH_ENABLED`).
 
 ## K) Hardening advanceStage
 - Decide whether to block advancing beyond 3 stars with 400 vs returning capped progress.

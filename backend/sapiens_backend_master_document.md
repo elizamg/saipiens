@@ -70,11 +70,11 @@ Only IdToken is used for API Gateway validation.
 
 ## Development Authentication Mode
 
-### Student dev auth
-
-When:
+Both student and instructor dev auth are controlled by a single flag:
 
     DEV_AUTH_ENABLED=true
+
+### Student dev auth
 
 Headers used:
 
@@ -83,19 +83,27 @@ Headers used:
 
 ### Instructor dev auth
 
-When:
-
-    DEV_INSTRUCTOR_ENABLED=true
-
 Headers used:
 
     X-Dev-Instructor-Id: <instructorId>
     X-Dev-Token: dev-secret
 
-Both student and instructor dev auth are currently enabled on the live Lambda.
+Dev auth is currently enabled on the live Lambda.
 This enables full browser-based testing without AWS credentials.
 
-⚠ Both dev auth modes must be disabled before production deployment.
+⚠ Dev auth must be disabled before production deployment.
+
+## Production Instructor Authentication
+
+In production, instructor identity is resolved from the JWT:
+
+1.  The `sub` claim identifies the user.
+2.  The `cognito:groups` claim is checked for the `instructors` group.
+3.  If the user is not in the `instructors` group, the request returns 401.
+
+This means instructors must be added to the `instructors` Cognito group
+(via the Cognito console or a Post-Confirmation Lambda trigger) before
+they can access instructor routes.
 
 ------------------------------------------------------------------------
 

@@ -118,9 +118,9 @@ Identity:
 
 ## 15) Instructor / Teacher routes
 
-All instructor routes require instructor identity:
-- **dev:** `X-Dev-Instructor-Id: <id>` + `X-Dev-Token: dev-secret`
-- **prod:** JWT with instructor `sub` (not yet wired — uses dev header for now)
+All instructor routes require instructor identity via `effective_instructor_id()`:
+- **prod:** JWT `sub` claim + membership in the `instructors` Cognito group. If the JWT is valid but the user is not in the `instructors` group, the request is rejected as unauthorized.
+- **dev:** `X-Dev-Instructor-Id: <id>` + `X-Dev-Token: dev-secret` (requires `DEV_AUTH_ENABLED=true`)
 
 ### Identity
 - **GET** `/current-instructor` → `Instructor`
@@ -129,8 +129,10 @@ All instructor routes require instructor identity:
 ### Course management
 - **GET** `/instructor/courses` → `Course[]`
   - Returns all courses owned by the current instructor.
-- **POST** `/courses` body: `{ "title": string }` → `Course` (201)
+- **POST** `/courses` body: `{ "title": string, "icon"?: string, "studentIds"?: string[] }` → `{ id, title, studentCount, icon }` (201)
   - Creates a new course owned by the instructor. `instructorId` is set server-side.
+  - `icon` defaults to `"general"` if omitted. Valid values: `"general"`, `"history"`, `"science"`.
+  - If `studentIds` is provided, enrollment records are created for each student in the initial roster.
 
 ### Roster management
 - **GET** `/courses/{courseId}/roster` → `{ courseId: string, studentIds: string[] }`
