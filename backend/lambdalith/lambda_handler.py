@@ -1074,6 +1074,21 @@ def handle_list_instructor_courses(event):
         key_condition=Key("instructorId").eq(instructor_id),
         scan_forward=True,
     )
+
+    # Attach studentCount to each course by counting enrollments
+    enrollments_tbl = dynamodb.Table(T["ENROLLMENTS"])
+    for item in items:
+        cid = item.get("id")
+        if cid:
+            enroll_items = query_all(
+                enrollments_tbl,
+                index_name=IDX["COURSE_ENROLLMENTS"],
+                key_condition=Key("courseId").eq(cid),
+            )
+            item["studentCount"] = len(enroll_items)
+        else:
+            item["studentCount"] = 0
+
     return resp(200, items)
 
 

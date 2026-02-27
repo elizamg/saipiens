@@ -89,7 +89,7 @@ export default function InstructorHomePage() {
                 key={course.id}
                 id={course.id}
                 title={course.title}
-                studentCount={0}
+                studentCount={course.studentCount ?? 0}
                 icon={course.icon ?? ""}
               />
             ))}
