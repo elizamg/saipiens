@@ -1,31 +1,49 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import ActiveUnits from "../components/course/ActiveUnits";
 import NewUnitCard from "../components/course/NewUnitCard";
-import TintedImage from "../components/ui/TintedImage";
 import Button from "../components/ui/Button";
 import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
 import {
-  mockInstructor,
-  teacherCourses,
-  sidebarCourses,
-  teacherUnitsMap,
-} from "../data/teacherMockData";
-import historyLogo from "../assets/history-logo.png";
-import scienceLogo from "../assets/science-logo.png";
-
-const courseIconMap: Record<string, string> = {
-  history: historyLogo,
-  science: scienceLogo,
-};
+  getCourse,
+  listUnits,
+  getCourseRoster,
+  getCurrentInstructor,
+  listTeacherCourses,
+} from "../services/api";
+import type { Course, Unit, Student } from "../types/domain";
 
 export default function TeacherCoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
 
-  const course = teacherCourses.find((c) => c.id === courseId);
-  const units = courseId ? teacherUnitsMap[courseId] ?? [] : [];
+  const [course, setCourse] = useState<Course | null>(null);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [studentCount, setStudentCount] = useState(0);
+  const [instructor, setInstructor] = useState<Student | null>(null);
+  const [sidebarCourses, setSidebarCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!courseId) return;
+    Promise.all([
+      getCourse(courseId),
+      listUnits(courseId),
+      getCourseRoster(courseId).catch(() => [] as string[]),
+      getCurrentInstructor().then((i) => ({ ...i, yearLabel: "" } as Student)),
+      listTeacherCourses(),
+    ])
+      .then(([c, u, roster, instr, courses]) => {
+        setCourse(c);
+        setUnits(u);
+        setStudentCount(roster.length);
+        setInstructor(instr);
+        setSidebarCourses(courses);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [courseId]);
 
   const headerStyles: React.CSSProperties = {
     marginBottom: 32,
@@ -62,8 +80,6 @@ export default function TeacherCoursePage() {
     color: GRAY_500,
   };
 
-  const iconSrc = course?.icon ? courseIconMap[course.icon] : undefined;
-
   const bookIcon = (
     <svg
       width="40"
@@ -81,9 +97,22 @@ export default function TeacherCoursePage() {
     </svg>
   );
 
+  if (loading) {
+    return (
+      <AppShell
+        student={instructor ?? { id: "", name: "", yearLabel: "" }}
+        activePath="/courses"
+        sidebarCourses={sidebarCourses}
+        routePrefix="/teacher"
+      >
+        <p style={{ fontSize: 14, color: GRAY_500 }}>Loading course…</p>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
-      student={mockInstructor}
+      student={instructor ?? { id: "", name: "", yearLabel: "" }}
       activePath="/courses"
       sidebarCourses={sidebarCourses}
       routePrefix="/teacher"
@@ -94,17 +123,7 @@ export default function TeacherCoursePage() {
         <>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              {iconSrc ? (
-                <TintedImage
-                  src={iconSrc}
-                  color={PRIMARY}
-                  width={40}
-                  height={40}
-                  style={iconStyles}
-                />
-              ) : (
-                bookIcon
-              )}
+              {bookIcon}
               <h1 style={titleStyles}>{course.title}</h1>
             </div>
             <div style={infoRowStyles}>
@@ -124,7 +143,7 @@ export default function TeacherCoursePage() {
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
               <span style={infoTextStyles}>
-                {course.studentCount} student{course.studentCount !== 1 ? "s" : ""} enrolled
+                {studentCount} student{studentCount !== 1 ? "s" : ""} enrolled
               </span>
               <Button
                 variant="secondary"
