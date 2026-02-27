@@ -189,6 +189,19 @@ Unit-level progress is computed server-side.
 -   Filterable by courseId
 -   Returned as simple lists (frontend does not paginate)
 
+## Knowledge Topics & Queue
+
+-   `KnowledgeTopics` table — teacher-visible descriptive names for each knowledge area in a unit
+    -   Created during curriculum upload (one per objective)
+    -   Queried via `UnitKnowledgeTopicsIndex` (unitId HASH, order RANGE)
+-   `KnowledgeQueueItems` table — student-facing queue tracking progress through knowledge items
+    -   Composite key: `studentId` (HASH) + `id` (RANGE)
+    -   GSI `UnitQueueIndex` on `unitId` + `order`
+    -   Auto-initialized on first access per student per unit
+    -   Statuses: `pending` → `active` → `completed_correct` / `completed_incorrect`
+    -   Incorrect answers create retry items at end of queue
+-   `KnowledgeProgress` computed server-side from queue items (unique topic counts)
+
 ------------------------------------------------------------------------
 
 # 7. Ordering Guarantees
@@ -200,6 +213,8 @@ Backend guarantees deterministic ordering for:
 -   Questions (sorted by `difficultyStars`)
 -   Threads (sorted by Objective `order`)
 -   Messages (sorted by `createdAt` ascending)
+-   KnowledgeTopics (sorted by `order`)
+-   KnowledgeQueueItems (visible items sorted by `order`)
 
 ------------------------------------------------------------------------
 
@@ -302,6 +317,8 @@ All major domain surfaces are implemented:
 -   Awards
 -   Feedback
 -   Instructor/Teacher flows (current-instructor, course management, roster, student management, curriculum upload)
+-   Knowledge Topics (teacher-visible, created during upload)
+-   Knowledge Queue (student-facing, auto-initialized, retry on incorrect, progress tracking)
 
 ## AI Tutor Pipeline
 

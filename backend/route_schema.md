@@ -103,6 +103,8 @@ Auto-creates student record on first access. Name is pulled from JWT `given_name
 - **GET** `/units/{unitId}/knowledge-queue` → `KnowledgeQueueItem[]`
   - Returns only visible items (status ≠ `pending`), sorted by `order` asc
   - Server infers `studentId` from JWT
+  - Auto-initializes queue on first access: one item per KnowledgeTopic, first is `active`, rest are `pending`
+  - Each item's `question` is pulled from the corresponding objective's Question record
 
 - **POST** `/knowledge-queue/{queueItemId}/complete`
   - Body: `{ "is_correct": boolean }`
@@ -163,7 +165,7 @@ All instructor routes require instructor identity via `effective_instructor_id()
     1. Uploads PDFs to Gemini Files API
     2. Identifies knowledge items (`type: "information"|"skill"`, `description`)
     3. Generates one question per item
-    4. Persists: **Unit** → **Objectives** (one per item, `kind: "knowledge"|"skill"`) → **ItemStages** (3 per objective: `begin`/`walkthrough`/`challenge`) → **Questions** (one per objective)
+    4. Persists: **Unit** → **Objectives** (one per item, `kind: "knowledge"|"skill"`) → **ItemStages** (3 per objective: `begin`/`walkthrough`/`challenge`) → **Questions** (one per objective) → **KnowledgeTopics** (one per objective, with `objectiveId` ref)
   - Response: `{ "unit": Unit, "objectives": Objective[] }` (201)
   - Returns 422 if no knowledge items are identified from the content.
   - Note: this call can take 30–120s depending on PDF size and Gemini latency. Lambda timeout is 30s by default — may need increase for large files.

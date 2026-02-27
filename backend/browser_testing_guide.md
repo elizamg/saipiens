@@ -197,6 +197,36 @@ await api("/courses/course_demo_1/feedback");
 
 ------------------------------------------------------------------------
 
+## 14. Knowledge Topics
+
+``` javascript
+await api("/units/unit_demo_1/knowledge-topics");
+```
+
+Expected: Array of KnowledgeTopic objects sorted by order.
+
+------------------------------------------------------------------------
+
+## 15. Knowledge Queue
+
+``` javascript
+await api("/units/unit_demo_1/knowledge-queue");
+```
+
+Expected: Array of visible KnowledgeQueueItem objects (auto-initialized on first access).
+
+------------------------------------------------------------------------
+
+## 16. Knowledge Progress
+
+``` javascript
+await api("/units/unit_demo_1/knowledge-progress");
+```
+
+Expected: `{ unitId, totalTopics, correctCount, incorrectCount, correctPercent, incorrectPercent }`.
+
+------------------------------------------------------------------------
+
 # Step 4 --- Test Instructor Routes
 
 Create an instructor helper (uses `X-Dev-Instructor-Id` instead of `X-Dev-Student-Id`):

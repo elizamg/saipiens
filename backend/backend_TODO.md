@@ -80,6 +80,21 @@ Fix:
 - Removed unused `DEV_INSTRUCTOR_ENABLED`, `DEV_INSTRUCTOR_HEADER`, `DEV_INSTRUCTOR_TOKEN` env var references.
 - The single remaining `effective_instructor_id()` supports both production JWT auth (Cognito groups) and dev-header fallback (under `DEV_AUTH_ENABLED`).
 
+## L) ~~Knowledge Topics & Queue endpoints~~ ✅ DONE
+All knowledge-related endpoints are now implemented in `lambda_handler.py`:
+- `GET /units/{unitId}/knowledge-topics` — lists teacher-visible knowledge topics for a unit (via `UnitKnowledgeTopicsIndex`)
+- `GET /units/{unitId}/knowledge-queue` — lists student's queue items (auto-initializes on first access, filters out `pending`)
+- `POST /knowledge-queue/{itemId}/complete` — marks item correct/incorrect, creates retry if wrong, advances next pending item
+- `GET /units/{unitId}/knowledge-progress` — computes unique topic correct/incorrect counts and percentages
+
+KnowledgeTopics are now created during curriculum upload (one per objective, with `objectiveId` reference).
+KnowledgeQueueItems are auto-initialized per student per unit on first queue access.
+
+DynamoDB tables: `KnowledgeTopics` (GSI: `UnitKnowledgeTopicsIndex`), `KnowledgeQueueItems` (GSI: `UnitQueueIndex`).
+Lambda env vars already configured: `KNOWLEDGE_TOPICS_TABLE`, `KNOWLEDGE_QUEUE_ITEMS_TABLE`, `UNIT_KNOWLEDGE_TOPICS_INDEX`, `UNIT_QUEUE_INDEX`.
+
+Frontend stubs in `api.ts` are now wired to real backend endpoints.
+
 ## K) Hardening advanceStage
 - Decide whether to block advancing beyond 3 stars with 400 vs returning capped progress.
 - Optionally validate that the currentStageType matches expected progression and prevent skipping.
