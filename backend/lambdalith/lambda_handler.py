@@ -36,6 +36,8 @@ T = {
     "CHAT_MESSAGES": os.environ["CHAT_MESSAGES_TABLE"],
     "AWARDS": os.environ["AWARDS_TABLE"],
     "FEEDBACK_ITEMS": os.environ["FEEDBACK_ITEMS_TABLE"],
+    "KNOWLEDGE_TOPICS": os.environ["KNOWLEDGE_TOPICS_TABLE"],
+    "KNOWLEDGE_QUEUE_ITEMS": os.environ["KNOWLEDGE_QUEUE_ITEMS_TABLE"],
 }
 
 # ---- Indexes (env vars) ----
@@ -48,6 +50,8 @@ IDX = {
     "UNIT_THREADS": os.environ["UNIT_THREADS_INDEX"],
     "INSTRUCTOR_COURSES": os.environ["INSTRUCTOR_COURSES_INDEX"],
     "COURSE_ENROLLMENTS": "CourseEnrollmentsIndex",
+    "UNIT_KNOWLEDGE_TOPICS": os.environ["UNIT_KNOWLEDGE_TOPICS_INDEX"],
+    "UNIT_QUEUE": os.environ["UNIT_QUEUE_INDEX"],
 }
 
 # ---- Dev auth ----
@@ -1292,6 +1296,228 @@ def handle_update_objective_enabled(event, objective_id: str):
     return resp(200, updated)
 
 
+# ---- Knowledge Topics (teacher-visible) ----
+
+def handle_list_knowledge_topics(unit_id: str):
+    """GET /units/{unitId}/knowledge-topics → KnowledgeTopic[] sorted by order asc."""
+    tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    items = query_all(
+        tbl,
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    return resp(200, items)
+
+
+# ---- Knowledge Queue (student-facing) ----
+
+def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
+    """Auto-create queue items for a student on first access to a unit's queue.
+    One item per KnowledgeTopic, first is 'active', rest are 'pending'.
+    Returns the created items.
+    """
+    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topics = query_all(
+        topics_tbl,
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    if not topics:
+        return []
+
+    # Look up the question for each topic's objective
+    objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
+    questions_tbl = dynamodb.Table(T["QUESTIONS"])
+
+    queue_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    now = iso_now()
+    created: list[dict] = []
+
+    for idx, topic in enumerate(topics):
+        topic_id = topic["id"]
+
+        # Find the matching objective to get the question text
+        objective_id = topic.get("objectiveId")
+        question_text = ""
+        if objective_id:
+            q_items = query_all(
+                questions_tbl,
+                index_name=IDX["OBJECTIVE_QUESTIONS"],
+                key_condition=Key("objectiveId").eq(objective_id),
+            )
+            if q_items:
+                question_text = q_items[0].get("text", "")
+
+        item_id = str(uuid.uuid4())
+        item = {
+            "studentId": student_id,
+            "id": item_id,
+            "unitId": unit_id,
+            "knowledgeTopicId": topic_id,
+            "labelIndex": 1,
+            "order": idx,
+            "status": "active" if idx == 0 else "pending",
+            "question": question_text,
+            "createdAt": now,
+        }
+        queue_tbl.put_item(Item=item)
+        created.append(item)
+
+    return created
+
+
+def handle_list_knowledge_queue(event, unit_id: str):
+    """GET /units/{unitId}/knowledge-queue → KnowledgeQueueItem[]
+    Returns only visible items (status ≠ 'pending'), sorted by order asc.
+    Auto-initializes queue on first access.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+
+    # Query all items for this student in this unit
+    all_items = query_all(
+        tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    unit_items = [i for i in all_items if i.get("unitId") == unit_id]
+
+    # Auto-init if empty
+    if not unit_items:
+        unit_items = _init_knowledge_queue(student_id, unit_id)
+
+    # Filter out pending, sort by order
+    visible = [i for i in unit_items if i.get("status") != "pending"]
+    visible.sort(key=lambda x: x.get("order", 0))
+
+    return resp(200, visible)
+
+
+def handle_complete_knowledge_queue_item(event, queue_item_id: str):
+    """POST /knowledge-queue/{queueItemId}/complete
+    Body: { "is_correct": boolean }
+    Sets status, optionally creates retry item, advances next pending item.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    body = json.loads(event.get("body") or "{}")
+    is_correct = body.get("is_correct")
+    if is_correct is None:
+        return resp(400, {"error": "Missing is_correct"})
+
+    tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    existing = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    if not existing:
+        return resp_not_found("KnowledgeQueueItem")
+
+    unit_id = existing["unitId"]
+    now = iso_now()
+
+    # Update the completed item
+    new_status = "completed_correct" if is_correct else "completed_incorrect"
+    tbl.update_item(
+        Key={"studentId": student_id, "id": queue_item_id},
+        UpdateExpression="SET #s = :s, is_correct = :ic, updatedAt = :u",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": new_status, ":ic": is_correct, ":u": now},
+    )
+    updated_item = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+
+    result: dict = {"updatedItem": updated_item}
+
+    # If incorrect, create a retry item (pending, at end of queue)
+    new_queue_item = None
+    if not is_correct:
+        all_items = query_all(tbl, key_condition=Key("studentId").eq(student_id))
+        unit_items = [i for i in all_items if i.get("unitId") == unit_id]
+        max_order = max((i.get("order", 0) for i in unit_items), default=0)
+
+        retry_id = str(uuid.uuid4())
+        new_queue_item = {
+            "studentId": student_id,
+            "id": retry_id,
+            "unitId": unit_id,
+            "knowledgeTopicId": existing["knowledgeTopicId"],
+            "labelIndex": existing.get("labelIndex", 1) + 1,
+            "order": max_order + 1,
+            "status": "pending",
+            "question": existing.get("question", ""),
+            "createdAt": now,
+        }
+        tbl.put_item(Item=new_queue_item)
+        result["newQueueItem"] = new_queue_item
+
+    # Advance the next pending item to active
+    all_items = query_all(tbl, key_condition=Key("studentId").eq(student_id))
+    unit_items = [i for i in all_items if i.get("unitId") == unit_id]
+    pending = [i for i in unit_items if i.get("status") == "pending"]
+    pending.sort(key=lambda x: x.get("order", 0))
+
+    if pending:
+        next_item = pending[0]
+        tbl.update_item(
+            Key={"studentId": student_id, "id": next_item["id"]},
+            UpdateExpression="SET #s = :s",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":s": "active"},
+        )
+
+    return resp(200, result)
+
+
+def handle_get_knowledge_progress(event, unit_id: str):
+    """GET /units/{unitId}/knowledge-progress → KnowledgeProgress
+    Counts unique topics answered correctly/incorrectly.
+    A topic retried correctly is removed from incorrectCount.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    # Get total topics for this unit
+    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topics = query_all(
+        topics_tbl,
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    total_topics = len(topics)
+
+    # Get all queue items for this student in this unit
+    queue_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    all_items = query_all(queue_tbl, key_condition=Key("studentId").eq(student_id))
+    unit_items = [i for i in all_items if i.get("unitId") == unit_id]
+
+    # Track per-topic best result
+    topic_results: dict[str, bool] = {}
+    for item in unit_items:
+        tid = item.get("knowledgeTopicId")
+        if not tid:
+            continue
+        status = item.get("status", "")
+        if status == "completed_correct":
+            topic_results[tid] = True
+        elif status == "completed_incorrect" and tid not in topic_results:
+            topic_results[tid] = False
+
+    correct_count = sum(1 for v in topic_results.values() if v)
+    incorrect_count = sum(1 for v in topic_results.values() if not v)
+
+    progress = {
+        "unitId": unit_id,
+        "totalTopics": total_topics,
+        "correctCount": correct_count,
+        "incorrectCount": incorrect_count,
+        "correctPercent": round(correct_count / total_topics * 100, 1) if total_topics else 0,
+        "incorrectPercent": round(incorrect_count / total_topics * 100, 1) if total_topics else 0,
+    }
+    return resp(200, progress)
+
+
 def _parse_multipart(event) -> tuple[dict, list[tuple[str, bytes]]]:
     """
     Parse a multipart/form-data Lambda event.
@@ -1412,10 +1638,11 @@ def handle_create_unit_from_upload(event, course_id: str):
     }
     dynamodb.Table(T["UNITS"]).put_item(Item=unit_item)
 
-    # Persist objectives, stages, and questions
+    # Persist objectives, stages, questions, and knowledge topics
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
     stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
     questions_tbl = dynamodb.Table(T["QUESTIONS"])
+    knowledge_topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
 
     created_objectives: list[dict] = []
     STAGE_TYPES = ["begin", "walkthrough", "challenge"]
@@ -1468,6 +1695,18 @@ def handle_create_unit_from_upload(event, course_id: str):
             }
             questions_tbl.put_item(Item=q_item)
 
+        # Create a KnowledgeTopic for this objective (teacher-visible)
+        topic_id = str(uuid.uuid4())
+        topic_item = {
+            "id": topic_id,
+            "unitId": unit_id,
+            "objectiveId": obj_id,
+            "knowledgeTopic": description,
+            "order": order_idx,
+            "createdAt": now,
+        }
+        knowledge_topics_tbl.put_item(Item=topic_item)
+
     return resp(201, {"unit": unit_item, "objectives": created_objectives})
 
 
@@ -1510,7 +1749,31 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_list_objectives(unit_id)
 
-        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path:
+        if method == "GET" and path.endswith("/knowledge-topics") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_list_knowledge_topics(unit_id)
+
+        if method == "GET" and path.endswith("/knowledge-queue") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_list_knowledge_queue(event, unit_id)
+
+        if method == "GET" and path.endswith("/knowledge-progress") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_knowledge_progress(event, unit_id)
+
+        if method == "POST" and path.endswith("/complete") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_complete_knowledge_queue_item(event, item_id)
+
+        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path:
             unit_id = params.get("unitId")
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})

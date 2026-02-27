@@ -258,17 +258,15 @@ export function sendMessage(
 // ---------------------------------------------------------------------------
 
 export function listKnowledgeTopics(unitId: string): Promise<KnowledgeTopic[]> {
-  // Not yet implemented in backend — return empty until added.
-  void unitId;
-  return Promise.resolve([]);
+  return get<KnowledgeTopic[]>(`/units/${unitId}/knowledge-topics`);
 }
 
 // ---------------------------------------------------------------------------
 // Knowledge Queue (student-facing)
-// Not yet implemented in backend — stubs return empty data.
 // ---------------------------------------------------------------------------
 
 export function listKnowledgeMessages(_queueItemId: string): Promise<ChatMessage[]> {
+  // Knowledge queue items don't have a separate message thread — stub for UI compat.
   return Promise.resolve([]);
 }
 
@@ -278,37 +276,34 @@ export function sendKnowledgeMessage(
   _content: string,
   _metadata?: ChatMessage["metadata"]
 ): Promise<ChatMessage> {
-  return Promise.reject(new Error("Knowledge queue not yet implemented on backend"));
+  // Knowledge queue doesn't use a chat interface — stub for UI compat.
+  return Promise.reject(new Error("Knowledge queue does not support chat messages"));
 }
 
 export function getKnowledgeQueue(
-  _unitId: string,
+  unitId: string,
   _studentId: string
 ): Promise<KnowledgeQueueItem[]> {
-  return Promise.resolve([]);
+  return get<KnowledgeQueueItem[]>(`/units/${unitId}/knowledge-queue`);
 }
 
 export function completeKnowledgeAttempt(
   _unitId: string,
   _studentId: string,
-  _queueItemId: string,
-  _is_correct: boolean
+  queueItemId: string,
+  is_correct: boolean
 ): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }> {
-  return Promise.reject(new Error("Knowledge queue not yet implemented on backend"));
+  return post<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }>(
+    `/knowledge-queue/${queueItemId}/complete`,
+    { is_correct }
+  );
 }
 
 export function getKnowledgeProgress(
-  _unitId: string,
+  unitId: string,
   _studentId: string
 ): Promise<KnowledgeProgress> {
-  return Promise.resolve({
-    unitId: _unitId,
-    totalTopics: 0,
-    correctCount: 0,
-    incorrectCount: 0,
-    correctPercent: 0,
-    incorrectPercent: 0,
-  });
+  return get<KnowledgeProgress>(`/units/${unitId}/knowledge-progress`);
 }
 
 // ---------------------------------------------------------------------------
@@ -327,16 +322,37 @@ export function updateObjectiveEnabled(
 }
 
 // ---------------------------------------------------------------------------
-// Teacher: Unit upload
-// Not yet implemented in backend — stub.
+// Teacher: Unit upload (multipart/form-data)
 // ---------------------------------------------------------------------------
 
 export async function createUnitFromUpload(
-  _courseId: string,
-  _files: File[],
-  _unitTitle?: string
+  courseId: string,
+  files: File[],
+  unitTitle?: string
 ): Promise<{ unit: Unit; objectives: Objective[] }> {
-  return Promise.reject(new Error("Unit upload not yet implemented on backend"));
+  const token = await getAuthToken();
+  const formData = new FormData();
+  formData.append("unitName", unitTitle ?? "Untitled Unit");
+  for (const file of files) {
+    formData.append("files", file, file.name);
+  }
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  // Do NOT set Content-Type — the browser adds it with the multipart boundary.
+
+  const res = await fetch(`${BASE}/courses/${courseId}/units/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API ${res.status}: ${body}`);
+  }
+  return res.json();
 }
 
 export function updateUnitTitle(unitId: string, title: string): Promise<Unit> {
@@ -345,7 +361,6 @@ export function updateUnitTitle(unitId: string, title: string): Promise<Unit> {
 
 // ---------------------------------------------------------------------------
 // Teacher: Students / Roster / Courses
-// Not yet implemented in backend — stubs return empty data.
 // ---------------------------------------------------------------------------
 
 export function listTeacherStudents(): Promise<Student[]> {
