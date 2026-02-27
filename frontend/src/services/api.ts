@@ -355,6 +355,14 @@ export async function createUnitFromUpload(
   return res.json();
 }
 
+export function getUploadStatus(
+  unitId: string
+): Promise<{ unitId: string; status: string; statusError?: string }> {
+  return get<{ unitId: string; status: string; statusError?: string }>(
+    `/units/${unitId}/upload-status`
+  );
+}
+
 export function updateUnitTitle(unitId: string, title: string): Promise<Unit> {
   return patch<Unit>(`/units/${unitId}/title`, { title });
 }

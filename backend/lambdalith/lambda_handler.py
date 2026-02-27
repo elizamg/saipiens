@@ -18,6 +18,11 @@ if _BACKEND_CODE_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_CODE_DIR)
 
 dynamodb = boto3.resource("dynamodb")
+s3 = boto3.client("s3")
+lambda_client = boto3.client("lambda")
+
+UPLOAD_BUCKET = "sapiens-upload-staging-681816819209"
+SELF_FUNCTION_NAME = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "sapiens-api")
 
 # ---- Tables (env vars) ----
 T = {
@@ -1559,14 +1564,12 @@ def _parse_multipart(event) -> tuple[dict, list[tuple[str, bytes]]]:
 
 def handle_create_unit_from_upload(event, course_id: str):
     """
-    POST /courses/{courseId}/units/upload
+    POST /courses/{courseId}/units/upload  (async version)
     Multipart form: unitName (string), files (one or more PDFs).
-    Runs the Gen_Curriculum_Pipeline on the uploaded files, then persists:
-      - Unit
-      - Objectives (one per identified knowledge item)
-      - ItemStages (3 per objective: begin / walkthrough / challenge)
-      - Questions (one per objective, from the pipeline)
-    Returns { unit, objectives }.
+    1. Parses upload, stages files in S3
+    2. Creates Unit with status="processing"
+    3. Invokes Lambda async to run the pipeline
+    4. Returns { unit, objectives: [] } immediately
     """
     instructor_id = effective_instructor_id(event)
     if not instructor_id:
@@ -1588,22 +1591,80 @@ def handle_create_unit_from_upload(event, course_id: str):
     if not course:
         return resp_not_found("Course")
 
-    subject = course.get("title", "Unknown Subject")
+    now = iso_now()
+    unit_id = str(uuid.uuid4())
     grade = fields.get("grade") or "Unknown Grade"
 
-    # Write uploaded files to /tmp
+    # Upload files to S3 staging
+    s3_keys: list[dict] = []
+    for filename, data in files:
+        s3_key = f"uploads/{unit_id}/{filename}"
+        s3.put_object(Bucket=UPLOAD_BUCKET, Key=s3_key, Body=data)
+        s3_keys.append({"key": s3_key, "filename": filename})
+
+    # Create Unit immediately with status="processing"
+    unit_item = {
+        "id": unit_id,
+        "courseId": course_id,
+        "title": unit_name,
+        "order": 0,
+        "status": "processing",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    dynamodb.Table(T["UNITS"]).put_item(Item=unit_item)
+
+    # Invoke self async to run the pipeline in the background
+    async_payload = {
+        "_internal": "process-upload",
+        "unitId": unit_id,
+        "courseId": course_id,
+        "unitName": unit_name,
+        "grade": grade,
+        "s3Keys": s3_keys,
+    }
+    lambda_client.invoke(
+        FunctionName=SELF_FUNCTION_NAME,
+        InvocationType="Event",  # async — returns 202 immediately
+        Payload=json.dumps(async_payload).encode(),
+    )
+
+    return resp(202, {"unit": unit_item, "objectives": []})
+
+
+def _handle_process_upload_async(payload: dict):
+    """
+    Internal async handler — invoked by handle_create_unit_from_upload.
+    Downloads files from S3, runs the curriculum pipeline, persists results,
+    and updates the Unit status to 'ready' (or 'error').
+    """
+    unit_id = payload["unitId"]
+    course_id = payload["courseId"]
+    s3_keys = payload["s3Keys"]
+    grade = payload.get("grade", "Unknown Grade")
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    course = courses_tbl.get_item(Key={"id": course_id}).get("Item") or {}
+    subject = course.get("title", "Unknown Subject")
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+
+    # Download files from S3 to /tmp
     tmp_paths: list[str] = []
     try:
-        for filename, data in files:
+        for entry in s3_keys:
+            s3_key = entry["key"]
+            filename = entry["filename"]
             suffix = os.path.splitext(filename)[1] or ".pdf"
             fd, tmp_path = tempfile.mkstemp(suffix=suffix)
             try:
-                os.write(fd, data)
+                obj = s3.get_object(Bucket=UPLOAD_BUCKET, Key=s3_key)
+                os.write(fd, obj["Body"].read())
             finally:
                 os.close(fd)
             tmp_paths.append(tmp_path)
 
-        # Run the curriculum pipeline on each uploaded file
+        # Run the curriculum pipeline
         from gen_curriculum_pipeline import Gen_Curriculum_Pipeline
         pipeline = Gen_Curriculum_Pipeline()
 
@@ -1613,30 +1674,41 @@ def handle_create_unit_from_upload(event, course_id: str):
             all_knowledge.extend(knowledge)
 
     except Exception as e:
-        return resp(500, {"error": f"Curriculum pipeline failed: {e}"})
+        print(f"[async-upload] Pipeline failed for unit {unit_id}: {e}")
+        units_tbl.update_item(
+            Key={"id": unit_id},
+            UpdateExpression="SET #s = :s, statusError = :e, updatedAt = :u",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":s": "error", ":e": str(e), ":u": iso_now()},
+        )
+        return
     finally:
         for p in tmp_paths:
             try:
                 os.unlink(p)
             except Exception:
                 pass
+        # Clean up S3 staging files
+        for entry in s3_keys:
+            try:
+                s3.delete_object(Bucket=UPLOAD_BUCKET, Key=entry["key"])
+            except Exception:
+                pass
 
     if not all_knowledge:
-        return resp(422, {"error": "No knowledge items identified from uploaded content"})
+        units_tbl.update_item(
+            Key={"id": unit_id},
+            UpdateExpression="SET #s = :s, statusError = :e, updatedAt = :u",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":s": "error",
+                ":e": "No knowledge items identified from uploaded content",
+                ":u": iso_now(),
+            },
+        )
+        return
 
     now = iso_now()
-    unit_id = str(uuid.uuid4())
-
-    # Persist the unit
-    unit_item = {
-        "id": unit_id,
-        "courseId": course_id,
-        "title": unit_name,
-        "order": 0,
-        "createdAt": now,
-        "updatedAt": now,
-    }
-    dynamodb.Table(T["UNITS"]).put_item(Item=unit_item)
 
     # Persist objectives, stages, questions, and knowledge topics
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
@@ -1644,7 +1716,6 @@ def handle_create_unit_from_upload(event, course_id: str):
     questions_tbl = dynamodb.Table(T["QUESTIONS"])
     knowledge_topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
 
-    created_objectives: list[dict] = []
     STAGE_TYPES = ["begin", "walkthrough", "challenge"]
 
     for order_idx, k in enumerate(all_knowledge):
@@ -1652,7 +1723,6 @@ def handle_create_unit_from_upload(event, course_id: str):
         description = k.get("knowledge_description", "")
         question_text = k.get("question", "")
 
-        # Map pipeline type to our kind
         obj_kind = "skill" if knowledge_type == "skill" else "knowledge"
 
         obj_id = str(uuid.uuid4())
@@ -1667,9 +1737,7 @@ def handle_create_unit_from_upload(event, course_id: str):
             "updatedAt": now,
         }
         objectives_tbl.put_item(Item=obj_item)
-        created_objectives.append(obj_item)
 
-        # Create 3 ItemStages for this objective
         for stage_order, stage_type in enumerate(STAGE_TYPES):
             stage_id = str(uuid.uuid4())
             stage_item = {
@@ -1677,12 +1745,11 @@ def handle_create_unit_from_upload(event, course_id: str):
                 "itemId": obj_id,
                 "stageType": stage_type,
                 "order": stage_order,
-                "prompt": description,  # use the description as the stage prompt
+                "prompt": description,
                 "createdAt": now,
             }
             stages_tbl.put_item(Item=stage_item)
 
-        # Create one Question for this objective
         if question_text:
             q_id = str(uuid.uuid4())
             q_item = {
@@ -1695,7 +1762,6 @@ def handle_create_unit_from_upload(event, course_id: str):
             }
             questions_tbl.put_item(Item=q_item)
 
-        # Create a KnowledgeTopic for this objective (teacher-visible)
         topic_id = str(uuid.uuid4())
         topic_item = {
             "id": topic_id,
@@ -1707,11 +1773,39 @@ def handle_create_unit_from_upload(event, course_id: str):
         }
         knowledge_topics_tbl.put_item(Item=topic_item)
 
-    return resp(201, {"unit": unit_item, "objectives": created_objectives})
+    # Mark unit as ready
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET #s = :s, updatedAt = :u",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": "ready", ":u": iso_now()},
+    )
+    print(f"[async-upload] Unit {unit_id} processing complete: {len(all_knowledge)} objectives created")
+
+
+def handle_get_upload_status(unit_id: str):
+    """GET /units/{unitId}/upload-status → { status, statusError? }"""
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    item = got.get("Item")
+    if not item:
+        return resp_not_found("Unit")
+    result = {
+        "unitId": unit_id,
+        "status": item.get("status", "ready"),
+    }
+    if item.get("statusError"):
+        result["statusError"] = item["statusError"]
+    return resp(200, result)
 
 
 # ---- Main router ----
 def handler(event, context):
+    # Handle internal async events (not from API Gateway)
+    if isinstance(event, dict) and event.get("_internal") == "process-upload":
+        _handle_process_upload_async(event)
+        return  # async invocation, no HTTP response needed
+
     try:
         method, path = method_and_path(event)
         params = event.get("pathParameters") or {}
@@ -1773,7 +1867,13 @@ def handler(event, context):
                 return resp(400, {"error": "Missing itemId"})
             return handle_complete_knowledge_queue_item(event, item_id)
 
-        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path:
+        if method == "GET" and path.endswith("/upload-status") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_upload_status(unit_id)
+
+        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path and "/upload-status" not in path:
             unit_id = params.get("unitId")
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
