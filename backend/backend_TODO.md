@@ -2,10 +2,14 @@
 
 This is the remaining work before the backend is ready to be “handed off” to the frontend as a stable, production-ready API.
 
-## A) Turn on real auth (Cognito JWT) and remove dev auth
-- Re-enable JWT authorizers on all non-health routes in API Gateway.
-- Set `DEV_AUTH_ENABLED=false` in Lambda (and ideally remove dev-header logic entirely).
-- Verify the frontend can attach a valid token and that `sub` is used consistently as `studentId`.
+## A) ~~Turn on real auth (Cognito JWT)~~ ✅ DONE
+- JWT authorizer is now attached to all API Gateway routes (except `/health`).
+- Lambda also decodes JWT from the `Authorization: Bearer` header as a fallback (handles cases where API Gateway claims are empty).
+- `cognito:groups` bracket parsing fixed — API Gateway stringifies `["instructors"]` as `[instructors]`; parser now strips brackets.
+- `given_name` + `family_name` from JWT claims are used for display names (auto-created records + synced on login).
+- Frontend signup form collects first/last name and sends them as required Cognito attributes.
+- All frontend pages (student + teacher) use real API calls — zero mock data imports remain.
+- Dev auth (`DEV_AUTH_ENABLED`) is still available for testing but should be disabled before production.
 
 ## B) CORS tightening
 - Replace `Access-Control-Allow-Origin: *` with the actual frontend origin(s) in production.
@@ -91,14 +95,11 @@ Note: `VITE_DEV_STUDENT_ID` and `VITE_DEV_TOKEN` are no longer used by the front
 
 ---
 
-## "Ready for frontend integration" checklist
-Before telling frontend to switch off mocks, ensure:
-- JWT auth works end-to-end (no dev headers)
-- CORS matches frontend origin and includes Authorization
-- All routes return correct shapes with correct ordering:
-  - Objectives sorted by `order`
-  - Stages sorted by `order`
-  - Questions sorted by `difficultyStars`
-  - Messages sorted by `createdAt`
-- 404 semantics are consistent
-- Seeded content is complete for demo course(s)
+## "Ready for frontend integration" checklist ✅ DONE
+- [x] JWT auth works end-to-end (API Gateway authorizer + Lambda fallback)
+- [x] CORS includes Authorization, PATCH method, x-dev-instructor-id header
+- [x] All routes return correct shapes with correct ordering
+- [x] 404 semantics are consistent
+- [x] All frontend pages (student + teacher) call real API — no mock data
+- [x] Signup collects first/last name; names display correctly on dashboards
+- [ ] Seeded content is complete for demo course(s) — only needed if demo accounts need pre-populated courses

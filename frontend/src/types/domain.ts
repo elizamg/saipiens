@@ -24,6 +24,8 @@ export interface Course {
   icon?: string;
   instructorIds: string[];
   enrolledStudentIds: string[];
+  /** Populated by GET /instructor/courses — number of enrolled students. */
+  studentCount?: number;
 }
 
 export type UnitStatus = "active" | "completed" | "locked";
