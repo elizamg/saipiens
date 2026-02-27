@@ -146,10 +146,32 @@ def strip_stage(raw_path: str) -> str:
 
 
 def claims(event) -> dict:
+    """Return JWT claims — prefer API Gateway authorizer, fall back to
+    decoding the Authorization header directly (needed when no authorizer
+    is attached to the route)."""
     rc = event.get("requestContext") or {}
     auth = rc.get("authorizer") or {}
-    jwt = auth.get("jwt") or {}
-    return jwt.get("claims") or {}
+    jwt_block = auth.get("jwt") or {}
+    gw_claims = jwt_block.get("claims") or {}
+    if gw_claims:
+        return gw_claims
+
+    # Decode JWT payload from Authorization header
+    auth_header = header(event, "authorization") or header(event, "Authorization") or ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        try:
+            # JWT is header.payload.signature — decode the payload (base64url)
+            payload_b64 = token.split(".")[1]
+            # Add padding
+            padding = 4 - len(payload_b64) % 4
+            if padding != 4:
+                payload_b64 += "=" * padding
+            payload_bytes = base64.urlsafe_b64decode(payload_b64)
+            return json.loads(payload_bytes)
+        except Exception:
+            pass
+    return {}
 
 
 def authed_sub(event) -> str | None:
