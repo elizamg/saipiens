@@ -65,11 +65,16 @@ Access patterns:
 - SK: `id` (String)
 
 Typical attributes:
-- `id`, `courseId`, `title`, `status` (`active|completed|locked`)
+- `id`, `courseId`, `title`, `status` (`active|completed|locked|processing|ready|error`)
+- `statusError?` (String) — error message when `status === "error"` (set by async upload pipeline)
 
 Access patterns:
 - Get unit by id
 - List units for courseId (GSI)
+
+Notes:
+- During async curriculum upload, `status` transitions: `"processing"` → `"ready"` | `"error"`.
+- Pre-existing units without `status` default to `"active"` on read.
 
 ---
 

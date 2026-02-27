@@ -118,16 +118,51 @@ All teacher-facing routes are now live in the Lambda:
 | `POST /students` | Creates a new student |
 | `PATCH /units/{id}/title` | Renames a unit |
 | `PATCH /objectives/{id}/enabled` | Toggles objective visibility |
-| `POST /courses/{id}/units/upload` | PDF upload → AI curriculum pipeline → persists Unit + Objectives  Stages |
+| `POST /courses/{id}/units/upload` | Async PDF upload → S3 staging → AI curriculum pipeline → persists Unit + Objectives + Stages |
+| `GET /units/{id}/upload-status` | Polls async upload progress (`processing` → `ready` / `error`) |
 
  5. Test Suite — 150 tests total
- 
+
 | Suite | Tests | What it covers |
 |-------|-------|---------------|
 | Auth unit tests (pytest) | 42 | JWT parsing, student/instructor identity resolution, dev-header fallback, CORS |
 | Frontend auth tests (vitest) | 22 | Cognito service, AuthContext, RequireRole routing guards |
 | API integration tests (live) | 88 | Every route including AI pipeline, error handling, edge cases |
 | **Total** | **152** | |
+
+ 6. Knowledge Topics, Queue, and Progress Endpoints
+
+Four new endpoints for the knowledge review system:
+
+| Route | Description |
+|-------|-------------|
+| `GET /units/{unitId}/knowledge-topics` | Returns teacher-visible topic names for a unit (sorted by order) |
+| `GET /units/{unitId}/knowledge-queue` | Returns student-facing queue items (auto-initialized on first access) |
+| `GET /units/{unitId}/knowledge-progress` | Returns aggregate progress stats (correct/incorrect counts and percentages) |
+| `POST /units/{unitId}/knowledge-queue/{itemId}/answer` | Submits an answer; incorrect answers create retry items at end of queue |
+
+ 7. Async Upload Pipeline
+
+The curriculum upload (`POST /courses/{courseId}/units/upload`) now uses an async pattern to work around API Gateway's hard 30-second timeout:
+
+1. Upload handler parses multipart, stages files in S3 (`sapiens-upload-staging-681816819209`), creates Unit with `status: "processing"`
+2. Invokes the same Lambda asynchronously (`InvocationType: Event`)
+3. Returns `202 Accepted` immediately
+4. Background Lambda downloads files from S3, runs `Gen_Curriculum_Pipeline`, persists results
+5. Updates Unit `status` to `"ready"` or `"error"` (with `statusError` message)
+6. Frontend polls `GET /units/{unitId}/upload-status` every 3s until complete
+
+Lambda timeout increased to 300s (5 min). S3 staging bucket has a 1-day auto-expiry lifecycle.
+
+ 8. Lambda Invoke Test Results (2026-02-27)
+
+| # | Test | Expected | Result |
+|---|------|----------|--------|
+| 1 | `GET /units/nonexistent-id/upload-status` | 404 `Unit not found` | PASS |
+| 2 | `GET /health` | 200 `{ ok: true }` | PASS |
+| 3 | `GET /units/unit_demo_1/upload-status` | 200 with status field | PASS |
+| 4 | Internal async handler with empty `s3Keys` | Unit status → `"error"` | PASS |
+| 5 | `GET /units/unit_demo_1/knowledge-topics` (regression) | 200 | PASS |
 
 
 Backend Documentation
@@ -142,7 +177,7 @@ All backend docs live in [`/backend`](backend/):
 | [cognito_setup.md](backend/cognito_setup.md) | Cognito pool, app client, groups, dev accounts, auth flow |
 | [test_report.md](backend/test_report.md) | Auth test suite documentation (64 unit tests) |
 | [TESTING_QUICKSTART.md](backend/TESTING_QUICKSTART.md) | How to test the live API — no AWS credentials required |
-| [browser_testing_guide.md](backend/browser_testing_guide.md) | Browser console testing guide |
+| [browser_testing_guide.md](backend/browser_testing_guide.md) | Browser console testing guide (includes Lambda invoke test results) |
 | [backend_TODO.md](backend/backend_TODO.md) | Production hardening checklist |
  
 

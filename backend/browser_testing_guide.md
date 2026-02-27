@@ -293,6 +293,18 @@ await iapi("/courses/<courseId>/roster");
 
 ------------------------------------------------------------------------
 
+## 18. Upload Status Polling
+
+``` javascript
+// After uploading a unit, poll its status:
+await api("/units/<unitId>/upload-status");
+```
+
+Expected: `{ unitId, status }` where `status` is `"processing"`, `"ready"`, or `"error"`.
+If `status === "error"`, a `statusError` field contains the error message.
+
+------------------------------------------------------------------------
+
 # Step 5 --- Verify Error Handling
 
 Test a 404:
@@ -302,5 +314,19 @@ await fetch(BASE + "/courses/not-real");
 ```
 
 Expected: - HTTP 404 - JSON `{ "error": "Course not found" }`
+
+------------------------------------------------------------------------
+
+# Step 6 --- Lambda Invoke Test Results
+
+The following tests were run via `aws lambda invoke` against the deployed `sapiens-api` Lambda on 2026-02-27:
+
+| # | Test | Expected | Result |
+|---|------|----------|--------|
+| 1 | `GET /units/nonexistent-id/upload-status` | 404 `Unit not found` | PASS |
+| 2 | `GET /health` | 200 `{ ok: true }` | PASS |
+| 3 | `GET /units/unit_demo_1/upload-status` (existing unit) | 200 with status field | PASS — returned `{ unitId: "unit_demo_1", status: "active" }` |
+| 4 | Internal async handler with empty `s3Keys` | Unit status set to `"error"` | PASS — status changed to `"error"`, statusError: `"No knowledge items identified from uploaded content"` |
+| 5 | `GET /units/unit_demo_1/knowledge-topics` (regression) | 200 | PASS |
 
 

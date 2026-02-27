@@ -192,17 +192,38 @@ await iapi("/objectives/obj_demo_1/enabled", {
 });
 ```
 
-### Curriculum upload (curl)
+### Curriculum upload (curl — async)
 
 ```bash
 BASE="https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod"
 
+# Upload returns 202 immediately — processing happens in the background
 curl -X POST "$BASE/courses/<courseId>/units/upload" \
   -H "X-Dev-Instructor-Id: instructor_demo_1" \
   -H "X-Dev-Token: dev-secret" \
   -F "unitName=Chapter 3: Cellular Respiration" \
   -F "grade=10" \
   -F "files=@chapter3.pdf"
+
+# Poll upload status until "ready" or "error"
+curl "$BASE/units/<unitId>/upload-status" \
+  -H "X-Dev-Instructor-Id: instructor_demo_1" \
+  -H "X-Dev-Token: dev-secret"
 ```
 
-⚠ This call runs the full AI curriculum pipeline — expect 30–90s response time.
+The upload returns `202` immediately with `{ unit, objectives: [] }`. The AI curriculum pipeline runs in a background Lambda (up to 5 min). Poll `/units/{unitId}/upload-status` until `status` is `"ready"` or `"error"`.
+
+---
+
+## Testing knowledge queue (student)
+
+```javascript
+// Knowledge topics for a unit (teacher-visible)
+await api("/units/unit_demo_1/knowledge-topics");
+
+// Knowledge queue (auto-initialized on first access)
+await api("/units/unit_demo_1/knowledge-queue");
+
+// Knowledge progress (correct/incorrect counts)
+await api("/units/unit_demo_1/knowledge-progress");
+```
