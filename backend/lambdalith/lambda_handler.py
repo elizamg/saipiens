@@ -50,15 +50,12 @@ IDX = {
     "COURSE_ENROLLMENTS": "CourseEnrollmentsIndex",
 }
 
-# ---- Dev auth (Option A) — students ----
+# ---- Dev auth ----
+# When DEV_AUTH_ENABLED=true, requests may use X-Dev-Student-Id or
+# X-Dev-Instructor-Id headers to identify the caller without a real JWT.
 DEV_AUTH_ENABLED = os.environ.get("DEV_AUTH_ENABLED", "false").lower() == "true"
 DEV_AUTH_HEADER = os.environ.get("DEV_AUTH_HEADER", "X-Dev-Student-Id")
 DEV_AUTH_TOKEN = os.environ.get("DEV_AUTH_TOKEN")  # optional shared secret
-
-# ---- Dev auth — instructors ----
-DEV_INSTRUCTOR_ENABLED = os.environ.get("DEV_INSTRUCTOR_ENABLED", "false").lower() == "true"
-DEV_INSTRUCTOR_HEADER = os.environ.get("DEV_INSTRUCTOR_HEADER", "X-Dev-Instructor-Id")
-DEV_INSTRUCTOR_TOKEN = os.environ.get("DEV_AUTH_TOKEN")  # reuse same shared secret
 
 # ---- CORS ----
 CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*")
@@ -248,24 +245,6 @@ def effective_student_id(event) -> str | None:
     if DEV_AUTH_TOKEN:
         tok = header(event, "X-Dev-Token")
         if tok != DEV_AUTH_TOKEN:
-            return None
-
-    return dev_id
-
-
-def effective_instructor_id(event) -> str | None:
-    """Return the authenticated instructor id, or None if not authorized."""
-    # In production, instructors would have their own JWT claim; for now dev-header only.
-    if not DEV_INSTRUCTOR_ENABLED:
-        return None
-
-    dev_id = header(event, DEV_INSTRUCTOR_HEADER)
-    if not dev_id:
-        return None
-
-    if DEV_INSTRUCTOR_TOKEN:
-        tok = header(event, "X-Dev-Token")
-        if tok != DEV_INSTRUCTOR_TOKEN:
             return None
 
     return dev_id
@@ -1058,17 +1037,41 @@ def handle_create_course(event):
     if not title:
         return resp(400, {"error": "Missing title"})
 
+    icon = (body.get("icon") or "general").strip() if isinstance(body, dict) else "general"
+    student_ids = body.get("studentIds") if isinstance(body, dict) else None
+    if not isinstance(student_ids, list):
+        student_ids = []
+
     now = iso_now()
     course_id = str(uuid.uuid4())
     item = {
         "id": course_id,
         "title": title,
+        "icon": icon,
         "instructorId": instructor_id,
         "createdAt": now,
         "updatedAt": now,
     }
     dynamodb.Table(T["COURSES"]).put_item(Item=item)
-    return resp(201, item)
+
+    # Create enrollment records for the initial roster
+    if student_ids:
+        enrollments_tbl = dynamodb.Table(T["ENROLLMENTS"])
+        with enrollments_tbl.batch_writer() as batch:
+            for sid in student_ids:
+                batch.put_item(Item={
+                    "studentId": sid,
+                    "courseId": course_id,
+                    "enrolledAt": now,
+                })
+
+    # Return the TeacherCourse shape expected by the contract
+    return resp(201, {
+        "id": course_id,
+        "title": title,
+        "studentCount": len(student_ids),
+        "icon": icon,
+    })
 
 
 def handle_get_course_roster(event, course_id: str):

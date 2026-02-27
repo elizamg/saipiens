@@ -66,6 +66,13 @@ function post<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
+function patch<T>(path: string, body?: unknown): Promise<T> {
+  return apiFetch<T>(path, {
+    method: "PATCH",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Agent (static — no backend endpoint yet)
 // ---------------------------------------------------------------------------
@@ -316,7 +323,7 @@ export function updateObjectiveEnabled(
   objectiveId: string,
   enabled: boolean
 ): Promise<Objective> {
-  return post<Objective>(`/objectives/${objectiveId}/enabled`, { enabled });
+  return patch<Objective>(`/objectives/${objectiveId}/enabled`, { enabled });
 }
 
 // ---------------------------------------------------------------------------
@@ -333,7 +340,7 @@ export async function createUnitFromUpload(
 }
 
 export function updateUnitTitle(unitId: string, title: string): Promise<Unit> {
-  return post<Unit>(`/units/${unitId}/title`, { title });
+  return patch<Unit>(`/units/${unitId}/title`, { title });
 }
 
 // ---------------------------------------------------------------------------
@@ -360,12 +367,12 @@ export function updateCourseRoster(
   ).then((r) => ({ studentIds: r.studentIds }));
 }
 
-export async function createCourse(_params: {
+export function createCourse(params: {
   title: string;
   icon: string;
   studentIds: string[];
-}): Promise<unknown> {
-  return Promise.reject(new Error("Course creation not yet implemented on backend"));
+}): Promise<{ id: string; title: string; studentCount: number; icon: string }> {
+  return post("/courses", params);
 }
 
 export async function createNewStudent(

@@ -187,7 +187,73 @@ await api("/courses/course_demo_1/feedback");
 
 ------------------------------------------------------------------------
 
-# Step 4 --- Verify Error Handling
+# Step 4 --- Test Instructor Routes
+
+Create an instructor helper (uses `X-Dev-Instructor-Id` instead of `X-Dev-Student-Id`):
+
+``` javascript
+const IID = "instructor_demo_1";
+
+async function iapi(path, options = {}) {
+  const res = await fetch(BASE + path, {
+    headers: {
+      "Content-Type": "application/json",
+      "X-Dev-Instructor-Id": IID,
+      "X-Dev-Token": TOKEN,
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+  return res.json();
+}
+```
+
+## 14. Current Instructor
+
+``` javascript
+await iapi("/current-instructor");
+```
+
+Expected: Instructor object (auto-created on first access).
+
+------------------------------------------------------------------------
+
+## 15. List Instructor Courses
+
+``` javascript
+await iapi("/instructor/courses");
+```
+
+------------------------------------------------------------------------
+
+## 16. Create Course (with icon and initial roster)
+
+``` javascript
+await iapi("/courses", {
+  method: "POST",
+  body: JSON.stringify({
+    title: "Test History Course",
+    icon: "history",
+    studentIds: ["student_demo_1"]
+  })
+});
+```
+
+Expected: `{ id, title, studentCount: 1, icon: "history" }` with status 201.
+
+------------------------------------------------------------------------
+
+## 17. List Students / Course Roster
+
+``` javascript
+await iapi("/students");
+// After creating a course, get its roster:
+await iapi("/courses/<courseId>/roster");
+```
+
+------------------------------------------------------------------------
+
+# Step 5 --- Verify Error Handling
 
 Test a 404:
 
