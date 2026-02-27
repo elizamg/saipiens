@@ -12,6 +12,8 @@ import { useAuth } from "../contexts/AuthContext";
 export default function SignUpPage() {
   const navigate = useNavigate();
   const { setRole } = useAuth();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -56,7 +58,7 @@ export default function SignUpPage() {
       // Role is NOT chosen by the user at sign-up — it is determined by
       // Cognito group membership (set by an admin). All new self-registrations
       // are students by default.
-      const { confirmationRequired } = await signUp(email, password, false);
+      const { confirmationRequired } = await signUp(email, password, firstName.trim(), lastName.trim());
       if (confirmationRequired) {
         setNeedsConfirm(true);
       } else {
@@ -125,6 +127,22 @@ export default function SignUpPage() {
     <AuthLayout>
       <AuthCard title="Create an account" footer={footer}>
         <Input
+          id="first-name"
+          label="First name"
+          type="text"
+          placeholder="Enter your first name"
+          value={firstName}
+          onChange={setFirstName}
+        />
+        <Input
+          id="last-name"
+          label="Last name"
+          type="text"
+          placeholder="Enter your last name"
+          value={lastName}
+          onChange={setLastName}
+        />
+        <Input
           id="email"
           label="Email"
           type="email"
@@ -150,7 +168,7 @@ export default function SignUpPage() {
           fullWidth
           style={{ marginTop: 8 }}
           onClick={handleSignUp}
-          disabled={submitting}
+          disabled={submitting || !firstName.trim() || !lastName.trim() || !email.trim() || !password}
         >
           {submitting ? "Creating account…" : "Create Account"}
         </Button>
