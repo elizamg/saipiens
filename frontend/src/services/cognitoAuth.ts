@@ -14,6 +14,7 @@ import {
   CognitoUser,
   AuthenticationDetails,
   CognitoUserSession,
+  CognitoUserAttribute,
 } from "amazon-cognito-identity-js";
 import type { UserRole } from "../contexts/AuthContext";
 
@@ -108,13 +109,18 @@ export interface SignUpResult {
 export function signUp(
   email: string,
   password: string,
-  _isInstructor?: boolean
+  givenName: string,
+  familyName: string
 ): Promise<SignUpResult> {
+  const attributes = [
+    new CognitoUserAttribute({ Name: "given_name", Value: givenName }),
+    new CognitoUserAttribute({ Name: "family_name", Value: familyName }),
+  ];
   return new Promise((resolve, reject) => {
     userPool.signUp(
       email,
       password,
-      [],
+      attributes,
       [],
       (err, result) => {
         if (err) {
