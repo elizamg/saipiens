@@ -9,6 +9,7 @@ import {
   getCurrentInstructor,
   listTeacherCourses,
   createUnitFromUpload,
+  getUploadStatus,
 } from "../services/api";
 import type { Course, Student } from "../types/domain";
 
@@ -31,6 +32,8 @@ export default function UnitUploadPage() {
   const [unitName, setUnitName] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [processingUnitId, setProcessingUnitId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!courseId) return;
@@ -91,9 +94,45 @@ export default function UnitUploadPage() {
   const handleProcess = async () => {
     if (files.length === 0 || !courseId) return;
     setStep("processing");
-    const { unit } = await createUnitFromUpload(courseId, files, unitName);
-    navigate(`/teacher/course/${courseId}/unit/${unit.id}`);
+    setUploadError(null);
+    try {
+      const { unit } = await createUnitFromUpload(courseId, files, unitName);
+      setProcessingUnitId(unit.id);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      setStep("upload");
+    }
   };
+
+  // Poll for upload completion once we have a processingUnitId
+  useEffect(() => {
+    if (!processingUnitId || !courseId) return;
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled) {
+        await new Promise((r) => setTimeout(r, 3000));
+        if (cancelled) break;
+        try {
+          const result = await getUploadStatus(processingUnitId);
+          if (result.status === "ready") {
+            navigate(`/teacher/course/${courseId}/unit/${processingUnitId}`);
+            return;
+          }
+          if (result.status === "error") {
+            setUploadError(result.statusError || "Processing failed");
+            setStep("upload");
+            setProcessingUnitId(null);
+            return;
+          }
+          // still "processing" — keep polling
+        } catch {
+          // network error — keep polling
+        }
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [processingUnitId, courseId, navigate]);
 
   // ---- Styles ----
 
@@ -379,6 +418,12 @@ export default function UnitUploadPage() {
           {files.length >= MAX_FILES && (
             <p style={{ fontSize: 13, color: GRAY_500, marginTop: 8 }}>
               Maximum of {MAX_FILES} files reached.
+            </p>
+          )}
+
+          {uploadError && (
+            <p style={{ fontSize: 14, color: "#dc2626", marginTop: 16 }}>
+              {uploadError}
             </p>
           )}
 
