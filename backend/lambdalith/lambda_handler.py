@@ -183,10 +183,12 @@ def _cognito_groups(event) -> list[str]:
     raw = claims(event).get("cognito:groups")
     if not raw:
         return []
-    # API Gateway JWT claims stringify list values as space-separated tokens.
     if isinstance(raw, list):
         return raw
-    return [g.strip() for g in raw.split() if g.strip()]
+    # API Gateway JWT authorizer may stringify lists as "[instructors]" or
+    # space-separated "instructors students". Strip brackets before splitting.
+    cleaned = raw.strip("[] ")
+    return [g.strip() for g in cleaned.split() if g.strip()]
 
 
 def effective_instructor_id(event) -> str | None:
