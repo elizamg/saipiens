@@ -6,7 +6,7 @@ import Button from "../components/ui/Button";
 import IconChooser from "../components/course/IconChooser";
 import StudentRosterEditor from "../components/course/StudentRosterEditor";
 import { GRAY_500, GRAY_900 } from "../theme/colors";
-import type { Student, Instructor } from "../types/domain";
+import type { Student } from "../types/domain";
 import { createCourse, listTeacherStudents, getCurrentInstructor, listTeacherCourses } from "../services/api";
 import type { Course } from "../types/domain";
 
@@ -16,14 +16,14 @@ export default function CourseCreationPage() {
   const [selectedIcon, setSelectedIcon] = useState("general");
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [instructor, setInstructor] = useState<Instructor | null>(null);
+  const [instructor, setInstructor] = useState<Student | null>(null);
   const [sidebarCourses, setSidebarCourses] = useState<Course[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     listTeacherStudents().then(setAllStudents).catch(() => {});
-    getCurrentInstructor().then(setInstructor).catch(() => {});
+    getCurrentInstructor().then((i) => setInstructor({ ...i, yearLabel: "" })).catch(() => {});
     listTeacherCourses().then(setSidebarCourses).catch(() => {});
   }, []);
 
@@ -78,7 +78,7 @@ export default function CourseCreationPage() {
 
   return (
     <AppShell
-      student={instructor ?? { id: "", name: "Instructor" }}
+      student={instructor}
       activePath="/courses"
       sidebarCourses={sidebarCourses}
       routePrefix="/teacher"
