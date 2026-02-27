@@ -3,7 +3,7 @@
 Base URL (example): `https://<api-id>.execute-api.us-west-1.amazonaws.com/prod`
 
 All endpoints return JSON and include CORS headers.
-Most endpoints are intended to be protected by a JWT authorizer in production; during dev you may use dev-header auth.
+All endpoints except `/health` are protected by a JWT authorizer in API Gateway. The Lambda also decodes the JWT from the `Authorization: Bearer` header as a fallback. Dev-header auth (`X-Dev-Student-Id` / `X-Dev-Instructor-Id` + `X-Dev-Token`) still works when `DEV_AUTH_ENABLED=true`.
 
 ---
 
@@ -16,8 +16,10 @@ Most endpoints are intended to be protected by a JWT authorizer in production; d
 - **GET** `/current-student` → `Student`
 
 Identity:
-- prod: JWT `sub`
-- dev: `X-Dev-Student-Id` (+ optional `X-Dev-Token`)
+- prod: JWT `sub` (from API Gateway authorizer or Lambda-decoded Authorization header)
+- dev: `X-Dev-Student-Id` + `X-Dev-Token` (requires `DEV_AUTH_ENABLED=true`)
+
+Auto-creates student record on first access. Name is pulled from JWT `given_name` + `family_name` claims; updated on each login if changed.
 
 ---
 
@@ -119,12 +121,12 @@ Identity:
 ## 15) Instructor / Teacher routes
 
 All instructor routes require instructor identity via `effective_instructor_id()`:
-- **prod:** JWT `sub` claim + membership in the `instructors` Cognito group. If the JWT is valid but the user is not in the `instructors` group, the request is rejected as unauthorized.
+- **prod:** JWT `sub` claim + membership in the `instructors` Cognito group (parsed from `cognito:groups` claim; handles API Gateway's bracket-stringified format `[instructors]`). If the JWT is valid but the user is not in the `instructors` group, the request is rejected as unauthorized.
 - **dev:** `X-Dev-Instructor-Id: <id>` + `X-Dev-Token: dev-secret` (requires `DEV_AUTH_ENABLED=true`)
 
 ### Identity
 - **GET** `/current-instructor` → `Instructor`
-  - Auto-creates instructor record on first access if not found.
+  - Auto-creates instructor record on first access if not found. Name is pulled from JWT `given_name` + `family_name` claims; synced on each login.
 
 ### Course management
 - **GET** `/instructor/courses` → `Course[]`

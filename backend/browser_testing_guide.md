@@ -4,8 +4,18 @@ This guide explains how to test the entire backend API directly from a
 web browser without needing AWS CLI or AWS credentials.
 
 These instructions assume: - The API is deployed and accessible. - Dev
-auth is currently enabled (`DEV_AUTH_ENABLED=true`). - You have a valid
+auth is currently enabled (`DEV_AUTH_ENABLED=true`) alongside JWT auth. - You have a valid
 test student ID. - You know the API base URL.
+
+> **Note:** JWT authorizers are now active on all API Gateway routes (except `/health`).
+> This means requests without a valid `Authorization: Bearer <IdToken>` header
+> are rejected by API Gateway with `401 Unauthorized` before reaching the Lambda.
+>
+> **To use dev-header auth for console testing**, you must either:
+> 1. Temporarily remove the JWT authorizer from the route(s) you want to test, or
+> 2. Include a valid Cognito IdToken in the Authorization header alongside the dev headers.
+>
+> The frontend uses real JWT auth and does not need dev headers.
 
 Example base URL:
 

@@ -45,8 +45,11 @@ All routes share a single Lambda integration.
 ## Production Authentication
 
 -   Cognito User Pool
--   JWT Authorizer configured in API Gateway
+-   JWT Authorizer attached to all API Gateway routes (except `/health`)
+-   Lambda also decodes JWT from Authorization header as fallback
 -   Student identity resolved from JWT `sub` claim
+-   Instructor identity requires `sub` + `instructors` Cognito group membership
+-   Display names pulled from JWT `given_name` + `family_name` claims
 -   Authorization header format:
 
 ```{=html}
@@ -88,10 +91,10 @@ Headers used:
     X-Dev-Instructor-Id: <instructorId>
     X-Dev-Token: dev-secret
 
-Dev auth is currently enabled on the live Lambda.
-This enables full browser-based testing without AWS credentials.
+Dev auth is currently enabled on the live Lambda alongside JWT auth.
+This enables browser-based testing using dev headers.
 
-⚠ Dev auth must be disabled before production deployment.
+⚠ Dev auth must be disabled before production deployment (`DEV_AUTH_ENABLED=false`).
 
 ## Production Instructor Authentication
 
@@ -99,11 +102,21 @@ In production, instructor identity is resolved from the JWT:
 
 1.  The `sub` claim identifies the user.
 2.  The `cognito:groups` claim is checked for the `instructors` group.
+    - API Gateway stringifies this claim as `[instructors]` (with brackets); the Lambda parser strips brackets before matching.
 3.  If the user is not in the `instructors` group, the request returns 401.
 
 This means instructors must be added to the `instructors` Cognito group
 (via the Cognito console or a Post-Confirmation Lambda trigger) before
 they can access instructor routes.
+
+## Name Resolution from JWT
+
+Both `/current-student` and `/current-instructor` pull the user's display
+name from the JWT `given_name` and `family_name` claims:
+
+-   On first access: the auto-created DynamoDB record uses the JWT name.
+-   On subsequent logins: the name is synced if it differs from the stored value.
+-   Signup form collects first and last name as required Cognito attributes.
 
 ------------------------------------------------------------------------
 
@@ -275,8 +288,8 @@ The backend is:
 -   Deterministically ordered
 -   Pagination-safe
 -   Batch-safe
--   Auth-ready (JWT + dev mode)
--   Frontend-ready
+-   JWT auth active (API Gateway authorizer + Lambda fallback decoder)
+-   Frontend fully integrated (all pages use real API, no mock data)
 
 All major domain surfaces are implemented:
 
@@ -336,9 +349,9 @@ Before production launch:
 
         DEV_AUTH_ENABLED=false
 
-2.  Re-enable JWT authorizers in API Gateway
+2.  ~~Re-enable JWT authorizers in API Gateway~~ ✅ DONE — attached to all routes except `/health`
 
-3.  Restrict CORS origin to production frontend domain
+3.  Restrict CORS origin to production frontend domain (currently `*`)
 
 4.  Add structured logging
 
