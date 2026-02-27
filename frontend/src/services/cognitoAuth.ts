@@ -14,7 +14,6 @@ import {
   CognitoUser,
   AuthenticationDetails,
   CognitoUserSession,
-  CognitoUserAttribute,
 } from "amazon-cognito-identity-js";
 import type { UserRole } from "../contexts/AuthContext";
 
@@ -102,25 +101,20 @@ export interface SignUpResult {
 }
 
 /** Register a new user. Group assignment (instructor vs student) happens
- *  server-side via a Post-Confirmation Lambda trigger or manual console action.
- *  The `isInstructor` flag is stored as a custom attribute so the trigger can
- *  add the user to the right group.
+ *  server-side via the Cognito console or a Post-Confirmation Lambda trigger.
+ *  All self-registrations default to student; admins promote to instructor
+ *  by adding the user to the "instructors" Cognito group.
  */
 export function signUp(
   email: string,
   password: string,
-  isInstructor: boolean
+  _isInstructor?: boolean
 ): Promise<SignUpResult> {
   return new Promise((resolve, reject) => {
     userPool.signUp(
       email,
       password,
-      [
-        new CognitoUserAttribute({
-          Name: "custom:role",
-          Value: isInstructor ? "instructor" : "student",
-        }),
-      ],
+      [],
       [],
       (err, result) => {
         if (err) {
