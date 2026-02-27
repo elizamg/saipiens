@@ -322,13 +322,23 @@ def handle_current_student(event):
     item = got.get("Item")
 
     if item:
+        # Update name from JWT if it changed
+        jwt_name = _name_from_claims(event)
+        if jwt_name != "Unknown" and item.get("name") != jwt_name:
+            item["name"] = jwt_name
+            students.update_item(
+                Key={"id": sub},
+                UpdateExpression="SET #n = :n, updatedAt = :u",
+                ExpressionAttributeNames={"#n": "name"},
+                ExpressionAttributeValues={":n": jwt_name, ":u": iso_now()},
+            )
         return resp(200, item)
 
     now = iso_now()
     item = {
         "id": sub,
-        "name": "Test Student",
-        "yearLabel": "Year 1",
+        "name": _name_from_claims(event),
+        "yearLabel": "",
         "avatarUrl": None,
         "createdAt": now,
         "updatedAt": now,
@@ -984,6 +994,15 @@ def handle_send_message(event, thread_id: str):
 
 # ---- Instructor routes ----
 
+def _name_from_claims(event) -> str:
+    """Build a display name from JWT given_name / family_name claims."""
+    c = claims(event)
+    given = (c.get("given_name") or "").strip()
+    family = (c.get("family_name") or "").strip()
+    full = f"{given} {family}".strip()
+    return full or "Unknown"
+
+
 def handle_current_instructor(event):
     instructor_id = effective_instructor_id(event)
     if not instructor_id:
@@ -994,13 +1013,23 @@ def handle_current_instructor(event):
     item = got.get("Item")
 
     if item:
+        # Update name from JWT if it changed (e.g. user edited Cognito profile)
+        jwt_name = _name_from_claims(event)
+        if jwt_name != "Unknown" and item.get("name") != jwt_name:
+            item["name"] = jwt_name
+            instructors_tbl.update_item(
+                Key={"id": instructor_id},
+                UpdateExpression="SET #n = :n, updatedAt = :u",
+                ExpressionAttributeNames={"#n": "name"},
+                ExpressionAttributeValues={":n": jwt_name, ":u": iso_now()},
+            )
         return resp(200, item)
 
-    # Auto-create instructor record on first access (dev convenience)
+    # Auto-create instructor record on first access
     now = iso_now()
     item = {
         "id": instructor_id,
-        "name": "Instructor",
+        "name": _name_from_claims(event),
         "avatarUrl": None,
         "createdAt": now,
         "updatedAt": now,
