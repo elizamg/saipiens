@@ -36,7 +36,22 @@ All routes share a single Lambda integration.
 -   Lambda Runtime: Python 3.12 (manylinux2014_x86_64 compiled deps required)
 -   Database: DynamoDB (multi-table, access-pattern driven)
 -   Authentication: Cognito User Pool + JWT Authorizer
+-   Object Storage: S3 (`sapiens-upload-staging-681816819209`) for temporary upload staging
 -   Billing Mode: On-demand (PAY_PER_REQUEST)
+
+### Async Upload Processing
+
+The curriculum upload endpoint (`POST /courses/{courseId}/units/upload`) uses an async
+pattern to work around API Gateway HTTP API v2's hard 30-second integration timeout:
+
+1.  Upload handler parses multipart, stages files in S3, creates Unit with `status: "processing"`
+2.  Invokes the same Lambda asynchronously (`InvocationType: Event`) with an internal payload
+3.  Returns `202` immediately with the unit record
+4.  Background Lambda downloads files from S3, runs `Gen_Curriculum_Pipeline`, persists results
+5.  Updates Unit `status` to `"ready"` or `"error"` (with `statusError` message)
+6.  Frontend polls `GET /units/{unitId}/upload-status` every 3s until complete
+
+Lambda timeout is set to 300s (5 min) to accommodate large PDFs. S3 staging bucket has a 1-day auto-expiry lifecycle.
 
 ------------------------------------------------------------------------
 

@@ -66,7 +66,8 @@ All instructor-facing routes are now implemented in `lambda_handler.py`:
 - `POST /students` — creates a new student (body: `{ name, yearLabel? }`)
 - `PATCH /units/{unitId}/title` — updates unit title (body: `{ title }`)
 - `PATCH /objectives/{objectiveId}/enabled` — toggles objective visibility (body: `{ enabled: bool }`)
-- `POST /courses/{courseId}/units/upload` — multipart PDF upload → runs `Gen_Curriculum_Pipeline` → persists Unit + Objectives + ItemStages (3 per obj) + Questions → returns `{ unit, objectives }`
+- `POST /courses/{courseId}/units/upload` — multipart PDF upload → stages files in S3 → invokes Lambda async → returns `202` with `{ unit, objectives: [] }` immediately. Background Lambda runs `Gen_Curriculum_Pipeline`, persists Objectives + ItemStages + Questions + KnowledgeTopics, and updates Unit `status` to `"ready"` or `"error"`.
+- `GET /units/{unitId}/upload-status` — polls upload processing status (`"processing"` → `"ready"` / `"error"`)
 
 **Instructor auth** (production): JWT `sub` + `instructors` Cognito group membership. Dev fallback: `X-Dev-Instructor-Id` + `X-Dev-Token: dev-secret` (controlled by `DEV_AUTH_ENABLED` env var).
 

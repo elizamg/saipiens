@@ -157,15 +157,24 @@ All instructor routes require instructor identity via `effective_instructor_id()
 - **PATCH** `/objectives/{objectiveId}/enabled` body: `{ "enabled": boolean }` → `Objective`
   - Toggles whether the objective is visible to students.
 
-### Curriculum generation (AI upload)
+### Curriculum generation (AI upload — async)
 - **POST** `/courses/{courseId}/units/upload`
   - Content-Type: `multipart/form-data`
   - Fields: `unitName` (string), `files` (one or more PDFs), `grade` (string, optional)
-  - Runs `Gen_Curriculum_Pipeline`:
-    1. Uploads PDFs to Gemini Files API
-    2. Identifies knowledge items (`type: "information"|"skill"`, `description`)
-    3. Generates one question per item
-    4. Persists: **Unit** → **Objectives** (one per item, `kind: "knowledge"|"skill"`) → **ItemStages** (3 per objective: `begin`/`walkthrough`/`challenge`) → **Questions** (one per objective) → **KnowledgeTopics** (one per objective, with `objectiveId` ref)
-  - Response: `{ "unit": Unit, "objectives": Objective[] }` (201)
-  - Returns 422 if no knowledge items are identified from the content.
-  - Note: this call can take 30–120s depending on PDF size and Gemini latency. Lambda timeout is 30s by default — may need increase for large files.
+  - **Async pattern** (avoids API Gateway's 30s timeout):
+    1. Parses multipart upload and stages files in S3 (`sapiens-upload-staging-681816819209`)
+    2. Creates Unit immediately with `status: "processing"`
+    3. Invokes Lambda async to run `Gen_Curriculum_Pipeline` in the background
+    4. Returns `202` with `{ "unit": Unit, "objectives": [] }` immediately
+  - The background Lambda:
+    1. Downloads files from S3, runs the pipeline (Gemini → identify knowledge → generate questions)
+    2. Persists: **Objectives** → **ItemStages** (3 per objective) → **Questions** → **KnowledgeTopics**
+    3. Updates Unit `status` to `"ready"` (or `"error"` with `statusError` message)
+    4. Cleans up S3 staging files
+  - Lambda timeout: 300s (5 minutes) to accommodate large PDFs.
+
+### Upload status polling
+- **GET** `/units/{unitId}/upload-status` → `{ unitId, status, statusError? }`
+  - `status` is one of: `"processing"`, `"ready"`, `"error"`
+  - `statusError` is present only when `status === "error"`
+  - Frontend polls this every 3s after upload returns, then navigates to the unit page when `"ready"`
