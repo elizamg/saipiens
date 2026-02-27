@@ -1,15 +1,16 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
 import {
-  mockInstructor,
-  sidebarCourses,
-  teacherCourses,
-} from "../data/teacherMockData";
-import { createUnitFromUpload } from "../services/api";
+  getCourse,
+  getCurrentInstructor,
+  listTeacherCourses,
+  createUnitFromUpload,
+} from "../services/api";
+import type { Course, Student } from "../types/domain";
 
 const ACCEPTED_TYPES = ".pdf,.txt,.docx,.doc,.md,.rtf";
 const MAX_FILES = 10;
@@ -21,12 +22,31 @@ export default function UnitUploadPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const course = teacherCourses.find((c) => c.id === courseId);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [instructor, setInstructor] = useState<Student | null>(null);
+  const [sidebarCourses, setSidebarCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [step, setStep] = useState<Step>("name");
   const [unitName, setUnitName] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+
+  useEffect(() => {
+    if (!courseId) return;
+    Promise.all([
+      getCourse(courseId),
+      getCurrentInstructor().then((i) => ({ ...i, yearLabel: "" } as Student)),
+      listTeacherCourses(),
+    ])
+      .then(([c, instr, courses]) => {
+        setCourse(c);
+        setInstructor(instr);
+        setSidebarCourses(courses);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [courseId]);
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
@@ -185,14 +205,24 @@ export default function UnitUploadPage() {
     color: GRAY_500,
   };
 
+  const shellProps = {
+    student: instructor ?? { id: "", name: "", yearLabel: "" },
+    activePath: "/courses" as const,
+    sidebarCourses,
+    routePrefix: "/teacher" as const,
+  };
+
+  if (loading) {
+    return (
+      <AppShell {...shellProps}>
+        <p style={{ fontSize: 14, color: GRAY_500 }}>Loading…</p>
+      </AppShell>
+    );
+  }
+
   if (step === "name") {
     return (
-      <AppShell
-        student={mockInstructor}
-        activePath="/courses"
-        sidebarCourses={sidebarCourses}
-        routePrefix="/teacher"
-      >
+      <AppShell {...shellProps}>
         {!course ? (
           <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>
             Course not found.
@@ -247,12 +277,7 @@ export default function UnitUploadPage() {
 
   if (step === "processing") {
     return (
-      <AppShell
-        student={mockInstructor}
-        activePath="/courses"
-        sidebarCourses={sidebarCourses}
-        routePrefix="/teacher"
-      >
+      <AppShell {...shellProps}>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         <div style={processingContainerStyles}>
           <div style={spinnerStyles} />
@@ -266,12 +291,7 @@ export default function UnitUploadPage() {
   }
 
   return (
-    <AppShell
-      student={mockInstructor}
-      activePath="/courses"
-      sidebarCourses={sidebarCourses}
-      routePrefix="/teacher"
-    >
+    <AppShell {...shellProps}>
       {!course ? (
         <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>
           Course not found.

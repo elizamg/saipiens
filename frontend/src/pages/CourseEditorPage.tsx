@@ -1,17 +1,18 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import ObjectiveRow from "../components/course/ObjectiveRow";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
-import type { ObjectiveKind } from "../types/domain";
+import type { ObjectiveKind, Course, Unit, Objective, Student } from "../types/domain";
 import {
-  mockInstructor,
-  teacherCourses,
-  sidebarCourses,
-  teacherUnitsMap,
-  teacherObjectivesMap,
-} from "../data/teacherMockData";
-import { updateUnitTitle } from "../services/api";
+  getCourse,
+  listUnits,
+  listTeacherObjectives,
+  getCurrentInstructor,
+  listTeacherCourses,
+  updateUnitTitle,
+  updateObjectiveEnabled,
+} from "../services/api";
 
 const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
 
@@ -27,22 +28,52 @@ export default function CourseEditorPage() {
     unitId: string;
   }>();
 
-  const course = teacherCourses.find((c) => c.id === courseId);
-  const units = courseId ? teacherUnitsMap[courseId] ?? [] : [];
-  const unit = units.find((u) => u.id === unitId);
-  const objectives = unitId ? teacherObjectivesMap[unitId] ?? [] : [];
+  const [course, setCourse] = useState<Course | null>(null);
+  const [unit, setUnit] = useState<Unit | null>(null);
+  const [objectives, setObjectives] = useState<Objective[]>([]);
+  const [instructor, setInstructor] = useState<Student | null>(null);
+  const [sidebarCourses, setSidebarCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>(() => {
+  useEffect(() => {
+    if (!courseId || !unitId) return;
+    Promise.all([
+      getCourse(courseId),
+      listUnits(courseId),
+      listTeacherObjectives(unitId),
+      getCurrentInstructor().then((i) => ({ ...i, yearLabel: "" } as Student)),
+      listTeacherCourses(),
+    ])
+      .then(([c, units, objs, instr, courses]) => {
+        setCourse(c);
+        setUnit(units.find((u) => u.id === unitId) ?? null);
+        setObjectives(objs);
+        setInstructor(instr);
+        setSidebarCourses(courses);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [courseId, unitId]);
+
+  const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
+
+  // Sync enabledMap when objectives load
+  useEffect(() => {
     const map: Record<string, boolean> = {};
     objectives.forEach((obj) => {
       map[obj.id] = obj.enabled !== false;
     });
-    return map;
-  });
+    setEnabledMap(map);
+  }, [objectives]);
 
-  const [unitTitle, setUnitTitle] = useState(unit?.title ?? "");
+  const [unitTitle, setUnitTitle] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync unitTitle when unit loads
+  useEffect(() => {
+    if (unit) setUnitTitle(unit.title);
+  }, [unit]);
 
   const handleTitleClick = () => {
     setIsEditingTitle(true);
@@ -69,7 +100,7 @@ export default function CourseEditorPage() {
   };
 
   const grouped = useMemo(() => {
-    const byKind: Record<ObjectiveKind, typeof objectives> = {
+    const byKind: Record<ObjectiveKind, Objective[]> = {
       knowledge: [],
       skill: [],
       capstone: [],
@@ -77,15 +108,20 @@ export default function CourseEditorPage() {
     objectives.forEach((obj) => {
       byKind[obj.kind].push(obj);
     });
-    // Sort each group by order
     for (const kind of SECTION_ORDER) {
       byKind[kind].sort((a, b) => a.order - b.order);
     }
     return byKind;
   }, [objectives]);
 
-  const handleToggle = (id: string, checked: boolean) => {
+  const handleToggle = async (id: string, checked: boolean) => {
     setEnabledMap((prev) => ({ ...prev, [id]: checked }));
+    try {
+      await updateObjectiveEnabled(id, checked);
+    } catch {
+      // Revert on failure
+      setEnabledMap((prev) => ({ ...prev, [id]: !checked }));
+    }
   };
 
   const backLinkStyles: React.CSSProperties = {
@@ -120,13 +156,23 @@ export default function CourseEditorPage() {
     marginBottom: 28,
   };
 
+  const shellProps = {
+    student: instructor ?? { id: "", name: "", yearLabel: "" },
+    activePath: "/courses" as const,
+    sidebarCourses,
+    routePrefix: "/teacher" as const,
+  };
+
+  if (loading) {
+    return (
+      <AppShell {...shellProps}>
+        <p style={{ fontSize: 14, color: GRAY_500 }}>Loading…</p>
+      </AppShell>
+    );
+  }
+
   return (
-    <AppShell
-      student={mockInstructor}
-      activePath="/courses"
-      sidebarCourses={sidebarCourses}
-      routePrefix="/teacher"
-    >
+    <AppShell {...shellProps}>
       {!course || !unit ? (
         <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>
           Unit not found.
