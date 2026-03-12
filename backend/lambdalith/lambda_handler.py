@@ -1115,6 +1115,8 @@ def handle_create_course(event):
         return resp(400, {"error": "Missing title"})
 
     icon = (body.get("icon") or "general").strip() if isinstance(body, dict) else "general"
+    subject = (body.get("subject") or "").strip() if isinstance(body, dict) else ""
+    grade_level = (body.get("gradeLevel") or "").strip() if isinstance(body, dict) else ""
     student_ids = body.get("studentIds") if isinstance(body, dict) else None
     if not isinstance(student_ids, list):
         student_ids = []
@@ -1129,6 +1131,10 @@ def handle_create_course(event):
         "createdAt": now,
         "updatedAt": now,
     }
+    if subject:
+        item["subject"] = subject
+    if grade_level:
+        item["gradeLevel"] = grade_level
     dynamodb.Table(T["COURSES"]).put_item(Item=item)
 
     # Create enrollment records for the initial roster
@@ -1635,8 +1641,19 @@ def handle_create_unit_from_upload(event, course_id: str):
 def _handle_process_upload_async(payload: dict):
     """
     Internal async handler — invoked by handle_create_unit_from_upload.
-    Downloads files from S3, runs the curriculum pipeline, persists results,
-    and updates the Unit status to 'ready' (or 'error').
+
+    Pipeline:
+      1. Download uploaded files from S3 to /tmp
+      2. Convert non-PDF files to PDF (via file_converter)
+      3. Run gen_curriculum_pipeline per file to identify knowledge/skills
+      4. Persist DynamoDB records:
+         - Objective (one per identified knowledge item)
+         - ItemStage ×3 per objective (begin, walkthrough, challenge)
+         - Question (the generated question text)
+         - ChatThread (one per objective, for the chat UI)
+         - KnowledgeTopic (for "information" type items)
+         - KnowledgeQueueItem per enrolled student (for "information" items)
+      5. Update Unit status to "ready" (or "error" on failure)
     """
     unit_id = payload["unitId"]
     course_id = payload["courseId"]
@@ -1645,13 +1662,17 @@ def _handle_process_upload_async(payload: dict):
 
     courses_tbl = dynamodb.Table(T["COURSES"])
     course = courses_tbl.get_item(Key={"id": course_id}).get("Item") or {}
-    subject = course.get("title", "Unknown Subject")
+    subject = course.get("subject") or course.get("title", "Unknown Subject")
+    grade = course.get("gradeLevel") or grade
 
     units_tbl = dynamodb.Table(T["UNITS"])
 
-    # Download files from S3 to /tmp
+    # ---- Step 1 & 2: Download from S3 and convert to PDF ----
     tmp_paths: list[str] = []
+    pdf_paths: list[str] = []
     try:
+        from file_converter import convert_to_pdf
+
         for entry in s3_keys:
             s3_key = entry["key"]
             filename = entry["filename"]
@@ -1664,13 +1685,20 @@ def _handle_process_upload_async(payload: dict):
                 os.close(fd)
             tmp_paths.append(tmp_path)
 
-        # Run the curriculum pipeline
+            # Convert to PDF if needed
+            pdf_path = convert_to_pdf(tmp_path)
+            pdf_paths.append(pdf_path)
+            # Track converted files for cleanup (if different from original)
+            if pdf_path != tmp_path:
+                tmp_paths.append(pdf_path)
+
+        # ---- Step 3: Run curriculum pipeline per PDF ----
         from gen_curriculum_pipeline import Gen_Curriculum_Pipeline
         pipeline = Gen_Curriculum_Pipeline()
 
         all_knowledge: list[dict] = []
-        for tmp_path in tmp_paths:
-            knowledge = pipeline.run(tmp_path, subject=subject, grade=grade)
+        for pdf_path in pdf_paths:
+            knowledge = pipeline.run(pdf_path, subject=subject, grade=grade)
             all_knowledge.extend(knowledge)
 
     except Exception as e:
@@ -1683,6 +1711,7 @@ def _handle_process_upload_async(payload: dict):
         )
         return
     finally:
+        # Clean up all temporary files
         for p in tmp_paths:
             try:
                 os.unlink(p)
@@ -1708,15 +1737,33 @@ def _handle_process_upload_async(payload: dict):
         )
         return
 
+    # ---- Step 4: Persist DynamoDB records ----
     now = iso_now()
 
-    # Persist objectives, stages, questions, and knowledge topics
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
     stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
     questions_tbl = dynamodb.Table(T["QUESTIONS"])
+    threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
     knowledge_topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    knowledge_queue_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    enrollments_tbl = dynamodb.Table(T["ENROLLMENTS"])
 
     STAGE_TYPES = ["begin", "walkthrough", "challenge"]
+
+    # Look up enrolled students once (needed for knowledge queue items)
+    enrolled_student_ids: list[str] = []
+    try:
+        enrollment_items = query_all(
+            enrollments_tbl,
+            IndexName=IDX["COURSE_ENROLLMENTS"],
+            KeyConditionExpression=Key("courseId").eq(course_id),
+        )
+        enrolled_student_ids = [e["studentId"] for e in enrollment_items]
+    except Exception as e:
+        print(f"[async-upload] Warning: could not query enrollments for course {course_id}: {e}")
+
+    # Track knowledge-type items for queue creation
+    knowledge_order = 0
 
     for order_idx, k in enumerate(all_knowledge):
         knowledge_type = k.get("knowledge_type", "information")
@@ -1725,6 +1772,7 @@ def _handle_process_upload_async(payload: dict):
 
         obj_kind = "skill" if knowledge_type == "skill" else "knowledge"
 
+        # ---- Objective ----
         obj_id = str(uuid.uuid4())
         obj_item = {
             "id": obj_id,
@@ -1738,6 +1786,7 @@ def _handle_process_upload_async(payload: dict):
         }
         objectives_tbl.put_item(Item=obj_item)
 
+        # ---- ItemStages (begin, walkthrough, challenge) ----
         for stage_order, stage_type in enumerate(STAGE_TYPES):
             stage_id = str(uuid.uuid4())
             stage_item = {
@@ -1745,11 +1794,12 @@ def _handle_process_upload_async(payload: dict):
                 "itemId": obj_id,
                 "stageType": stage_type,
                 "order": stage_order,
-                "prompt": description,
+                "prompt": question_text or description,
                 "createdAt": now,
             }
             stages_tbl.put_item(Item=stage_item)
 
+        # ---- Question ----
         if question_text:
             q_id = str(uuid.uuid4())
             q_item = {
@@ -1762,6 +1812,20 @@ def _handle_process_upload_async(payload: dict):
             }
             questions_tbl.put_item(Item=q_item)
 
+        # ---- ChatThread (one per objective, for the chat UI) ----
+        thread_id = f"thread-{obj_id}"
+        thread_item = {
+            "id": thread_id,
+            "courseId": course_id,
+            "unitId": unit_id,
+            "objectiveId": obj_id,
+            "title": description,
+            "kind": obj_kind,
+            "lastMessageAt": now,
+        }
+        threads_tbl.put_item(Item=thread_item)
+
+        # ---- KnowledgeTopic (all items get one for teacher visibility) ----
         topic_id = str(uuid.uuid4())
         topic_item = {
             "id": topic_id,
@@ -1773,14 +1837,40 @@ def _handle_process_upload_async(payload: dict):
         }
         knowledge_topics_tbl.put_item(Item=topic_item)
 
-    # Mark unit as ready
+        # ---- KnowledgeQueueItems (only for "information" / "knowledge" objectives) ----
+        if obj_kind == "knowledge" and enrolled_student_ids:
+            for student_id in enrolled_student_ids:
+                queue_item_id = str(uuid.uuid4())
+                # First knowledge item per student is "active", rest are "pending"
+                status = "active" if knowledge_order == 0 else "pending"
+                queue_item = {
+                    "id": queue_item_id,
+                    "unitId": unit_id,
+                    "studentId": student_id,
+                    "knowledgeTopicId": topic_id,
+                    "labelIndex": knowledge_order,
+                    "order": knowledge_order,
+                    "status": status,
+                    "questionPrompt": question_text or description,
+                    "createdAt": now,
+                }
+                knowledge_queue_tbl.put_item(Item=queue_item)
+
+            knowledge_order += 1
+
+    # ---- Step 5: Mark unit as ready ----
     units_tbl.update_item(
         Key={"id": unit_id},
         UpdateExpression="SET #s = :s, updatedAt = :u",
         ExpressionAttributeNames={"#s": "status"},
         ExpressionAttributeValues={":s": "ready", ":u": iso_now()},
     )
-    print(f"[async-upload] Unit {unit_id} processing complete: {len(all_knowledge)} objectives created")
+    print(
+        f"[async-upload] Unit {unit_id} processing complete: "
+        f"{len(all_knowledge)} objectives, "
+        f"{knowledge_order} knowledge topics with queue items for "
+        f"{len(enrolled_student_ids)} students"
+    )
 
 
 def handle_get_upload_status(unit_id: str):

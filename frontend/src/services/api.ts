@@ -394,6 +394,8 @@ export function createCourse(params: {
   title: string;
   icon: string;
   studentIds: string[];
+  subject?: string;
+  gradeLevel?: string;
 }): Promise<{ id: string; title: string; studentCount: number; icon: string }> {
   return post("/courses", params);
 }

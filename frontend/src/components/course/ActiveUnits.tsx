@@ -37,7 +37,7 @@ export default function ActiveUnits({
 
   // Sort: active first, then completed, then locked
   const sortedUnits = [...units].sort((a, b) => {
-    const order = { active: 0, completed: 1, locked: 2 };
+    const order: Record<string, number> = { active: 0, completed: 1, locked: 2, processing: 3, ready: 0, error: 4 };
     return order[a.status] - order[b.status];
   });
 

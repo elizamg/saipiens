@@ -28,7 +28,7 @@ export interface Course {
   studentCount?: number;
 }
 
-export type UnitStatus = "active" | "completed" | "locked";
+export type UnitStatus = "active" | "completed" | "locked" | "processing" | "ready" | "error";
 
 export interface Unit {
   id: string;
