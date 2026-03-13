@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
-import ObjectiveRow from "../components/course/ObjectiveRow";
+import Button from "../components/ui/Button";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
 import type { ObjectiveKind, Course, Unit, Objective, Student } from "../types/domain";
 import {
@@ -10,8 +10,11 @@ import {
   listTeacherObjectives,
   getCurrentInstructor,
   listTeacherCourses,
-  updateUnitTitle,
+  getUploadStatus,
   updateObjectiveEnabled,
+  generateSelectedObjectives,
+  getIdentifiedKnowledge,
+  getUnit,
 } from "../services/api";
 
 const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
@@ -27,6 +30,7 @@ export default function CourseEditorPage() {
     courseId: string;
     unitId: string;
   }>();
+  const navigate = useNavigate();
 
   const [course, setCourse] = useState<Course | null>(null);
   const [unit, setUnit] = useState<Unit | null>(null);
@@ -34,71 +38,146 @@ export default function CourseEditorPage() {
   const [instructor, setInstructor] = useState<Student | null>(null);
   const [sidebarCourses, setSidebarCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  // Track which objective IDs are enabled (local state for optimistic UI)
+  const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set());
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // For units in "review" status (no objectives yet, only identified knowledge)
+  const [identifiedKnowledge, setIdentifiedKnowledge] = useState<
+    { type: string; description: string }[]
+  >([]);
+  const [selectedReviewIndices, setSelectedReviewIndices] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!courseId || !unitId) return;
     Promise.all([
       getCourse(courseId),
-      listUnits(courseId),
+      getUnit(unitId),
       listTeacherObjectives(unitId),
       getCurrentInstructor().then((i) => ({ ...i, yearLabel: "" } as Student)),
       listTeacherCourses(),
+      getUploadStatus(unitId),
     ])
-      .then(([c, units, objs, instr, courses]) => {
+      .then(async ([c, u, objs, instr, courses, status]) => {
         setCourse(c);
-        setUnit(units.find((u) => u.id === unitId) ?? null);
+        setUnit(u);
         setObjectives(objs);
         setInstructor(instr);
         setSidebarCourses(courses);
+
+        // Initialize enabled set from current objective state
+        setEnabledIds(new Set(objs.filter((o) => o.enabled !== false).map((o) => o.id)));
+
+        // Use upload-status endpoint for the most accurate status
+        const unitStatus = status.status || u.status;
+        if (unitStatus === "processing") {
+          setGenerating(true);
+        }
+
+        // If unit is in review status (identified knowledge but no objectives yet),
+        // fetch the identified knowledge to display
+        if (unitStatus === "review" && objs.length === 0) {
+          try {
+            const data = await getIdentifiedKnowledge(unitId);
+            setIdentifiedKnowledge(data.identifiedKnowledge);
+            setSelectedReviewIndices(new Set(data.identifiedKnowledge.map((_, i) => i)));
+          } catch {
+            // no identified knowledge available
+          }
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [courseId, unitId]);
 
-  const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
-
-  // Sync enabledMap when objectives load
+  // Poll while unit is processing
   useEffect(() => {
-    const map: Record<string, boolean> = {};
-    objectives.forEach((obj) => {
-      map[obj.id] = obj.enabled !== false;
+    if (!generating || !unitId) return;
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled) {
+        await new Promise((r) => setTimeout(r, 3000));
+        if (cancelled) break;
+        try {
+          const result = await getUploadStatus(unitId);
+          if (result.status === "ready" || result.status === "error") {
+            const objs = await listTeacherObjectives(unitId);
+            setObjectives(objs);
+            setEnabledIds(new Set(objs.filter((o) => o.enabled !== false).map((o) => o.id)));
+            setIdentifiedKnowledge([]);
+            setGenerating(false);
+            return;
+          }
+        } catch {
+          // keep polling
+        }
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [generating, unitId]);
+
+  const toggleObjective = useCallback((id: string) => {
+    setEnabledIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
-    setEnabledMap(map);
-  }, [objectives]);
+    setDirty(true);
+  }, []);
 
-  const [unitTitle, setUnitTitle] = useState("");
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  const toggleReviewItem = useCallback((index: number) => {
+    setSelectedReviewIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+    setDirty(true);
+  }, []);
 
-  // Sync unitTitle when unit loads
-  useEffect(() => {
-    if (unit) setUnitTitle(unit.title);
-  }, [unit]);
+  const handleSave = async () => {
+    if (!unitId || !courseId) return;
+    setSaving(true);
 
-  const handleTitleClick = () => {
-    setIsEditingTitle(true);
-    setTimeout(() => titleInputRef.current?.select(), 0);
-  };
-
-  const handleTitleSave = async () => {
-    const trimmed = unitTitle.trim();
-    if (!trimmed || !unitId) {
-      setUnitTitle(unit?.title ?? "");
-      setIsEditingTitle(false);
-      return;
+    try {
+      if (identifiedKnowledge.length > 0 && objectives.length === 0) {
+        // Review mode: send selected identified knowledge to generate
+        const selected = identifiedKnowledge
+          .filter((_, i) => selectedReviewIndices.has(i))
+          .map((k) => ({ type: k.type, description: k.description }));
+        if (selected.length > 0) {
+          await generateSelectedObjectives(unitId, selected);
+          setGenerating(true);
+        }
+      } else {
+        // Edit mode: update enabled state for each changed objective
+        const updates = objectives
+          .filter((obj) => (obj.enabled !== false) !== enabledIds.has(obj.id))
+          .map((obj) => updateObjectiveEnabled(obj.id, enabledIds.has(obj.id)));
+        await Promise.all(updates);
+        // Update local state to reflect saved enabled values
+        setObjectives((prev) =>
+          prev.map((obj) => ({ ...obj, enabled: enabledIds.has(obj.id) }))
+        );
+      }
+      setDirty(false);
+    } catch (err) {
+      console.error("Save failed:", err);
+    } finally {
+      setSaving(false);
     }
-    setIsEditingTitle(false);
-    await updateUnitTitle(unitId, trimmed);
   };
 
-  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleTitleSave();
-    if (e.key === "Escape") {
-      setUnitTitle(unit?.title ?? "");
-      setIsEditingTitle(false);
-    }
+  const handleReupload = () => {
+    if (!unitId || !courseId) return;
+    navigate(`/teacher/course/${courseId}/upload?unitId=${unitId}`);
   };
 
+  // Sort objectives: enabled first, disabled at bottom
   const grouped = useMemo(() => {
     const byKind: Record<ObjectiveKind, Objective[]> = {
       knowledge: [],
@@ -109,20 +188,37 @@ export default function CourseEditorPage() {
       byKind[obj.kind].push(obj);
     });
     for (const kind of SECTION_ORDER) {
-      byKind[kind].sort((a, b) => a.order - b.order);
+      byKind[kind].sort((a, b) => {
+        const aEnabled = enabledIds.has(a.id) ? 0 : 1;
+        const bEnabled = enabledIds.has(b.id) ? 0 : 1;
+        if (aEnabled !== bEnabled) return aEnabled - bEnabled;
+        return a.order - b.order;
+      });
     }
     return byKind;
-  }, [objectives]);
+  }, [objectives, enabledIds]);
 
-  const handleToggle = async (id: string, checked: boolean) => {
-    setEnabledMap((prev) => ({ ...prev, [id]: checked }));
-    try {
-      await updateObjectiveEnabled(id, checked);
-    } catch {
-      // Revert on failure
-      setEnabledMap((prev) => ({ ...prev, [id]: !checked }));
-    }
-  };
+  // Group identified knowledge for review mode
+  const reviewGrouped = useMemo(() => {
+    const skills = identifiedKnowledge
+      .map((k, i) => ({ ...k, _idx: i }))
+      .filter((k) => k.type === "skill");
+    const knowledge = identifiedKnowledge
+      .map((k, i) => ({ ...k, _idx: i }))
+      .filter((k) => k.type !== "skill");
+    // Sort: selected first, unselected at bottom
+    const sortFn = (a: { _idx: number }, b: { _idx: number }) => {
+      const aSelected = selectedReviewIndices.has(a._idx) ? 0 : 1;
+      const bSelected = selectedReviewIndices.has(b._idx) ? 0 : 1;
+      if (aSelected !== bSelected) return aSelected - bSelected;
+      return a._idx - b._idx;
+    };
+    skills.sort(sortFn);
+    knowledge.sort(sortFn);
+    return { skills, knowledge };
+  }, [identifiedKnowledge, selectedReviewIndices]);
+
+  // ---- Styles ----
 
   const backLinkStyles: React.CSSProperties = {
     display: "inline-flex",
@@ -139,7 +235,7 @@ export default function CourseEditorPage() {
     fontSize: 28,
     fontWeight: 700,
     color: GRAY_900,
-    marginBottom: 32,
+    marginBottom: 8,
   };
 
   const sectionHeadingStyles: React.CSSProperties = {
@@ -156,6 +252,28 @@ export default function CourseEditorPage() {
     marginBottom: 28,
   };
 
+  const bannerStyles: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 16px",
+    borderRadius: 8,
+    backgroundColor: "#f3f0f7",
+    border: `1px solid ${PRIMARY}`,
+    fontSize: 14,
+    fontWeight: 500,
+    color: PRIMARY,
+    marginBottom: 20,
+  };
+
+  const actionBarStyles: React.CSSProperties = {
+    display: "flex",
+    gap: 12,
+    marginBottom: 32,
+    paddingBottom: 24,
+    borderBottom: `1px solid ${GRAY_300}`,
+  };
+
   const shellProps = {
     student: instructor ?? { id: "", name: "", yearLabel: "" },
     activePath: "/courses" as const,
@@ -170,6 +288,48 @@ export default function CourseEditorPage() {
       </AppShell>
     );
   }
+
+  const isReviewMode = identifiedKnowledge.length > 0 && objectives.length === 0;
+  const enabledCount = isReviewMode
+    ? selectedReviewIndices.size
+    : enabledIds.size;
+  const totalCount = isReviewMode ? identifiedKnowledge.length : objectives.length;
+
+  const renderObjectiveRow = (
+    id: string,
+    text: string,
+    enabled: boolean,
+    onToggle: () => void
+  ) => (
+    <label
+      key={id}
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 10,
+        padding: "10px 12px",
+        borderRadius: 8,
+        backgroundColor: enabled ? "#f9fafb" : "#f3f3f3",
+        marginBottom: 6,
+        fontSize: 14,
+        color: enabled ? GRAY_900 : GRAY_500,
+        lineHeight: 1.4,
+        cursor: "pointer",
+        opacity: enabled ? 1 : 0.6,
+        transition: "all 0.15s ease",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={enabled}
+        onChange={onToggle}
+        style={{ marginTop: 2, accentColor: PRIMARY, cursor: "pointer" }}
+      />
+      <span>
+        {text}
+      </span>
+    </label>
+  );
 
   return (
     <AppShell {...shellProps}>
@@ -198,67 +358,90 @@ export default function CourseEditorPage() {
             Back to {course.title}
           </Link>
 
-          {isEditingTitle ? (
-            <input
-              ref={titleInputRef}
-              value={unitTitle}
-              onChange={(e) => setUnitTitle(e.target.value)}
-              onBlur={handleTitleSave}
-              onKeyDown={handleTitleKeyDown}
-              style={{
-                ...titleStyles,
-                border: `2px solid ${PRIMARY}`,
-                borderRadius: 8,
-                padding: "4px 10px",
-                outline: "none",
-                width: "100%",
-                boxSizing: "border-box",
-                background: "white",
-                fontFamily: "inherit",
-              }}
-              autoFocus
-            />
-          ) : (
-            <h1
-              style={{
-                ...titleStyles,
-                cursor: "text",
-                borderRadius: 8,
-                padding: "4px 10px",
-                marginLeft: -10,
-                border: `2px solid transparent`,
-                transition: "border-color 0.15s",
-              }}
-              onClick={handleTitleClick}
-              title="Click to edit unit name"
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = GRAY_300;
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "transparent";
-              }}
-            >
-              {unitTitle}
-            </h1>
+          <h1 style={titleStyles}>{unit.title}</h1>
+
+          {generating && (
+            <div style={bannerStyles}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={PRIMARY} strokeWidth="2">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83">
+                  <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.5s" repeatCount="indefinite"/>
+                </path>
+              </svg>
+              Generating assignments...
+            </div>
           )}
 
-          {SECTION_ORDER.map((kind) => {
-            const items = grouped[kind];
-            if (items.length === 0) return null;
-            return (
-              <section key={kind} style={sectionStyles}>
-                <h2 style={sectionHeadingStyles}>{SECTION_LABELS[kind]}</h2>
-                {items.map((obj) => (
-                  <ObjectiveRow
-                    key={obj.id}
-                    objective={obj}
-                    checked={enabledMap[obj.id] ?? true}
-                    onToggle={handleToggle}
-                  />
-                ))}
-              </section>
-            );
-          })}
+          <p style={{ fontSize: 14, color: GRAY_500, marginBottom: 24 }}>
+            {enabledCount} of {totalCount} objective{totalCount !== 1 ? "s" : ""} selected
+          </p>
+
+          <div style={actionBarStyles}>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={!dirty || saving}
+            >
+              {saving ? "Saving..." : "Save"}
+            </Button>
+            <Button variant="secondary" onClick={handleReupload}>
+              Re-upload Documents
+            </Button>
+          </div>
+
+          {isReviewMode ? (
+            <>
+              {reviewGrouped.skills.length > 0 && (
+                <section style={sectionStyles}>
+                  <h2 style={sectionHeadingStyles}>
+                    Skills ({reviewGrouped.skills.length})
+                  </h2>
+                  {reviewGrouped.skills.map((k) =>
+                    renderObjectiveRow(
+                      `review-${k._idx}`,
+                      k.description,
+                      selectedReviewIndices.has(k._idx),
+                      () => toggleReviewItem(k._idx)
+                    )
+                  )}
+                </section>
+              )}
+              {reviewGrouped.knowledge.length > 0 && (
+                <section style={sectionStyles}>
+                  <h2 style={sectionHeadingStyles}>
+                    Knowledge ({reviewGrouped.knowledge.length})
+                  </h2>
+                  {reviewGrouped.knowledge.map((k) =>
+                    renderObjectiveRow(
+                      `review-${k._idx}`,
+                      k.description,
+                      selectedReviewIndices.has(k._idx),
+                      () => toggleReviewItem(k._idx)
+                    )
+                  )}
+                </section>
+              )}
+            </>
+          ) : (
+            SECTION_ORDER.map((kind) => {
+              const items = grouped[kind];
+              if (items.length === 0) return null;
+              return (
+                <section key={kind} style={sectionStyles}>
+                  <h2 style={sectionHeadingStyles}>
+                    {SECTION_LABELS[kind]} ({items.length})
+                  </h2>
+                  {items.map((obj) =>
+                    renderObjectiveRow(
+                      obj.id,
+                      obj.description || obj.title,
+                      enabledIds.has(obj.id),
+                      () => toggleObjective(obj.id)
+                    )
+                  )}
+                </section>
+              );
+            })
+          )}
         </>
       )}
     </AppShell>

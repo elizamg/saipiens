@@ -13,7 +13,6 @@ import type { Course } from "../types/domain";
 export default function CourseCreationPage() {
   const navigate = useNavigate();
   const [courseName, setCourseName] = useState("");
-  const [subject, setSubject] = useState("");
   const [gradeLevel, setGradeLevel] = useState("");
   const [selectedIcon, setSelectedIcon] = useState("general");
   const [allStudents, setAllStudents] = useState<Student[]>([]);
@@ -41,7 +40,7 @@ export default function CourseCreationPage() {
         title: courseName.trim(),
         icon: selectedIcon,
         studentIds: selectedStudentIds,
-        subject: subject.trim() || undefined,
+        subject: courseName.trim(),
         gradeLevel: gradeLevel.trim() || undefined,
       });
       navigate(`/teacher/course/${result.id}`);
@@ -104,15 +103,6 @@ export default function CourseCreationPage() {
           placeholder="e.g. American History"
           value={courseName}
           onChange={setCourseName}
-        />
-      </div>
-
-      <div style={sectionStyles}>
-        <Input
-          label="Subject"
-          placeholder="e.g. History, Science, Mathematics"
-          value={subject}
-          onChange={setSubject}
         />
       </div>
 

@@ -322,37 +322,47 @@ export function updateObjectiveEnabled(
 }
 
 // ---------------------------------------------------------------------------
-// Teacher: Unit upload (multipart/form-data)
+// Teacher: Unit upload (pre-signed S3 URLs)
 // ---------------------------------------------------------------------------
 
+/**
+ * Upload documents to create a new unit.
+ *
+ * Uses a 3-step flow to bypass the API Gateway 10 MB payload limit:
+ *   1. POST /courses/{courseId}/units/upload — creates Unit, returns pre-signed S3 PUT URLs
+ *   2. PUT each file directly to S3 via its pre-signed URL (parallel)
+ *   3. POST /units/{unitId}/process — triggers the async curriculum pipeline
+ */
 export async function createUnitFromUpload(
   courseId: string,
   files: File[],
   unitTitle?: string
-): Promise<{ unit: Unit; objectives: Objective[] }> {
-  const token = await getAuthToken();
-  const formData = new FormData();
-  formData.append("unitName", unitTitle ?? "Untitled Unit");
-  for (const file of files) {
-    formData.append("files", file, file.name);
-  }
-
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  // Do NOT set Content-Type — the browser adds it with the multipart boundary.
-
-  const res = await fetch(`${BASE}/courses/${courseId}/units/upload`, {
-    method: "POST",
-    headers,
-    body: formData,
+): Promise<{ unitId: string }> {
+  // Step 1: Create the unit and get pre-signed upload URLs
+  const { unitId, uploadUrls } = await post<{
+    unitId: string;
+    uploadUrls: Record<string, string>;
+  }>(`/courses/${courseId}/units/upload`, {
+    unitName: unitTitle ?? "Untitled Unit",
+    fileNames: files.map((f) => f.name),
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+
+  // Step 2: Upload files directly to S3 (parallel)
+  const uploadResults = await Promise.all(
+    files.map((file) => {
+      const url = uploadUrls[file.name];
+      if (!url) throw new Error(`No upload URL for file: ${file.name}`);
+      return fetch(url, { method: "PUT", body: file });
+    })
+  );
+  for (const res of uploadResults) {
+    if (!res.ok) throw new Error(`S3 upload failed: ${res.status} ${res.statusText}`);
   }
-  return res.json();
+
+  // Step 3: Trigger the processing pipeline
+  await post(`/units/${unitId}/process`, {});
+
+  return { unitId };
 }
 
 export function getUploadStatus(
@@ -363,8 +373,47 @@ export function getUploadStatus(
   );
 }
 
+export function getIdentifiedKnowledge(
+  unitId: string
+): Promise<{ unitId: string; identifiedKnowledge: { type: string; description: string }[] }> {
+  return get(`/units/${unitId}/identified-knowledge`);
+}
+
+export function generateSelectedObjectives(
+  unitId: string,
+  selectedObjectives: { type: string; description: string }[]
+): Promise<{ unitId: string; status: string }> {
+  return post(`/units/${unitId}/generate`, { selectedObjectives });
+}
+
 export function updateUnitTitle(unitId: string, title: string): Promise<Unit> {
   return patch<Unit>(`/units/${unitId}/title`, { title });
+}
+
+/**
+ * Reset a unit back to "review" status so the teacher can re-select objectives.
+ * Deletes existing objectives, questions, threads, etc. for the unit.
+ */
+export function editObjectives(
+  unitId: string
+): Promise<{ unitId: string; status: string }> {
+  return post(`/units/${unitId}/edit-objectives`, {});
+}
+
+/**
+ * Re-upload documents for an existing unit.
+ * Returns pre-signed S3 PUT URLs. The caller must upload files to S3,
+ * then call POST /units/{unitId}/process to trigger the pipeline.
+ */
+export async function reuploadUnit(
+  unitId: string,
+  fileNames: string[]
+): Promise<{ uploadUrls: Record<string, string> }> {
+  const result = await post<{ unitId: string; uploadUrls: Record<string, string> }>(
+    `/units/${unitId}/reupload`,
+    { fileNames }
+  );
+  return { uploadUrls: result.uploadUrls };
 }
 
 // ---------------------------------------------------------------------------

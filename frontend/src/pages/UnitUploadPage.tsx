@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
@@ -9,47 +9,96 @@ import {
   getCurrentInstructor,
   listTeacherCourses,
   createUnitFromUpload,
+  reuploadUnit,
   getUploadStatus,
+  getIdentifiedKnowledge,
+  generateSelectedObjectives,
+  getUnit,
 } from "../services/api";
-import type { Course, Student } from "../types/domain";
+import type { Course, Student, IdentifiedKnowledge } from "../types/domain";
 
 const ACCEPTED_TYPES = ".pdf,.txt,.docx,.doc,.md,.rtf";
 const MAX_FILES = 10;
 
-type Step = "name" | "upload" | "processing";
+type Step = "name" | "upload" | "processing" | "review";
 
 export default function UnitUploadPage() {
   const { courseId } = useParams<{ courseId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Query params for edit/re-upload flows
+  const existingUnitId = searchParams.get("unitId");
+  const mode = searchParams.get("mode"); // "review" to jump to review step
 
   const [course, setCourse] = useState<Course | null>(null);
   const [instructor, setInstructor] = useState<Student | null>(null);
   const [sidebarCourses, setSidebarCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [step, setStep] = useState<Step>("name");
+  // Determine initial step based on query params
+  const getInitialStep = (): Step => {
+    if (existingUnitId && mode === "review") return "review";
+    if (existingUnitId) return "upload"; // re-upload: skip name step
+    return "name";
+  };
+
+  const [step, setStep] = useState<Step>(getInitialStep);
   const [unitName, setUnitName] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [processingUnitId, setProcessingUnitId] = useState<string | null>(null);
+  const [processingUnitId, setProcessingUnitId] = useState<string | null>(
+    existingUnitId
+  );
+  const [identifiedKnowledge, setIdentifiedKnowledge] = useState<
+    IdentifiedKnowledge[]
+  >([]);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(
+    new Set()
+  );
 
+  // Load course info + handle edit/re-upload modes
   useEffect(() => {
     if (!courseId) return;
-    Promise.all([
+    const promises: Promise<unknown>[] = [
       getCourse(courseId),
-      getCurrentInstructor().then((i) => ({ ...i, yearLabel: "" } as Student)),
+      getCurrentInstructor().then(
+        (i) => ({ ...i, yearLabel: "" }) as Student
+      ),
       listTeacherCourses(),
-    ])
-      .then(([c, instr, courses]) => {
-        setCourse(c);
-        setInstructor(instr);
-        setSidebarCourses(courses);
+    ];
+
+    // If returning to an existing unit, fetch its data
+    if (existingUnitId) {
+      promises.push(getUnit(existingUnitId));
+    }
+
+    Promise.all(promises)
+      .then(([c, instr, courses, unitData]) => {
+        setCourse(c as Course);
+        setInstructor(instr as Student);
+        setSidebarCourses(courses as Course[]);
+
+        if (unitData) {
+          const u = unitData as { title: string };
+          setUnitName(u.title || "");
+        }
+
+        // If mode=review, immediately load identified knowledge
+        if (existingUnitId && mode === "review") {
+          getIdentifiedKnowledge(existingUnitId).then((data) => {
+            setIdentifiedKnowledge(data.identifiedKnowledge);
+            setSelectedIndices(
+              new Set(data.identifiedKnowledge.map((_, i) => i))
+            );
+          });
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [courseId]);
+  }, [courseId, existingUnitId, mode]);
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
@@ -96,17 +145,40 @@ export default function UnitUploadPage() {
     setStep("processing");
     setUploadError(null);
     try {
-      const { unit } = await createUnitFromUpload(courseId, files, unitName);
-      setProcessingUnitId(unit.id);
+      if (existingUnitId) {
+        // Re-upload flow: reuse existing unit
+        const { uploadUrls } = await reuploadUnit(
+          existingUnitId,
+          files.map((f) => f.name)
+        );
+        // Upload files to S3
+        await Promise.all(
+          files.map((file) => {
+            const url = uploadUrls[file.name];
+            if (!url) throw new Error(`No upload URL for file: ${file.name}`);
+            return fetch(url, { method: "PUT", body: file });
+          })
+        );
+        setProcessingUnitId(existingUnitId);
+      } else {
+        // New upload flow
+        const { unitId } = await createUnitFromUpload(
+          courseId,
+          files,
+          unitName
+        );
+        setProcessingUnitId(unitId);
+      }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
       setStep("upload");
     }
   };
 
-  // Poll for upload completion once we have a processingUnitId
+  // Poll for upload status once we have a processingUnitId
   useEffect(() => {
     if (!processingUnitId || !courseId) return;
+    if (step !== "processing") return;
     let cancelled = false;
     const poll = async () => {
       while (!cancelled) {
@@ -114,8 +186,10 @@ export default function UnitUploadPage() {
         if (cancelled) break;
         try {
           const result = await getUploadStatus(processingUnitId);
-          if (result.status === "ready") {
-            navigate(`/teacher/course/${courseId}/unit/${processingUnitId}`);
+          if (result.status === "review" || result.status === "ready") {
+            navigate(
+              `/teacher/course/${courseId}/unit/${processingUnitId}`
+            );
             return;
           }
           if (result.status === "error") {
@@ -124,15 +198,16 @@ export default function UnitUploadPage() {
             setProcessingUnitId(null);
             return;
           }
-          // still "processing" — keep polling
         } catch {
           // network error — keep polling
         }
       }
     };
     poll();
-    return () => { cancelled = true; };
-  }, [processingUnitId, courseId, navigate]);
+    return () => {
+      cancelled = true;
+    };
+  }, [processingUnitId, courseId, navigate, step]);
 
   // ---- Styles ----
 
@@ -172,7 +247,9 @@ export default function UnitUploadPage() {
     justifyContent: "center",
     gap: 12,
     cursor: "pointer",
-    backgroundColor: isDragOver ? "rgba(139, 122, 158, 0.06)" : "transparent",
+    backgroundColor: isDragOver
+      ? "rgba(139, 122, 158, 0.06)"
+      : "transparent",
     transition: "border-color 0.2s ease, background-color 0.2s ease",
   };
 
@@ -244,6 +321,44 @@ export default function UnitUploadPage() {
     color: GRAY_500,
   };
 
+  const handleToggleObjective = (index: number) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    setSelectedIndices(new Set(identifiedKnowledge.map((_, i) => i)));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedIndices(new Set());
+  };
+
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!processingUnitId || selectedIndices.size === 0 || !courseId) return;
+    const selected = identifiedKnowledge
+      .filter((_, i) => selectedIndices.has(i))
+      .map((k) => ({ type: k.type, description: k.description }));
+    setSaving(true);
+    setUploadError(null);
+    try {
+      await generateSelectedObjectives(processingUnitId, selected);
+      // Pipeline runs in background — navigate to unit editor immediately
+      navigate(`/teacher/course/${courseId}/unit/${processingUnitId}`);
+    } catch (err) {
+      setUploadError(
+        err instanceof Error ? err.message : "Save failed"
+      );
+      setSaving(false);
+    }
+  };
+
   const shellProps = {
     student: instructor ?? { id: "", name: "", yearLabel: "" },
     activePath: "/courses" as const,
@@ -259,6 +374,32 @@ export default function UnitUploadPage() {
     );
   }
 
+  // ---- Back link helper ----
+  const backTarget = existingUnitId
+    ? `/teacher/course/${courseId}/unit/${existingUnitId}`
+    : `/teacher/course/${courseId}`;
+  const backLabel = existingUnitId
+    ? `Back to ${unitName || "Unit"}`
+    : `Back to ${course?.title}`;
+
+  const renderBackLink = () => (
+    <a onClick={() => navigate(backTarget)} style={backLinkStyles}>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+      {backLabel}
+    </a>
+  );
+
   if (step === "name") {
     return (
       <AppShell {...shellProps}>
@@ -268,30 +409,11 @@ export default function UnitUploadPage() {
           </div>
         ) : (
           <>
-            <a
-              onClick={() => navigate(`/teacher/course/${courseId}`)}
-              style={backLinkStyles}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="15 18 9 12 15 6" />
-              </svg>
-              Back to {course.title}
-            </a>
-
+            {renderBackLink()}
             <h1 style={titleStyles}>Name Your Unit</h1>
             <p style={subtitleStyles}>
               Give this unit a title before uploading your documents.
             </p>
-
             <div style={{ maxWidth: 480, marginBottom: 24 }}>
               <Input
                 label="Unit Name"
@@ -300,7 +422,6 @@ export default function UnitUploadPage() {
                 onChange={setUnitName}
               />
             </div>
-
             <Button
               variant="primary"
               onClick={() => setStep("upload")}
@@ -322,13 +443,142 @@ export default function UnitUploadPage() {
           <div style={spinnerStyles} />
           <p style={processingTextStyles}>Processing your documents...</p>
           <p style={processingSubTextStyles}>
-            Sam is generating learning objectives
+            Sam is analyzing your content
           </p>
         </div>
       </AppShell>
     );
   }
 
+  if (step === "review") {
+    const skills = identifiedKnowledge
+      .map((k, i) => ({ ...k, _idx: i }))
+      .filter((k) => k.type === "skill");
+    const knowledge = identifiedKnowledge
+      .map((k, i) => ({ ...k, _idx: i }))
+      .filter((k) => k.type !== "skill");
+
+    const renderSection = (
+      label: string,
+      items: { type: string; description: string; _idx: number }[]
+    ) => {
+      if (items.length === 0) return null;
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <h3
+            style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: GRAY_900,
+              marginBottom: 12,
+            }}
+          >
+            {label} ({items.length})
+          </h3>
+          {items.map((k) => (
+            <label
+              key={k._idx}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                padding: "10px 12px",
+                borderRadius: 8,
+                backgroundColor: selectedIndices.has(k._idx)
+                  ? "#f3f0f7"
+                  : "#f9fafb",
+                marginBottom: 6,
+                cursor: "pointer",
+                border: `1px solid ${selectedIndices.has(k._idx) ? PRIMARY : "transparent"}`,
+                transition: "all 0.15s ease",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selectedIndices.has(k._idx)}
+                onChange={() => handleToggleObjective(k._idx)}
+                style={{ marginTop: 2, accentColor: PRIMARY }}
+              />
+              <span
+                style={{ fontSize: 14, color: GRAY_900, lineHeight: 1.4 }}
+              >
+                {k.description}
+              </span>
+            </label>
+          ))}
+        </div>
+      );
+    };
+
+    return (
+      <AppShell {...shellProps}>
+        {renderBackLink()}
+
+        <h1 style={titleStyles}>Review Objectives</h1>
+        <p style={subtitleStyles}>
+          Sam identified{" "}
+          <strong>{identifiedKnowledge.length}</strong> learning objectives
+          from your documents. Select the ones you want to include in{" "}
+          <strong>{unitName}</strong>.
+        </p>
+
+        <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+          <button
+            onClick={handleSelectAll}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 13,
+              color: PRIMARY,
+              fontWeight: 500,
+            }}
+          >
+            Select All
+          </button>
+          <button
+            onClick={handleDeselectAll}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 13,
+              color: GRAY_500,
+              fontWeight: 500,
+            }}
+          >
+            Deselect All
+          </button>
+          <span
+            style={{ fontSize: 13, color: GRAY_500, marginLeft: "auto" }}
+          >
+            {selectedIndices.size} of {identifiedKnowledge.length} selected
+          </span>
+        </div>
+
+        {renderSection("Skills", skills)}
+        {renderSection("Knowledge", knowledge)}
+
+        {uploadError && (
+          <p style={{ fontSize: 14, color: "#dc2626", marginTop: 16 }}>
+            {uploadError}
+          </p>
+        )}
+
+        <div style={{ marginTop: 24 }}>
+          <Button
+            variant="primary"
+            onClick={handleSave}
+            disabled={selectedIndices.size === 0 || saving}
+          >
+            {saving ? "Saving..." : `Save (${selectedIndices.size} objectives)`}
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  // ---- Upload step (default) ----
   return (
     <AppShell {...shellProps}>
       {!course ? (
@@ -337,28 +587,15 @@ export default function UnitUploadPage() {
         </div>
       ) : (
         <>
-          <a
-            onClick={() => navigate(`/teacher/course/${courseId}`)}
-            style={backLinkStyles}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back to {course.title}
-          </a>
+          {renderBackLink()}
 
-          <h1 style={titleStyles}>Upload Documents</h1>
+          <h1 style={titleStyles}>
+            {existingUnitId ? "Re-upload Documents" : "Upload Documents"}
+          </h1>
           <p style={subtitleStyles}>
-            Unit: <strong>{unitName}</strong> — Upload up to {MAX_FILES} text-based files. Sam will generate learning objectives from the content.
+            Unit: <strong>{unitName}</strong> — Upload up to {MAX_FILES}{" "}
+            text-based files. Sam will generate learning objectives from the
+            content.
           </p>
 
           <div

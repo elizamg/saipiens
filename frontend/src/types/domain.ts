@@ -28,7 +28,12 @@ export interface Course {
   studentCount?: number;
 }
 
-export type UnitStatus = "active" | "completed" | "locked" | "processing" | "ready" | "error";
+export type UnitStatus = "active" | "completed" | "locked" | "processing" | "review" | "ready" | "error";
+
+export interface IdentifiedKnowledge {
+  type: string;
+  description: string;
+}
 
 export interface Unit {
   id: string;
