@@ -15,6 +15,8 @@ import {
   generateSelectedObjectives,
   getIdentifiedKnowledge,
   getUnit,
+  updateUnitDeadline,
+  deleteUnit,
 } from "../services/api";
 
 const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
@@ -43,6 +45,9 @@ export default function CourseEditorPage() {
   const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deadline, setDeadline] = useState<string>("");
+  const [editingDeadline, setEditingDeadline] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // For units in "review" status (no objectives yet, only identified knowledge)
   const [identifiedKnowledge, setIdentifiedKnowledge] = useState<
@@ -66,6 +71,15 @@ export default function CourseEditorPage() {
         setObjectives(objs);
         setInstructor(instr);
         setSidebarCourses(courses);
+
+        // Initialize deadline (convert ISO to datetime-local format)
+        if (u.deadline) {
+          const d = new Date(u.deadline);
+          const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+            .toISOString()
+            .slice(0, 16);
+          setDeadline(local);
+        }
 
         // Initialize enabled set from current objective state
         setEnabledIds(new Set(objs.filter((o) => o.enabled !== false).map((o) => o.id)));
@@ -175,6 +189,28 @@ export default function CourseEditorPage() {
   const handleReupload = () => {
     if (!unitId || !courseId) return;
     navigate(`/teacher/course/${courseId}/upload?unitId=${unitId}`);
+  };
+
+  const handleDeadlineSave = async () => {
+    if (!unitId) return;
+    try {
+      const isoDeadline = deadline ? new Date(deadline).toISOString() : null;
+      const updated = await updateUnitDeadline(unitId, isoDeadline);
+      setUnit(updated);
+      setEditingDeadline(false);
+    } catch (err) {
+      console.error("Failed to save deadline:", err);
+    }
+  };
+
+  const handleDeleteUnit = async () => {
+    if (!unitId || !courseId) return;
+    try {
+      await deleteUnit(unitId);
+      navigate(`/teacher/course/${courseId}`);
+    } catch (err) {
+      console.error("Failed to delete unit:", err);
+    }
   };
 
   // Sort objectives: enabled first, disabled at bottom
@@ -360,6 +396,72 @@ export default function CourseEditorPage() {
 
           <h1 style={titleStyles}>{unit.title}</h1>
 
+          {/* Deadline */}
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            {editingDeadline ? (
+              <>
+                <input
+                  type="datetime-local"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  style={{
+                    padding: "6px 10px",
+                    border: `1px solid ${GRAY_300}`,
+                    borderRadius: 6,
+                    fontSize: 14,
+                  }}
+                />
+                <Button variant="primary" onClick={handleDeadlineSave} style={{ padding: "6px 12px", fontSize: 13 }}>
+                  Save
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setEditingDeadline(false);
+                    if (unit.deadline) {
+                      const d = new Date(unit.deadline);
+                      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+                        .toISOString()
+                        .slice(0, 16);
+                      setDeadline(local);
+                    } else {
+                      setDeadline("");
+                    }
+                  }}
+                  style={{ padding: "6px 12px", fontSize: 13 }}
+                >
+                  Cancel
+                </Button>
+                {deadline && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => { setDeadline(""); handleDeadlineSave(); }}
+                    style={{ padding: "6px 12px", fontSize: 13, color: "#dc2626" }}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </>
+            ) : (
+              <span
+                onClick={() => setEditingDeadline(true)}
+                style={{
+                  fontSize: 14,
+                  color: unit.deadline
+                    ? new Date(unit.deadline) < new Date()
+                      ? "#dc2626"
+                      : GRAY_500
+                    : GRAY_500,
+                  cursor: "pointer",
+                }}
+              >
+                {unit.deadline
+                  ? `Due: ${new Date(unit.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} at ${new Date(unit.deadline).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`
+                  : "No deadline set — click to add"}
+              </span>
+            )}
+          </div>
+
           {generating && (
             <div style={bannerStyles}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={PRIMARY} strokeWidth="2">
@@ -386,6 +488,34 @@ export default function CourseEditorPage() {
             <Button variant="secondary" onClick={handleReupload}>
               Re-upload Documents
             </Button>
+            <div style={{ flex: 1 }} />
+            {showDeleteConfirm ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, color: "#dc2626" }}>Delete this unit?</span>
+                <Button
+                  variant="secondary"
+                  onClick={handleDeleteUnit}
+                  style={{ padding: "6px 12px", fontSize: 13, color: "#dc2626", borderColor: "#dc2626" }}
+                >
+                  Confirm
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  style={{ padding: "6px 12px", fontSize: 13 }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="secondary"
+                onClick={() => setShowDeleteConfirm(true)}
+                style={{ padding: "6px 12px", fontSize: 13, color: "#dc2626" }}
+              >
+                Delete Unit
+              </Button>
+            )}
           </div>
 
           {isReviewMode ? (

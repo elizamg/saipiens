@@ -215,6 +215,19 @@ export default function UnitCard({ unit, courseId, progress, routePrefix }: Unit
           <div style={iconContainerStyles}>{renderIcon()}</div>
           <div style={textContainerStyles}>
             <h4 style={titleStyles}>{unit.title}</h4>
+            {unit.deadline && (
+              <span
+                style={{
+                  fontSize: 12,
+                  color: new Date(unit.deadline) < new Date() ? "#dc2626" : GRAY_500,
+                  fontWeight: new Date(unit.deadline) < new Date() ? 600 : 400,
+                }}
+              >
+                Due: {new Date(unit.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                {" at "}
+                {new Date(unit.deadline).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+              </span>
+            )}
             {progress && !isLocked && (
               <div style={progressContainerStyles}>
                 <div style={{ flex: 1, maxWidth: 120 }}>

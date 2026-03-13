@@ -11,6 +11,8 @@ import {
   getCourseRoster,
   getCurrentInstructor,
   listTeacherCourses,
+  updateCourseTitle,
+  deleteCourse,
 } from "../services/api";
 import type { Course, Unit, Student } from "../types/domain";
 
@@ -24,6 +26,9 @@ export default function TeacherCoursePage() {
   const [instructor, setInstructor] = useState<Student | null>(null);
   const [sidebarCourses, setSidebarCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (!courseId) return;
@@ -124,7 +129,34 @@ export default function TeacherCoursePage() {
           <header style={headerStyles}>
             <div style={titleRowStyles}>
               {bookIcon}
-              <h1 style={titleStyles}>{course.title}</h1>
+              {editingTitle ? (
+                <input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={async () => {
+                    const trimmed = titleDraft.trim();
+                    if (trimmed && trimmed !== course.title && courseId) {
+                      const updated = await updateCourseTitle(courseId, trimmed);
+                      setCourse(updated);
+                    }
+                    setEditingTitle(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") setEditingTitle(false);
+                  }}
+                  style={{ ...titleStyles, border: "none", outline: "none", background: "transparent", width: "100%" }}
+                />
+              ) : (
+                <h1
+                  style={{ ...titleStyles, cursor: "pointer" }}
+                  onClick={() => { setTitleDraft(course.title); setEditingTitle(true); }}
+                  title="Click to edit"
+                >
+                  {course.title}
+                </h1>
+              )}
             </div>
             <div style={infoRowStyles}>
               <svg
@@ -152,6 +184,37 @@ export default function TeacherCoursePage() {
               >
                 Edit Roster
               </Button>
+              {showDeleteConfirm ? (
+                <>
+                  <span style={{ fontSize: 13, color: "#dc2626", marginLeft: 8 }}>Delete this course?</span>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      if (!courseId) return;
+                      await deleteCourse(courseId);
+                      navigate("/teacher");
+                    }}
+                    style={{ padding: "4px 12px", fontSize: 13, marginLeft: 4, color: "#dc2626", borderColor: "#dc2626" }}
+                  >
+                    Confirm
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    style={{ padding: "4px 12px", fontSize: 13, marginLeft: 4 }}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  style={{ padding: "4px 12px", fontSize: 13, marginLeft: 8, color: "#dc2626" }}
+                >
+                  Delete Course
+                </Button>
+              )}
             </div>
           </header>
 

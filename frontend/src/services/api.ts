@@ -390,6 +390,38 @@ export function updateUnitTitle(unitId: string, title: string): Promise<Unit> {
   return patch<Unit>(`/units/${unitId}/title`, { title });
 }
 
+export function updateUnitDeadline(unitId: string, deadline: string | null): Promise<Unit> {
+  return patch<Unit>(`/units/${unitId}/deadline`, { deadline });
+}
+
+export function updateCourseTitle(courseId: string, title: string): Promise<Course> {
+  return patch<Course>(`/courses/${courseId}/title`, { title });
+}
+
+export function deleteUnit(unitId: string): Promise<void> {
+  return apiFetch(`/units/${unitId}`, { method: "DELETE" });
+}
+
+export function deleteCourse(courseId: string): Promise<void> {
+  return apiFetch(`/courses/${courseId}`, { method: "DELETE" });
+}
+
+export function restoreUnit(unitId: string): Promise<Unit> {
+  return patch<Unit>(`/units/${unitId}/restore`, {});
+}
+
+export function restoreCourse(courseId: string): Promise<Course> {
+  return patch<Course>(`/courses/${courseId}/restore`, {});
+}
+
+export function permanentlyDeleteUnit(unitId: string): Promise<void> {
+  return apiFetch(`/units/${unitId}/permanent`, { method: "DELETE" });
+}
+
+export function permanentlyDeleteCourse(courseId: string): Promise<void> {
+  return apiFetch(`/courses/${courseId}/permanent`, { method: "DELETE" });
+}
+
 /**
  * Reset a unit back to "review" status so the teacher can re-select objectives.
  * Deletes existing objectives, questions, threads, etc. for the unit.

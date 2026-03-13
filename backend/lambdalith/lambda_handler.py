@@ -414,7 +414,7 @@ def handle_get_course(course_id: str):
     return resp(200, item)
 
 
-def handle_list_units(course_id: str):
+def handle_list_units(course_id: str, include_deleted: bool = False):
     units = dynamodb.Table(T["UNITS"])
     items = query_all(
         units,
@@ -422,6 +422,8 @@ def handle_list_units(course_id: str):
         key_condition=Key("courseId").eq(course_id),
         scan_forward=True,
     )
+    if not include_deleted:
+        items = [i for i in items if not i.get("deletedAt")]
     return resp(200, items)
 
 
@@ -499,7 +501,7 @@ def handle_list_courses_for_student(event, student_id_param: str | None):
     items = batch_get_all(T["COURSES"], keys)
 
     by_id = {it.get("id"): it for it in items if it.get("id")}
-    ordered = [by_id.get(cid) for cid in course_ids if by_id.get(cid) is not None]
+    ordered = [by_id.get(cid) for cid in course_ids if by_id.get(cid) is not None and not by_id.get(cid, {}).get("deletedAt")]
     return resp(200, ordered)
 
 
@@ -659,6 +661,8 @@ def handle_advance_stage(event, objective_id: str):
     item["earnedStars"] = earned
     item["currentStageType"] = _compute_current_stage_type(earned)
     item["updatedAt"] = now
+    if earned == 3:
+        item["completedAt"] = now
 
     prog_tbl.put_item(Item=item)
     return resp(200, item)
@@ -1090,6 +1094,9 @@ def handle_list_instructor_courses(event):
         scan_forward=True,
     )
 
+    # Filter out soft-deleted courses
+    items = [i for i in items if not i.get("deletedAt")]
+
     # Attach studentCount to each course by counting enrollments
     enrollments_tbl = dynamodb.Table(T["ENROLLMENTS"])
     for item in items:
@@ -1226,6 +1233,16 @@ def handle_list_students(event):
     while result.get("LastEvaluatedKey"):
         result = students_tbl.scan(ExclusiveStartKey=result["LastEvaluatedKey"])
         items.extend(result.get("Items", []))
+
+    # Filter out users who are also instructors
+    instructors_tbl = dynamodb.Table(T["INSTRUCTORS"])
+    instr_result = instructors_tbl.scan(ProjectionExpression="id")
+    instructor_ids = {i["id"] for i in instr_result.get("Items", [])}
+    while instr_result.get("LastEvaluatedKey"):
+        instr_result = instructors_tbl.scan(ProjectionExpression="id", ExclusiveStartKey=instr_result["LastEvaluatedKey"])
+        instructor_ids.update(i["id"] for i in instr_result.get("Items", []))
+
+    items = [s for s in items if s.get("id") not in instructor_ids]
     return resp(200, items)
 
 
@@ -1282,6 +1299,278 @@ def handle_update_unit_title(event, unit_id: str):
     )
     updated = units_tbl.get_item(Key={"id": unit_id}).get("Item")
     return resp(200, updated)
+
+
+def handle_update_unit_deadline(event, unit_id: str):
+    """PATCH /units/{unitId}/deadline — set or clear a unit deadline."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    deadline = body.get("deadline") if isinstance(body, dict) else None
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    now = iso_now()
+    if deadline:
+        units_tbl.update_item(
+            Key={"id": unit_id},
+            UpdateExpression="SET deadline = :d, updatedAt = :u",
+            ExpressionAttributeValues={":d": deadline, ":u": now},
+        )
+    else:
+        units_tbl.update_item(
+            Key={"id": unit_id},
+            UpdateExpression="REMOVE deadline SET updatedAt = :u",
+            ExpressionAttributeValues={":u": now},
+        )
+    updated = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+    return resp(200, updated)
+
+
+def handle_update_course_title(event, course_id: str):
+    """PATCH /courses/{courseId}/title — update course title."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    title = (body.get("title") or "").strip() if isinstance(body, dict) else ""
+    if not title:
+        return resp(400, {"error": "Missing title"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    got = courses_tbl.get_item(Key={"id": course_id})
+    if not got.get("Item"):
+        return resp_not_found("Course")
+
+    now = iso_now()
+    courses_tbl.update_item(
+        Key={"id": course_id},
+        UpdateExpression="SET title = :t, updatedAt = :u",
+        ExpressionAttributeValues={":t": title, ":u": now},
+    )
+    updated = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+    return resp(200, updated)
+
+
+def handle_soft_delete_unit(event, unit_id: str):
+    """DELETE /units/{unitId} — soft delete (sets deletedAt timestamp)."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    now = iso_now()
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET deletedAt = :d, updatedAt = :u",
+        ExpressionAttributeValues={":d": now, ":u": now},
+    )
+    return resp(200, {"unitId": unit_id, "deletedAt": now})
+
+
+def handle_soft_delete_course(event, course_id: str):
+    """DELETE /courses/{courseId} — soft delete (sets deletedAt timestamp)."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    got = courses_tbl.get_item(Key={"id": course_id})
+    if not got.get("Item"):
+        return resp_not_found("Course")
+
+    now = iso_now()
+    courses_tbl.update_item(
+        Key={"id": course_id},
+        UpdateExpression="SET deletedAt = :d, updatedAt = :u",
+        ExpressionAttributeValues={":d": now, ":u": now},
+    )
+    return resp(200, {"courseId": course_id, "deletedAt": now})
+
+
+def handle_restore_unit(event, unit_id: str):
+    """PATCH /units/{unitId}/restore — restore a soft-deleted unit."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    now = iso_now()
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="REMOVE deletedAt SET updatedAt = :u",
+        ExpressionAttributeValues={":u": now},
+    )
+    updated = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+    return resp(200, updated)
+
+
+def handle_restore_course(event, course_id: str):
+    """PATCH /courses/{courseId}/restore — restore a soft-deleted course."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    got = courses_tbl.get_item(Key={"id": course_id})
+    if not got.get("Item"):
+        return resp_not_found("Course")
+
+    now = iso_now()
+    courses_tbl.update_item(
+        Key={"id": course_id},
+        UpdateExpression="REMOVE deletedAt SET updatedAt = :u",
+        ExpressionAttributeValues={":u": now},
+    )
+    updated = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+    return resp(200, updated)
+
+
+def _hard_delete_unit_records(unit_id: str):
+    """Delete all child records for a unit (objectives, questions, stages, threads, messages, progress, knowledge)."""
+    # Objectives + their children
+    obj_items = query_all(
+        dynamodb.Table(T["OBJECTIVES"]),
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for obj in obj_items:
+        oid = obj["id"]
+        # Questions
+        for q in query_all(dynamodb.Table(T["QUESTIONS"]), index_name=IDX["OBJECTIVE_QUESTIONS"], key_condition=Key("objectiveId").eq(oid)):
+            dynamodb.Table(T["QUESTIONS"]).delete_item(Key={"id": q["id"]})
+        # Item stages
+        for s in query_all(dynamodb.Table(T["ITEM_STAGES"]), index_name=IDX["ITEM_STAGES_BY_ITEM"], key_condition=Key("itemId").eq(oid)):
+            dynamodb.Table(T["ITEM_STAGES"]).delete_item(Key={"id": s["id"]})
+        # Objective itself
+        dynamodb.Table(T["OBJECTIVES"]).delete_item(Key={"id": oid})
+
+    # Chat threads + messages
+    threads = query_all(
+        dynamodb.Table(T["CHAT_THREADS"]),
+        index_name=IDX["UNIT_THREADS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for t in threads:
+        tid = t["id"]
+        # Messages for this thread
+        msgs = query_all(dynamodb.Table(T["CHAT_MESSAGES"]), key_condition=Key("threadId").eq(tid))
+        for m in msgs:
+            dynamodb.Table(T["CHAT_MESSAGES"]).delete_item(Key={"threadId": tid, "id": m["id"]})
+        dynamodb.Table(T["CHAT_THREADS"]).delete_item(Key={"id": tid})
+
+    # Knowledge topics
+    topics = query_all(
+        dynamodb.Table(T["KNOWLEDGE_TOPICS"]),
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for topic in topics:
+        dynamodb.Table(T["KNOWLEDGE_TOPICS"]).delete_item(Key={"id": topic["id"]})
+
+    # Knowledge queue items (scan and filter — no unit-level index with studentId PK)
+    kqi_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    result = kqi_tbl.scan(FilterExpression=Key("unitId").eq(unit_id))
+    for item in result.get("Items", []):
+        kqi_tbl.delete_item(Key={"studentId": item["studentId"], "id": item["id"]})
+    while result.get("LastEvaluatedKey"):
+        result = kqi_tbl.scan(FilterExpression=Key("unitId").eq(unit_id), ExclusiveStartKey=result["LastEvaluatedKey"])
+        for item in result.get("Items", []):
+            kqi_tbl.delete_item(Key={"studentId": item["studentId"], "id": item["id"]})
+
+    # Student objective progress (scan and filter by objective IDs)
+    if obj_items:
+        prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
+        obj_id_set = {o["id"] for o in obj_items}
+        result = prog_tbl.scan()
+        for item in result.get("Items", []):
+            if item.get("objectiveId") in obj_id_set:
+                prog_tbl.delete_item(Key={"studentId": item["studentId"], "objectiveId": item["objectiveId"]})
+        while result.get("LastEvaluatedKey"):
+            result = prog_tbl.scan(ExclusiveStartKey=result["LastEvaluatedKey"])
+            for item in result.get("Items", []):
+                if item.get("objectiveId") in obj_id_set:
+                    prog_tbl.delete_item(Key={"studentId": item["studentId"], "objectiveId": item["objectiveId"]})
+
+
+def handle_hard_delete_unit(event, unit_id: str):
+    """DELETE /units/{unitId}/permanent — permanently delete unit and all child records."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    _hard_delete_unit_records(unit_id)
+    units_tbl.delete_item(Key={"id": unit_id})
+
+    # Clean up S3 uploads
+    try:
+        objs = s3.list_objects_v2(Bucket=UPLOAD_BUCKET, Prefix=f"uploads/{unit_id}/")
+        for obj in objs.get("Contents", []):
+            s3.delete_object(Bucket=UPLOAD_BUCKET, Key=obj["Key"])
+    except Exception:
+        pass  # S3 cleanup is best-effort
+
+    return resp(200, {"unitId": unit_id, "deleted": True})
+
+
+def handle_hard_delete_course(event, course_id: str):
+    """DELETE /courses/{courseId}/permanent — permanently delete course, its units, and enrollments."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    got = courses_tbl.get_item(Key={"id": course_id})
+    if not got.get("Item"):
+        return resp_not_found("Course")
+
+    # Delete all units in this course
+    unit_items = query_all(
+        dynamodb.Table(T["UNITS"]),
+        index_name=IDX["COURSE_UNITS"],
+        key_condition=Key("courseId").eq(course_id),
+    )
+    for u in unit_items:
+        _hard_delete_unit_records(u["id"])
+        dynamodb.Table(T["UNITS"]).delete_item(Key={"id": u["id"]})
+
+    # Delete enrollments
+    enroll_items = query_all(
+        dynamodb.Table(T["ENROLLMENTS"]),
+        index_name=IDX["COURSE_ENROLLMENTS"],
+        key_condition=Key("courseId").eq(course_id),
+    )
+    for e in enroll_items:
+        dynamodb.Table(T["ENROLLMENTS"]).delete_item(Key={"studentId": e["studentId"], "courseId": e["courseId"]})
+
+    # Delete course
+    courses_tbl.delete_item(Key={"id": course_id})
+    return resp(200, {"courseId": course_id, "deleted": True})
 
 
 def handle_update_objective_enabled(event, objective_id: str):
@@ -1438,9 +1727,9 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
     new_status = "completed_correct" if is_correct else "completed_incorrect"
     tbl.update_item(
         Key={"studentId": student_id, "id": queue_item_id},
-        UpdateExpression="SET #s = :s, is_correct = :ic, updatedAt = :u",
+        UpdateExpression="SET #s = :s, is_correct = :ic, updatedAt = :u, completedAt = :c",
         ExpressionAttributeNames={"#s": "status"},
-        ExpressionAttributeValues={":s": new_status, ":ic": is_correct, ":u": now},
+        ExpressionAttributeValues={":s": new_status, ":ic": is_correct, ":u": now, ":c": now},
     )
     updated_item = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
 
@@ -2483,6 +2772,54 @@ def handler(event, context):
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
             return handle_process_unit(event, unit_id)
+
+        if method == "PATCH" and path.endswith("/deadline") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_update_unit_deadline(event, unit_id)
+
+        if method == "PATCH" and path.endswith("/title") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_update_course_title(event, course_id)
+
+        if method == "DELETE" and path.endswith("/permanent") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_hard_delete_unit(event, unit_id)
+
+        if method == "DELETE" and path.endswith("/permanent") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_hard_delete_course(event, course_id)
+
+        if method == "DELETE" and path.startswith("/units/") and "/permanent" not in path:
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_soft_delete_unit(event, unit_id)
+
+        if method == "DELETE" and path.startswith("/courses/") and "/permanent" not in path and "/roster" not in path:
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_soft_delete_course(event, course_id)
+
+        if method == "PATCH" and path.endswith("/restore") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_restore_unit(event, unit_id)
+
+        if method == "PATCH" and path.endswith("/restore") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_restore_course(event, course_id)
 
         return resp(404, {"error": "Route not found", "method": method, "path": path})
     except Exception as e:
