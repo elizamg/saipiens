@@ -186,7 +186,7 @@ export default function TeacherCoursePage() {
               </Button>
               {showDeleteConfirm ? (
                 <>
-                  <span style={{ fontSize: 13, color: "#dc2626", marginLeft: 8 }}>Delete this course?</span>
+                  <span style={{ fontSize: 13, marginLeft: 8 }}>Delete this course?</span>
                   <Button
                     variant="secondary"
                     onClick={async () => {
@@ -194,7 +194,7 @@ export default function TeacherCoursePage() {
                       await deleteCourse(courseId);
                       navigate("/teacher");
                     }}
-                    style={{ padding: "4px 12px", fontSize: 13, marginLeft: 4, color: "#dc2626", borderColor: "#dc2626" }}
+                    style={{ padding: "4px 12px", fontSize: 13, marginLeft: 4 }}
                   >
                     Confirm
                   </Button>
@@ -210,7 +210,7 @@ export default function TeacherCoursePage() {
                 <Button
                   variant="secondary"
                   onClick={() => setShowDeleteConfirm(true)}
-                  style={{ padding: "4px 12px", fontSize: 13, marginLeft: 8, color: "#dc2626" }}
+                  style={{ padding: "4px 12px", fontSize: 13, marginLeft: 8 }}
                 >
                   Delete Course
                 </Button>

@@ -365,6 +365,10 @@ export async function createUnitFromUpload(
   return { unitId };
 }
 
+export function processUnit(unitId: string): Promise<{ unitId: string; status: string }> {
+  return post(`/units/${unitId}/process`, {});
+}
+
 export function getUploadStatus(
   unitId: string
 ): Promise<{ unitId: string; status: string; statusError?: string }> {
@@ -430,6 +434,15 @@ export function editObjectives(
   unitId: string
 ): Promise<{ unitId: string; status: string }> {
   return post(`/units/${unitId}/edit-objectives`, {});
+}
+
+/**
+ * List uploaded files for a unit from S3.
+ */
+export function listUnitFiles(
+  unitId: string
+): Promise<{ files: { name: string; size: number; lastModified: string }[] }> {
+  return get(`/units/${unitId}/files`);
 }
 
 /**

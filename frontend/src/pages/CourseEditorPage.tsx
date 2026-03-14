@@ -191,10 +191,11 @@ export default function CourseEditorPage() {
     navigate(`/teacher/course/${courseId}/upload?unitId=${unitId}`);
   };
 
-  const handleDeadlineSave = async () => {
+  const handleDeadlineSave = async (overrideValue?: string | null) => {
     if (!unitId) return;
     try {
-      const isoDeadline = deadline ? new Date(deadline).toISOString() : null;
+      const raw = overrideValue !== undefined ? overrideValue : deadline;
+      const isoDeadline = raw ? new Date(raw).toISOString() : null;
       const updated = await updateUnitDeadline(unitId, isoDeadline);
       setUnit(updated);
       setEditingDeadline(false);
@@ -435,7 +436,7 @@ export default function CourseEditorPage() {
                 {deadline && (
                   <Button
                     variant="secondary"
-                    onClick={() => { setDeadline(""); handleDeadlineSave(); }}
+                    onClick={() => { setDeadline(""); handleDeadlineSave(null); }}
                     style={{ padding: "6px 12px", fontSize: 13, color: "#dc2626" }}
                   >
                     Remove
@@ -491,11 +492,11 @@ export default function CourseEditorPage() {
             <div style={{ flex: 1 }} />
             {showDeleteConfirm ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, color: "#dc2626" }}>Delete this unit?</span>
+                <span style={{ fontSize: 13 }}>Delete this unit?</span>
                 <Button
                   variant="secondary"
                   onClick={handleDeleteUnit}
-                  style={{ padding: "6px 12px", fontSize: 13, color: "#dc2626", borderColor: "#dc2626" }}
+                  style={{ padding: "6px 12px", fontSize: 13 }}
                 >
                   Confirm
                 </Button>
@@ -511,7 +512,7 @@ export default function CourseEditorPage() {
               <Button
                 variant="secondary"
                 onClick={() => setShowDeleteConfirm(true)}
-                style={{ padding: "6px 12px", fontSize: 13, color: "#dc2626" }}
+                style={{ padding: "6px 12px", fontSize: 13 }}
               >
                 Delete Unit
               </Button>

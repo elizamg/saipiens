@@ -10,6 +10,8 @@ import {
   listTeacherCourses,
   createUnitFromUpload,
   reuploadUnit,
+  processUnit,
+  listUnitFiles,
   getUploadStatus,
   getIdentifiedKnowledge,
   generateSelectedObjectives,
@@ -58,6 +60,7 @@ export default function UnitUploadPage() {
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(
     new Set()
   );
+  const [existingFiles, setExistingFiles] = useState<{ name: string; size: number }[]>([]);
 
   // Load course info + handle edit/re-upload modes
   useEffect(() => {
@@ -84,6 +87,13 @@ export default function UnitUploadPage() {
         if (unitData) {
           const u = unitData as { title: string };
           setUnitName(u.title || "");
+        }
+
+        // Load existing uploaded files for reupload mode
+        if (existingUnitId && mode !== "review") {
+          listUnitFiles(existingUnitId).then((data) => {
+            setExistingFiles(data.files || []);
+          }).catch(console.error);
         }
 
         // If mode=review, immediately load identified knowledge
@@ -152,13 +162,18 @@ export default function UnitUploadPage() {
           files.map((f) => f.name)
         );
         // Upload files to S3
-        await Promise.all(
+        const uploadResults = await Promise.all(
           files.map((file) => {
             const url = uploadUrls[file.name];
             if (!url) throw new Error(`No upload URL for file: ${file.name}`);
             return fetch(url, { method: "PUT", body: file });
           })
         );
+        for (const res of uploadResults) {
+          if (!res.ok) throw new Error(`S3 upload failed: ${res.status} ${res.statusText}`);
+        }
+        // Trigger the processing pipeline
+        await processUnit(existingUnitId);
         setProcessingUnitId(existingUnitId);
       } else {
         // New upload flow
@@ -597,6 +612,43 @@ export default function UnitUploadPage() {
             text-based files. Sam will generate learning objectives from the
             content.
           </p>
+
+          {existingFiles.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: GRAY_900, marginBottom: 8 }}>
+                Previously Uploaded Files
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {existingFiles.map((f, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      backgroundColor: "#f3f0f7",
+                      fontSize: 14,
+                      color: GRAY_900,
+                    }}
+                  >
+                    <span>{f.name}</span>
+                    <span style={{ fontSize: 12, color: GRAY_500 }}>
+                      {f.size < 1024
+                        ? `${f.size} B`
+                        : f.size < 1024 * 1024
+                          ? `${(f.size / 1024).toFixed(1)} KB`
+                          : `${(f.size / (1024 * 1024)).toFixed(1)} MB`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 12, color: GRAY_500, marginTop: 8 }}>
+                Upload new files below to replace existing content.
+              </p>
+            </div>
+          )}
 
           <div
             style={dropZoneStyles}

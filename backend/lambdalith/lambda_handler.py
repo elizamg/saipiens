@@ -1328,7 +1328,7 @@ def handle_update_unit_deadline(event, unit_id: str):
     else:
         units_tbl.update_item(
             Key={"id": unit_id},
-            UpdateExpression="REMOVE deadline SET updatedAt = :u",
+            UpdateExpression="SET updatedAt = :u REMOVE deadline",
             ExpressionAttributeValues={":u": now},
         )
     updated = units_tbl.get_item(Key={"id": unit_id}).get("Item")
@@ -2459,8 +2459,10 @@ def handle_reupload(event, unit_id: str):
     if not instructor_id:
         return resp(401, {"error": "Unauthorized"})
 
-    body = _body(event)
-    file_names = body.get("fileNames", [])
+    err, body = require_json(event)
+    if err:
+        return err
+    file_names = (body.get("fileNames") or []) if isinstance(body, dict) else []
     if not file_names:
         return resp(400, {"error": "fileNames is required"})
 
@@ -2473,11 +2475,17 @@ def handle_reupload(event, unit_id: str):
     # Clean up existing generated data
     _cleanup_unit_objectives(unit_id)
 
-    # Generate pre-signed PUT URLs
+    # Generate pre-signed PUT URLs (use regional client for SigV4)
+    presign_client = boto3.client(
+        "s3",
+        region_name="us-west-1",
+        endpoint_url="https://s3.us-west-1.amazonaws.com",
+        config=Config(signature_version="s3v4"),
+    )
     upload_urls: dict[str, str] = {}
     for filename in file_names:
         s3_key = f"uploads/{unit_id}/{filename}"
-        url = s3.generate_presigned_url(
+        url = presign_client.generate_presigned_url(
             "put_object",
             Params={"Bucket": UPLOAD_BUCKET, "Key": s3_key},
             ExpiresIn=900,
@@ -2493,6 +2501,23 @@ def handle_reupload(event, unit_id: str):
     )
 
     return resp(200, {"unitId": unit_id, "uploadUrls": upload_urls})
+
+
+def handle_list_unit_files(unit_id: str):
+    """GET /units/{unitId}/files — list uploaded files for a unit from S3."""
+    prefix = f"uploads/{unit_id}/"
+    response = s3.list_objects_v2(Bucket=UPLOAD_BUCKET, Prefix=prefix)
+    contents = response.get("Contents", [])
+    files = []
+    for obj in contents:
+        filename = obj["Key"].split("/")[-1]
+        if filename:
+            files.append({
+                "name": filename,
+                "size": obj.get("Size", 0),
+                "lastModified": obj.get("LastModified", "").isoformat() if hasattr(obj.get("LastModified", ""), "isoformat") else str(obj.get("LastModified", "")),
+            })
+    return resp(200, {"files": files})
 
 
 def handle_get_upload_status(unit_id: str):
@@ -2582,6 +2607,12 @@ def handler(event, context):
                 return resp(400, {"error": "Missing itemId"})
             return handle_complete_knowledge_queue_item(event, item_id)
 
+        if method == "GET" and path.endswith("/files") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_list_unit_files(unit_id)
+
         if method == "GET" and path.endswith("/upload-status") and path.startswith("/units/"):
             unit_id = params.get("unitId")
             if not unit_id:
@@ -2612,7 +2643,7 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_reupload(event, unit_id)
 
-        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path and "/upload-status" not in path and "/identified-knowledge" not in path:
+        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path and "/upload-status" not in path and "/identified-knowledge" not in path and "/files" not in path:
             unit_id = params.get("unitId")
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
