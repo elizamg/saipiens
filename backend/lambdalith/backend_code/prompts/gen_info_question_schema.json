@@ -1,13 +1,10 @@
 {
-  "response_mime_type": "application/json",
-  "response_schema": {
-    "type": "object",
-    "properties": {
-      "Question": {
-        "type": "string",
-        "description": "The question generated for the student based on the provided concept."
-      }
-    },
-    "required": ["Question"]
-  }
+  "type": "OBJECT",
+  "properties": {
+    "Question": {
+      "type": "STRING",
+      "description": "The question generated for the student based on the provided concept."
+    }
+  },
+  "required": ["Question"]
 }

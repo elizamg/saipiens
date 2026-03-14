@@ -437,7 +437,7 @@ export default function CourseEditorPage() {
                   <Button
                     variant="secondary"
                     onClick={() => { setDeadline(""); handleDeadlineSave(null); }}
-                    style={{ padding: "6px 12px", fontSize: 13, color: "#dc2626" }}
+                    style={{ padding: "6px 12px", fontSize: 13 }}
                   >
                     Remove
                   </Button>

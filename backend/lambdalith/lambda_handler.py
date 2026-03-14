@@ -1962,6 +1962,17 @@ def handle_process_unit(event, unit_id: str):
         for obj in contents
     ]
 
+    # Clean up existing objectives/questions (safe now — files are in S3)
+    _cleanup_unit_objectives(unit_id)
+
+    # Set status to processing and clear stale fields
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET #s = :s, updatedAt = :u REMOVE identifiedKnowledge, statusError",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": "processing", ":u": iso_now()},
+    )
+
     # Invoke self async to run the pipeline in the background
     async_payload = {
         "_internal": "process-upload",
@@ -2220,91 +2231,95 @@ def _handle_generate_objectives_async(payload: dict):
         print(f"[async-generate] Warning: could not query enrollments for course {course_id}: {e}")
 
     knowledge_order = 0
+    skill_order = 0
 
-    for order_idx, k in enumerate(all_knowledge):
+    for k in all_knowledge:
         knowledge_type = k.get("knowledge_type", "information")
         description = k.get("knowledge_description", "")
         question_text = k.get("question", "")
 
-        obj_kind = "skill" if knowledge_type == "skill" else "knowledge"
-
-        obj_id = str(uuid.uuid4())
-        obj_item = {
-            "id": obj_id,
-            "unitId": unit_id,
-            "title": description,
-            "description": description,
-            "kind": obj_kind,
-            "order": order_idx,
-            "enabled": True,
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        objectives_tbl.put_item(Item=obj_item)
-
-        for stage_order, stage_type in enumerate(STAGE_TYPES):
-            stage_id = str(uuid.uuid4())
-            stage_item = {
-                "id": stage_id,
-                "itemId": obj_id,
-                "stageType": stage_type,
-                "order": stage_order,
-                "prompt": question_text or description,
+        if knowledge_type == "skill":
+            # Skills become Objectives with stages, questions, and threads
+            obj_id = str(uuid.uuid4())
+            obj_item = {
+                "id": obj_id,
+                "unitId": unit_id,
+                "title": description,
+                "description": description,
+                "kind": "skill",
+                "order": skill_order,
+                "enabled": True,
                 "createdAt": now,
+                "updatedAt": now,
             }
-            stages_tbl.put_item(Item=stage_item)
+            objectives_tbl.put_item(Item=obj_item)
 
-        if question_text:
-            q_id = str(uuid.uuid4())
-            q_item = {
-                "id": q_id,
-                "objectiveId": obj_id,
-                "text": question_text,
-                "kind": obj_kind,
-                "difficultyStars": 1,
-                "createdAt": now,
-            }
-            questions_tbl.put_item(Item=q_item)
-
-        thread_id = f"thread-{obj_id}"
-        thread_item = {
-            "id": thread_id,
-            "courseId": course_id,
-            "unitId": unit_id,
-            "objectiveId": obj_id,
-            "title": description,
-            "kind": obj_kind,
-            "lastMessageAt": now,
-        }
-        threads_tbl.put_item(Item=thread_item)
-
-        topic_id = str(uuid.uuid4())
-        topic_item = {
-            "id": topic_id,
-            "unitId": unit_id,
-            "objectiveId": obj_id,
-            "knowledgeTopic": description,
-            "order": order_idx,
-            "createdAt": now,
-        }
-        knowledge_topics_tbl.put_item(Item=topic_item)
-
-        if obj_kind == "knowledge" and enrolled_student_ids:
-            for student_id in enrolled_student_ids:
-                queue_item_id = str(uuid.uuid4())
-                status = "active" if knowledge_order == 0 else "pending"
-                queue_item = {
-                    "id": queue_item_id,
-                    "unitId": unit_id,
-                    "studentId": student_id,
-                    "knowledgeTopicId": topic_id,
-                    "labelIndex": knowledge_order,
-                    "order": knowledge_order,
-                    "status": status,
-                    "questionPrompt": question_text or description,
+            for stage_order, stage_type in enumerate(STAGE_TYPES):
+                stage_id = str(uuid.uuid4())
+                stage_item = {
+                    "id": stage_id,
+                    "itemId": obj_id,
+                    "stageType": stage_type,
+                    "order": stage_order,
+                    "prompt": question_text or description,
                     "createdAt": now,
                 }
-                knowledge_queue_tbl.put_item(Item=queue_item)
+                stages_tbl.put_item(Item=stage_item)
+
+            if question_text:
+                q_id = str(uuid.uuid4())
+                q_item = {
+                    "id": q_id,
+                    "objectiveId": obj_id,
+                    "text": question_text,
+                    "kind": "skill",
+                    "difficultyStars": 1,
+                    "createdAt": now,
+                }
+                questions_tbl.put_item(Item=q_item)
+
+            thread_id = f"thread-{obj_id}"
+            thread_item = {
+                "id": thread_id,
+                "courseId": course_id,
+                "unitId": unit_id,
+                "objectiveId": obj_id,
+                "title": description,
+                "kind": "skill",
+                "lastMessageAt": now,
+            }
+            threads_tbl.put_item(Item=thread_item)
+
+            skill_order += 1
+
+        else:
+            # Information items become KnowledgeTopics with queue items only
+            topic_id = str(uuid.uuid4())
+            topic_item = {
+                "id": topic_id,
+                "unitId": unit_id,
+                "knowledgeTopic": description,
+                "order": knowledge_order,
+                "createdAt": now,
+            }
+            knowledge_topics_tbl.put_item(Item=topic_item)
+
+            if enrolled_student_ids:
+                for student_id in enrolled_student_ids:
+                    queue_item_id = str(uuid.uuid4())
+                    status = "active" if knowledge_order == 0 else "pending"
+                    queue_item = {
+                        "id": queue_item_id,
+                        "unitId": unit_id,
+                        "studentId": student_id,
+                        "knowledgeTopicId": topic_id,
+                        "labelIndex": knowledge_order,
+                        "order": knowledge_order,
+                        "status": status,
+                        "questionPrompt": question_text or description,
+                        "createdAt": now,
+                    }
+                    knowledge_queue_tbl.put_item(Item=queue_item)
 
             knowledge_order += 1
 
@@ -2472,10 +2487,10 @@ def handle_reupload(event, unit_id: str):
     if not item:
         return resp_not_found("Unit")
 
-    # Clean up existing generated data
-    _cleanup_unit_objectives(unit_id)
-
     # Generate pre-signed PUT URLs (use regional client for SigV4)
+    # NOTE: We do NOT clean up objectives or change status here.
+    # Cleanup and status change happen in handle_process_unit after
+    # files are successfully uploaded to S3.
     presign_client = boto3.client(
         "s3",
         region_name="us-west-1",
@@ -2491,14 +2506,6 @@ def handle_reupload(event, unit_id: str):
             ExpiresIn=900,
         )
         upload_urls[filename] = url
-
-    # Reset unit status to processing
-    units_tbl.update_item(
-        Key={"id": unit_id},
-        UpdateExpression="SET #s = :s, updatedAt = :u REMOVE identifiedKnowledge, statusError",
-        ExpressionAttributeNames={"#s": "status"},
-        ExpressionAttributeValues={":s": "processing", ":u": iso_now()},
-    )
 
     return resp(200, {"unitId": unit_id, "uploadUrls": upload_urls})
 
