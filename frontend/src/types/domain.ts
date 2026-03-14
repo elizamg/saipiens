@@ -150,6 +150,8 @@ export interface ChatMessageMetadata {
   /** Progress state reached at this message. */
   progressState?: ProgressState;
   isCompletionMessage?: boolean;
+  /** Grading result for challenge stage messages: "correct" | "slight clarification" | "small mistake" | "incorrect" */
+  gradingCategory?: string;
 }
 
 export interface ChatMessage {

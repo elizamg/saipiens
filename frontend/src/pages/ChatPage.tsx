@@ -21,7 +21,7 @@ import {
   listKnowledgeMessages,
   sendKnowledgeMessage,
 } from "../services/api";
-import { isStageCompleted, stageLabel } from "../utils/progress";
+import { isStageCompleted, stageLabel, stageTypeToProgressState } from "../utils/progress";
 import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, SUCCESS_GREEN } from "../theme/colors";
 import type {
   Student,
@@ -347,6 +347,14 @@ export default function ChatPage() {
             setThreads(updatedThreads);
             setUnitProgress(updatedUnitProgress);
           }
+        } else if (tutorMessage?.metadata?.isCompletionMessage && courseId && unitId) {
+          // Backend auto-advanced progress — re-fetch threads to pick up new progressState
+          const [updatedThreads, updatedUnitProgress] = await Promise.all([
+            listChatThreadsForUnit({ courseId, unitId, studentId: student.id }),
+            getUnitProgress(student.id, unitId),
+          ]);
+          setThreads(updatedThreads);
+          setUnitProgress(updatedUnitProgress);
         }
       } catch (error) {
         console.error("Error sending message:", error);
@@ -467,10 +475,15 @@ export default function ChatPage() {
   const displayMessages = useMemo(() => {
     if (!currentStage || !selectedThreadId) return messages;
     if (!currentStageCompleted) return messages;
-    if (currentStage.stageType !== "challenge") return messages;
-    const hasCompletion = messages.some((m) => m.metadata?.isCompletionMessage === true);
-    if (hasCompletion) return messages;
-    return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, "challenge", "challenge_complete")];
+    // begin stage handles its own completion message inside handleSendMessage
+    if (currentStage.stageType === "begin") return messages;
+    // Only deduplicate against system-generated completion banners (not AI tutor responses)
+    const hasSystemCompletion = messages.some(
+      (m) => m.metadata?.isSystemMessage === true && m.metadata?.isCompletionMessage === true
+    );
+    if (hasSystemCompletion) return messages;
+    const progressState = stageTypeToProgressState(currentStage.stageType);
+    return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, currentStage.stageType, progressState)];
   }, [messages, currentStage, currentStageCompleted, selectedThreadId]);
 
   const showCurrentQuestion = currentStage?.stageType === "challenge";

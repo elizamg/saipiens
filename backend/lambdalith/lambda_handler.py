@@ -315,6 +315,17 @@ def _compute_current_stage_type(earned_stars: int) -> str:
     return "challenge"
 
 
+def _earned_stars_to_progress_state(earned: int) -> str:
+    """Map earnedStars (0-3) to the frontend 5-state ProgressState string."""
+    if earned <= 0:
+        return "not_started"
+    if earned == 1:
+        return "walkthrough_started"
+    if earned == 2:
+        return "walkthrough_complete"
+    return "challenge_complete"
+
+
 def batch_get_all(table_name: str, keys: list[dict], max_retries: int = 5) -> list[dict]:
     if not keys:
         return []
@@ -779,6 +790,7 @@ def handle_list_threads_for_unit(event, unit_id: str):
 
         twp = dict(t)
         twp["earnedStars"] = earned
+        twp["progressState"] = _earned_stars_to_progress_state(earned)
         twp["currentStageType"] = stage_type
         twp["currentStageId"] = stage_id
         twp["order"] = order
@@ -827,6 +839,7 @@ def handle_get_thread_with_progress(event, thread_id: str):
 
     twp = dict(thread)
     twp["earnedStars"] = earned
+    twp["progressState"] = _earned_stars_to_progress_state(earned)
     twp["currentStageType"] = stage_type
     twp["currentStageId"] = stage_id
     twp["order"] = order
@@ -900,19 +913,48 @@ def _load_conversation_history(thread_id: str, stage_id: str | None) -> list[dic
     return [{"role": m["role"], "content": m["content"]} for m in items]
 
 
-def _call_tutor_pipeline(stage_type: str, objective: dict, course: dict, student: dict, conversation: list[dict], student_message: str) -> str | None:
-    """Call the appropriate AI pipeline and return tutor reply text, or None on failure."""
+def _advance_progress_for_student(student_id: str, objective_id: str, required_stars: int) -> None:
+    """Advance progress by 1 star only if currently at required_stars (idempotent guard)."""
+    prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
+    item = prog_tbl.get_item(Key={"studentId": student_id, "objectiveId": objective_id}).get("Item")
+    now = iso_now()
+    if not item:
+        if required_stars == 0:
+            prog_tbl.put_item(Item={
+                "studentId": student_id,
+                "objectiveId": objective_id,
+                "earnedStars": 1,
+                "currentStageType": "walkthrough",
+                "updatedAt": now,
+            })
+        return
+    earned = int(item.get("earnedStars") or 0)
+    if earned != required_stars:
+        return  # Already advanced or not at expected state
+    earned = min(3, earned + 1)
+    item["earnedStars"] = earned
+    item["currentStageType"] = _compute_current_stage_type(earned)
+    item["updatedAt"] = now
+    prog_tbl.put_item(Item=item)
+
+
+def _call_tutor_pipeline(
+    stage_type: str,
+    objective: dict,
+    course: dict,
+    student: dict,
+    conversation: list[dict],
+    student_message: str,
+    stage_prompt: str,
+) -> dict:
+    """Call the appropriate AI pipeline.
+    Returns {"text": str | None, "is_finished": bool, "grading_category": str | None}.
+    """
     subject = course.get("title", "Unknown Subject")
     grade = student.get("yearLabel", "Unknown Grade")
     objective_kind = objective.get("kind", "knowledge")
     objective_title = objective.get("title", "")
-
-    # Find the stage prompt (question text) — last tutor message in conversation or objective title
-    question = objective_title
-    for m in reversed(conversation):
-        if m["role"] == "tutor":
-            question = m["content"]
-            break
+    question = stage_prompt or objective_title
 
     try:
         if stage_type == "walkthrough":
@@ -923,7 +965,12 @@ def _call_tutor_pipeline(stage_type: str, objective: dict, course: dict, student
                 question=question,
                 conversation=conversation,
             )
-            return result.get("Tutor_Response") if result else None
+            if result:
+                return {
+                    "text": result.get("Tutor_Response"),
+                    "is_finished": bool(result.get("Is_Finished")),
+                    "grading_category": None,
+                }
 
         elif stage_type == "challenge":
             if objective_kind == "knowledge":
@@ -935,24 +982,27 @@ def _call_tutor_pipeline(stage_type: str, objective: dict, course: dict, student
                     question=question,
                     answer=student_message,
                 )
-                return feedback
+                return {"text": feedback, "is_finished": False, "grading_category": None}
             else:
                 # skill or capstone
                 from challenge_question_pipeline import grade_skill
-                _category, feedback = grade_skill(
+                category, feedback = grade_skill(
                     grade=grade,
                     subject=subject,
                     skill=objective_title,
                     question=question,
                     answer=student_message,
                 )
-                return feedback
+                return {
+                    "text": feedback,
+                    "is_finished": False,
+                    "grading_category": str(category),
+                }
 
     except Exception as e:
         print(f"[pipeline error] stage={stage_type} kind={objective_kind}: {e}")
-        return None
 
-    return None
+    return {"text": None, "is_finished": False, "grading_category": None}
 
 
 def handle_send_message(event, thread_id: str):
@@ -1001,16 +1051,37 @@ def handle_send_message(event, thread_id: str):
     if stage_type in ("walkthrough", "challenge"):
         ctx = _get_thread_context(thread_id, student_id)
         if ctx:
+            # Look up stage prompt from ITEM_STAGES
+            stage_prompt = ""
+            if stage_id:
+                stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
+                stage_item = stages_tbl.get_item(Key={"id": stage_id}).get("Item")
+                if stage_item:
+                    stage_prompt = stage_item.get("prompt", "")
+
             conversation = _load_conversation_history(thread_id, stage_id)
-            tutor_text = _call_tutor_pipeline(
+            pipeline_result = _call_tutor_pipeline(
                 stage_type=stage_type,
                 objective=ctx["objective"],
                 course=ctx["course"],
                 student=ctx["student"],
                 conversation=conversation,
                 student_message=content,
+                stage_prompt=stage_prompt,
             )
+            tutor_text = pipeline_result.get("text")
+            is_finished = pipeline_result.get("is_finished", False)
+            grading_category = pipeline_result.get("grading_category")
+
             if tutor_text:
+                metadata: dict = {}
+                if grading_category:
+                    metadata["gradingCategory"] = grading_category
+                    if grading_category in ("correct", "slight clarification"):
+                        metadata["isCompletionMessage"] = True
+                elif is_finished:
+                    metadata["isCompletionMessage"] = True
+
                 tutor_now = iso_now()
                 tutor_msg = {
                     "id": str(uuid.uuid4()),
@@ -1020,7 +1091,17 @@ def handle_send_message(event, thread_id: str):
                     "content": tutor_text,
                     "createdAt": tutor_now,
                 }
+                if metadata:
+                    tutor_msg["metadata"] = metadata
                 msgs_tbl.put_item(Item=tutor_msg)
+
+                # Auto-advance objective progress
+                objective_id = ctx["objective"].get("id")
+                if objective_id:
+                    if is_finished and stage_type == "walkthrough":
+                        _advance_progress_for_student(student_id, objective_id, required_stars=1)
+                    elif grading_category in ("correct", "slight clarification") and stage_type == "challenge":
+                        _advance_progress_for_student(student_id, objective_id, required_stars=2)
 
     return resp(200, {"studentMessage": student_msg, "tutorMessage": tutor_msg})
 

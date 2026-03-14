@@ -1,5 +1,12 @@
 import React from "react";
 import { PRIMARY, GRAY_900, GRAY_600, GRAY_200, WHITE } from "../../theme/colors";
+
+const GRADING_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  "correct": { label: "Correct", bg: "#d1fae5", color: "#065f46" },
+  "slight clarification": { label: "Almost — small clarification needed", bg: "#fef9c3", color: "#713f12" },
+  "small mistake": { label: "Small mistake", bg: "#ffedd5", color: "#7c2d12" },
+  "incorrect": { label: "Incorrect", bg: "#fee2e2", color: "#7f1d1d" },
+};
 import ProgressCircle from "../ui/ProgressCircle";
 import Avatar from "../ui/Avatar";
 import type { ChatMessage, ProgressState, Agent } from "../../types/domain";
@@ -78,6 +85,8 @@ export default function MessageBubble({ message, agent }: MessageBubbleProps) {
 
   const showAgentAvatar = !isStudent && !isSystem && agent;
   const showCircle = isProgressFeedback && progressState === "walkthrough_started";
+  const gradingCategory = !isStudent && !isSystem ? message.metadata?.gradingCategory : undefined;
+  const gradingBadge = gradingCategory ? GRADING_BADGE[gradingCategory] : undefined;
 
   const bubble = (
     <div style={bubbleStyles}>
@@ -88,6 +97,20 @@ export default function MessageBubble({ message, agent }: MessageBubbleProps) {
         </div>
       ) : (
         <div style={contentStyles}>{message.content}</div>
+      )}
+      {gradingBadge && (
+        <div style={{
+          display: "inline-block",
+          marginTop: 8,
+          padding: "3px 10px",
+          borderRadius: 12,
+          fontSize: 12,
+          fontWeight: 600,
+          backgroundColor: gradingBadge.bg,
+          color: gradingBadge.color,
+        }}>
+          {gradingBadge.label}
+        </div>
       )}
       {message.attachments && message.attachments.length > 0 && (
         <div style={attachmentContainerStyles}>
