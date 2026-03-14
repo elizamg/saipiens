@@ -195,7 +195,13 @@ export default function CourseEditorPage() {
     if (!unitId) return;
     try {
       const raw = overrideValue !== undefined ? overrideValue : deadline;
-      const isoDeadline = raw ? new Date(raw).toISOString() : null;
+      let isoDeadline: string | null = null;
+      if (raw) {
+        const d = new Date(raw);
+        if (!isNaN(d.getTime())) {
+          isoDeadline = d.toISOString();
+        }
+      }
       const updated = await updateUnitDeadline(unitId, isoDeadline);
       setUnit(updated);
       setEditingDeadline(false);
