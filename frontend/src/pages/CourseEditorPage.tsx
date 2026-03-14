@@ -203,6 +203,7 @@ export default function CourseEditorPage() {
         }
       }
       const updated = await updateUnitDeadline(unitId, isoDeadline);
+      console.log("deadline save response:", JSON.stringify(updated));
       setUnit((prev) => prev ? { ...prev, deadline: updated.deadline } : updated);
       if (updated.deadline) {
         const d = new Date(updated.deadline);
@@ -428,7 +429,7 @@ export default function CourseEditorPage() {
                     fontSize: 14,
                   }}
                 />
-                <Button variant="primary" onClick={handleDeadlineSave} style={{ padding: "6px 12px", fontSize: 13 }}>
+                <Button variant="primary" onClick={() => handleDeadlineSave()} style={{ padding: "6px 12px", fontSize: 13 }}>
                   Save
                 </Button>
                 <Button
