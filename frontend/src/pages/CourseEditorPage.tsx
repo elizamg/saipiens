@@ -203,7 +203,17 @@ export default function CourseEditorPage() {
         }
       }
       const updated = await updateUnitDeadline(unitId, isoDeadline);
-      setUnit(updated);
+      setUnit((prev) => prev ? { ...prev, deadline: updated.deadline } : updated);
+      if (updated.deadline) {
+        const d = new Date(updated.deadline);
+        setDeadline(
+          new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+            .toISOString()
+            .slice(0, 16)
+        );
+      } else {
+        setDeadline("");
+      }
       setEditingDeadline(false);
     } catch (err) {
       console.error("Failed to save deadline:", err);
@@ -454,16 +464,16 @@ export default function CourseEditorPage() {
                 onClick={() => setEditingDeadline(true)}
                 style={{
                   fontSize: 14,
-                  color: unit.deadline
-                    ? new Date(unit.deadline) < new Date()
+                  color: deadline
+                    ? new Date(deadline) < new Date()
                       ? "#dc2626"
                       : GRAY_500
                     : GRAY_500,
                   cursor: "pointer",
                 }}
               >
-                {unit.deadline
-                  ? `Due: ${new Date(unit.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} at ${new Date(unit.deadline).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`
+                {deadline
+                  ? `Due: ${new Date(deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} at ${new Date(deadline).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`
                   : "No deadline set — click to add"}
               </span>
             )}
