@@ -29,7 +29,7 @@ export interface Course {
   deletedAt?: string;
 }
 
-export type UnitStatus = "active" | "completed" | "locked" | "processing" | "review" | "ready" | "error";
+export type UnitStatus = "active" | "completed" | "locked" | "ready" | "processing" | "review" | "error";
 
 export interface IdentifiedKnowledge {
   type: string;

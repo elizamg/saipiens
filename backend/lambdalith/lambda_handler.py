@@ -1670,7 +1670,7 @@ def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
             "labelIndex": 1,
             "order": idx,
             "status": "active" if idx == 0 else "pending",
-            "question": question_text,
+            "questionPrompt": question_text,
             "createdAt": now,
         }
         queue_tbl.put_item(Item=item)
@@ -1705,22 +1705,29 @@ def handle_list_knowledge_queue(event, unit_id: str):
     visible = [i for i in unit_items if i.get("status") != "pending"]
     visible.sort(key=lambda x: x.get("order", 0))
 
+    # Normalize legacy "question" field to "questionPrompt" for frontend compat
+    for item in visible:
+        if "questionPrompt" not in item and "question" in item:
+            item["questionPrompt"] = item["question"]
+
     return resp(200, visible)
 
 
 def handle_complete_knowledge_queue_item(event, queue_item_id: str):
     """POST /knowledge-queue/{queueItemId}/complete
-    Body: { "is_correct": boolean }
-    Sets status, optionally creates retry item, advances next pending item.
+    Body: { "answer": string }
+    Grades the student's answer via AI, sets status, optionally creates retry item,
+    advances next pending item.  Falls back to { "is_correct": boolean } if provided.
     """
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
     body = json.loads(event.get("body") or "{}")
+    answer = body.get("answer")
     is_correct = body.get("is_correct")
-    if is_correct is None:
-        return resp(400, {"error": "Missing is_correct"})
+    if answer is None and is_correct is None:
+        return resp(400, {"error": "Missing answer"})
 
     tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
     existing = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
@@ -1729,6 +1736,45 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
 
     unit_id = existing["unitId"]
     now = iso_now()
+    tutor_feedback = None
+
+    # Grade via AI if answer text was provided
+    if answer is not None and is_correct is None:
+        try:
+            # Look up the knowledge topic to get the information/description
+            topic_id = existing.get("knowledgeTopicId")
+            topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+            topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
+            information = (topic.get("knowledgeTopic", "") if topic else "") or existing.get("questionPrompt", "") or existing.get("question", "")
+
+            # Look up the unit to find the course for subject context
+            units_tbl = dynamodb.Table(T["UNITS"])
+            unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+            course_id = unit.get("courseId", "") if unit else ""
+            subject = "Unknown Subject"
+            if course_id:
+                courses_tbl = dynamodb.Table(T["COURSES"])
+                course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+                subject = course.get("title", "Unknown Subject") if course else "Unknown Subject"
+
+            # Get student grade level
+            students_tbl = dynamodb.Table(T["STUDENTS"])
+            student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
+            grade = student.get("yearLabel", "Unknown Grade")
+
+            question = existing.get("questionPrompt", "") or existing.get("question", "")
+
+            from info_question_pipeline import grade_info
+            is_correct, tutor_feedback = grade_info(
+                grade=grade,
+                subject=subject,
+                information=information,
+                question=question,
+                answer=answer,
+            )
+        except Exception as e:
+            print(f"[grading error] knowledge queue item {queue_item_id}: {e}")
+            return resp(500, {"error": "Grading failed"})
 
     # Update the completed item
     new_status = "completed_correct" if is_correct else "completed_incorrect"
@@ -1741,13 +1787,47 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
     updated_item = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
 
     result: dict = {"updatedItem": updated_item}
+    if tutor_feedback is not None:
+        result["tutorFeedback"] = tutor_feedback
 
-    # If incorrect, create a retry item (pending, at end of queue)
+    # If incorrect, create a retry item with a newly generated question
     new_queue_item = None
     if not is_correct:
         all_items = query_all(tbl, key_condition=Key("studentId").eq(student_id))
         unit_items = [i for i in all_items if i.get("unitId") == unit_id]
         max_order = max((i.get("order", 0) for i in unit_items), default=0)
+
+        # Generate a new question for the retry item
+        retry_question = existing.get("questionPrompt", "") or existing.get("question", "")
+        try:
+            # Look up topic info if not already available from grading
+            topic_id = existing.get("knowledgeTopicId")
+            topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+            topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
+            topic_description = (topic.get("knowledgeTopic", "") if topic else "") or retry_question
+
+            units_tbl = dynamodb.Table(T["UNITS"])
+            unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+            course_id = unit.get("courseId", "") if unit else ""
+            r_subject = "Unknown Subject"
+            if course_id:
+                courses_tbl = dynamodb.Table(T["COURSES"])
+                course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+                r_subject = course.get("title", "Unknown Subject") if course else "Unknown Subject"
+
+            students_tbl = dynamodb.Table(T["STUDENTS"])
+            r_student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
+            r_grade = r_student.get("yearLabel", "Unknown Grade")
+
+            from info_question_pipeline import generate_info_question
+            retry_question = generate_info_question(
+                grade=r_grade,
+                subject=r_subject,
+                description=topic_description,
+            )
+        except Exception as e:
+            print(f"[retry question gen error] {queue_item_id}: {e}")
+            # Fall back to reusing the original question
 
         retry_id = str(uuid.uuid4())
         new_queue_item = {
@@ -1758,7 +1838,7 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
             "labelIndex": existing.get("labelIndex", 1) + 1,
             "order": max_order + 1,
             "status": "pending",
-            "question": existing.get("question", ""),
+            "questionPrompt": retry_question,
             "createdAt": now,
         }
         tbl.put_item(Item=new_queue_item)

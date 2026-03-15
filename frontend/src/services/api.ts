@@ -271,13 +271,22 @@ export function listKnowledgeMessages(_queueItemId: string): Promise<ChatMessage
 }
 
 export function sendKnowledgeMessage(
-  _queueItemId: string,
-  _role: "student" | "tutor",
-  _content: string,
-  _metadata?: ChatMessage["metadata"]
+  queueItemId: string,
+  role: "student" | "tutor",
+  content: string,
+  metadata?: ChatMessage["metadata"]
 ): Promise<ChatMessage> {
-  // Knowledge queue doesn't use a chat interface — stub for UI compat.
-  return Promise.reject(new Error("Knowledge queue does not support chat messages"));
+  // Knowledge messages are session-only (no backend persistence).
+  // Create a local ChatMessage object for the UI.
+  const msg: ChatMessage = {
+    id: `kqi_msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    threadId: queueItemId,
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    ...(metadata ? { metadata } : {}),
+  };
+  return Promise.resolve(msg);
 }
 
 export function getKnowledgeQueue(
@@ -291,11 +300,11 @@ export function completeKnowledgeAttempt(
   _unitId: string,
   _studentId: string,
   queueItemId: string,
-  is_correct: boolean
-): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }> {
-  return post<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }>(
+  answer: string
+): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem; tutorFeedback?: string }> {
+  return post<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem; tutorFeedback?: string }>(
     `/knowledge-queue/${queueItemId}/complete`,
-    { is_correct }
+    { answer }
   );
 }
 

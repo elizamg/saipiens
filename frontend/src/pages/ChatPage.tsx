@@ -142,8 +142,7 @@ export default function ChatPage() {
     ? gradedItemIds.has(selectedKnowledgeItemId)
     : false;
   const knowledgeHasStudentMessage = currentKnowledgeMessages.some((m) => m.role === "student");
-  const showKnowledgeGradeCTA = knowledgeItemIsActive && knowledgeHasStudentMessage && !knowledgeItemIsGraded;
-  const knowledgeComposerDisabled = !knowledgeItemIsActive || knowledgeItemIsGraded;
+  const knowledgeComposerDisabled = !knowledgeItemIsActive || knowledgeItemIsGraded || gradingInProgress;
 
   // Suggested pills: shown only when item is active and no student messages yet
   const knowledgeSuggestedQuestions =
@@ -164,14 +163,13 @@ export default function ChatPage() {
         setStudent(studentData);
         setAgentData(agentResult);
 
-        const [courseData, unitData, threadsData, progressData, kQueueData, kProgressData] = await Promise.all([
-          getCourse(courseId),
-          getUnit(unitId),
-          listChatThreadsForUnit({ courseId, unitId, studentId: studentData.id }),
-          getUnitProgress(studentData.id, unitId),
-          getKnowledgeQueue(unitId, studentData.id),
-          getKnowledgeProgress(unitId, studentData.id),
-        ]);
+        // Load sequentially to avoid 503 throttling from Lambda
+        const courseData = await getCourse(courseId);
+        const unitData = await getUnit(unitId);
+        const threadsData = await listChatThreadsForUnit({ courseId, unitId, studentId: studentData.id });
+        const progressData = await getUnitProgress(studentData.id, unitId);
+        const kQueueData = await getKnowledgeQueue(unitId, studentData.id);
+        const kProgressData = await getKnowledgeProgress(unitId, studentData.id);
 
         setCourse(courseData || null);
         setUnit(unitData || null);
@@ -359,79 +357,63 @@ export default function ChatPage() {
 
   const handleSendKnowledgeMessage = useCallback(
     async (content: string) => {
-      if (!selectedKnowledgeItemId || !selectedKnowledgeItem || !student) return;
+      if (!selectedKnowledgeItemId || !selectedKnowledgeItem || !student || !unitId) return;
       if (!knowledgeItemIsActive || knowledgeItemIsGraded) return;
 
+      // Show the student's message immediately
       const studentMsg = await sendKnowledgeMessage(selectedKnowledgeItemId, "student", content);
-      const tutorMsg = await sendKnowledgeMessage(
-        selectedKnowledgeItemId,
-        "tutor",
-        "Thanks for your response! When you're ready, click \"Grade my answer\" to submit."
-      );
-
       setKnowledgeMessages((prev) => ({
         ...prev,
-        [selectedKnowledgeItemId]: [...(prev[selectedKnowledgeItemId] ?? []), studentMsg, tutorMsg],
-      }));
-    },
-    [selectedKnowledgeItemId, selectedKnowledgeItem, student, knowledgeItemIsActive, knowledgeItemIsGraded]
-  );
-
-  const handleGradeKnowledgeItem = useCallback(async () => {
-    if (!selectedKnowledgeItem || !student || !unitId || gradingInProgress) return;
-
-    setGradingInProgress(true);
-    try {
-      // Deterministic mock grading: odd order = correct, even = incorrect
-      const is_correct = selectedKnowledgeItem.order % 2 === 1;
-      const { updatedItem, newQueueItem } = await completeKnowledgeAttempt(
-        unitId,
-        student.id,
-        selectedKnowledgeItem.id,
-        is_correct
-      );
-
-      setGradedItemIds((prev) => new Set([...prev, selectedKnowledgeItem.id]));
-
-      // Persist the result message
-      const resultContent = is_correct
-        ? "Correct! Great work on this topic."
-        : "Good try, we'll revisit this.";
-      const resultMsg = await sendKnowledgeMessage(
-        selectedKnowledgeItem.id,
-        "tutor",
-        resultContent,
-        { isSystemMessage: true, isCompletionMessage: true }
-      );
-
-      setKnowledgeMessages((prev) => ({
-        ...prev,
-        [selectedKnowledgeItem.id]: [...(prev[selectedKnowledgeItem.id] ?? []), resultMsg],
+        [selectedKnowledgeItemId]: [...(prev[selectedKnowledgeItemId] ?? []), studentMsg],
       }));
 
-      // Refresh queue + progress
-      const [updatedQueue, kProgress] = await Promise.all([
-        getKnowledgeQueue(unitId, student.id),
-        getKnowledgeProgress(unitId, student.id),
-      ]);
-      setKnowledgeItems(updatedQueue);
-      setKnowledgeProgress(kProgress);
+      // Grade immediately
+      setGradingInProgress(true);
+      try {
+        const { updatedItem, tutorFeedback } = await completeKnowledgeAttempt(
+          unitId,
+          student.id,
+          selectedKnowledgeItem.id,
+          content
+        );
 
-      // Auto-select next active item
-      const nextActive = updatedQueue.find(
-        (item) => item.status === "active"
-          && item.id !== updatedItem.id
-          && (newQueueItem ? item.id !== newQueueItem.id : true)
-      );
-      if (nextActive) {
-        setSearchParams({ knowledge: nextActive.id }, { replace: true });
+        setGradedItemIds((prev) => new Set([...prev, selectedKnowledgeItem.id]));
+
+        // Show AI feedback as a tutor chat message
+        try {
+          const resultContent = tutorFeedback
+            ?? (updatedItem.is_correct ? "Correct! Great work on this topic." : "Good try, we'll revisit this.");
+          const resultMsg = await sendKnowledgeMessage(
+            selectedKnowledgeItem.id,
+            "tutor",
+            resultContent
+          );
+
+          setKnowledgeMessages((prev) => ({
+            ...prev,
+            [selectedKnowledgeItem.id]: [...(prev[selectedKnowledgeItem.id] ?? []), resultMsg],
+          }));
+        } catch {
+          // Result message display is non-critical
+        }
+
+        // Refresh queue + progress
+        const [updatedQueue, kProgress] = await Promise.all([
+          getKnowledgeQueue(unitId, student.id),
+          getKnowledgeProgress(unitId, student.id),
+        ]);
+        setKnowledgeItems(updatedQueue);
+        setKnowledgeProgress(kProgress);
+
+        // Stay on current item — student clicks next in sidebar
+      } catch (error) {
+        console.error("Error grading knowledge item:", error);
+      } finally {
+        setGradingInProgress(false);
       }
-    } catch (error) {
-      console.error("Error grading knowledge item:", error);
-    } finally {
-      setGradingInProgress(false);
-    }
-  }, [selectedKnowledgeItem, student, unitId, gradingInProgress, setSearchParams]);
+    },
+    [selectedKnowledgeItemId, selectedKnowledgeItem, student, unitId, knowledgeItemIsActive, knowledgeItemIsGraded, setSearchParams]
+  );
 
   const handleAdvanceToNextStage = useCallback(async () => {
     if (!selectedThread || !currentStage) return;
@@ -749,21 +731,8 @@ export default function ChatPage() {
         {isKnowledgeMode ? (
           // ── Knowledge item chat area ──
           <div style={chatAreaStyles}>
-            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} />
-            {/* Grade CTA: shown when active, has student message, not yet graded */}
-            {showKnowledgeGradeCTA && (
-              <div style={ctaBarStyles}>
-                <button
-                  type="button"
-                  style={{ ...ctaButtonStyles, opacity: gradingInProgress ? 0.6 : 1 }}
-                  onClick={handleGradeKnowledgeItem}
-                  disabled={gradingInProgress}
-                >
-                  {gradingInProgress ? "Grading…" : "Grade my answer"}
-                </button>
-              </div>
-            )}
-            {/* Result bar: shown after grading in this session */}
+            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} isSending={gradingInProgress} />
+            {/* Graded status bar */}
             {knowledgeItemIsGraded && (
               <div style={ctaBarStyles}>
                 <span style={completedLabelStyles}>
