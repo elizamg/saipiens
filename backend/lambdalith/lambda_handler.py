@@ -1624,6 +1624,24 @@ def handle_list_knowledge_topics(unit_id: str):
     return resp(200, items)
 
 
+# ---- Knowledge Queue helpers ----
+
+def _get_unit_context(unit_id: str, student_id: str) -> tuple:
+    """Return (subject, grade) for a unit + student."""
+    units_tbl = dynamodb.Table(T["UNITS"])
+    unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+    course_id = unit.get("courseId", "") if unit else ""
+    subject = "Unknown Subject"
+    if course_id:
+        courses_tbl = dynamodb.Table(T["COURSES"])
+        course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+        subject = course.get("title", "Unknown Subject") if course else "Unknown Subject"
+    students_tbl = dynamodb.Table(T["STUDENTS"])
+    student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
+    grade = student.get("yearLabel", "Unknown Grade")
+    return subject, grade
+
+
 # ---- Knowledge Queue (student-facing) ----
 
 def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
@@ -1712,7 +1730,71 @@ def handle_list_knowledge_queue(event, unit_id: str):
         if "questionPrompt" not in item and "question" in item:
             item["questionPrompt"] = item["question"]
 
+    # Backfill clarifying questions for any visible items missing them
+    needs_backfill = [i for i in visible if not i.get("suggestedQuestions") and i.get("questionPrompt")]
+    if needs_backfill:
+        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+        subject, grade = _get_unit_context(unit_id, student_id)
+        for item in needs_backfill:
+            try:
+                cqs = gen_clarifying_questions(subject, grade, item["questionPrompt"])
+                tbl.update_item(
+                    Key={"studentId": student_id, "id": item["id"]},
+                    UpdateExpression="SET suggestedQuestions = :sq",
+                    ExpressionAttributeValues={":sq": cqs},
+                )
+                item["suggestedQuestions"] = cqs
+            except Exception as e:
+                print(f"[clarifying-questions] backfill failed for {item['id']}: {e}")
+
     return resp(200, visible)
+
+
+def handle_clarify_knowledge_question(event, queue_item_id: str):
+    """POST /knowledge-queue/{queueItemId}/clarify
+    Body: { "question": string }
+    Returns the tutor's answer to a clarifying question (does NOT grade).
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    body = json.loads(event.get("body") or "{}")
+    clarifying_question = body.get("question")
+    if not clarifying_question:
+        return resp(400, {"error": "Missing question"})
+
+    tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    existing = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    if not existing:
+        return resp_not_found("KnowledgeQueueItem")
+    if existing.get("status") != "active":
+        return resp(400, {"error": "Item is not active"})
+
+    unit_id = existing["unitId"]
+    question = existing.get("questionPrompt", "") or existing.get("question", "")
+
+    # Look up topic description (skill being tested)
+    topic_id = existing.get("knowledgeTopicId")
+    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
+    skill_description = (topic.get("knowledgeTopic", "") if topic else "") or question
+
+    subject, grade = _get_unit_context(unit_id, student_id)
+
+    try:
+        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_question_answer
+        answer = gen_clarifying_question_answer(
+            subject=subject,
+            grade=grade,
+            skill_description=skill_description,
+            question=question,
+            clarifying_question=clarifying_question,
+        )
+        return resp(200, {"answer": answer})
+    except Exception as e:
+        print(f"[clarifying-answer] failed for {queue_item_id}: {e}")
+        return resp(500, {"error": "Failed to generate clarifying answer"})
 
 
 def handle_complete_knowledge_queue_item(event, queue_item_id: str):
@@ -2409,6 +2491,20 @@ def _handle_generate_objectives_async(payload: dict):
                     }
                     knowledge_queue_tbl.put_item(Item=queue_item)
 
+                    # Generate clarifying questions for the first active item
+                    if status == "active" and (question_text or description):
+                        try:
+                            subject_ctx, grade_ctx = _get_unit_context(unit_id, student_id)
+                            from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+                            cqs = gen_clarifying_questions(subject_ctx, grade_ctx, question_text or description)
+                            knowledge_queue_tbl.update_item(
+                                Key={"studentId": student_id, "id": queue_item_id},
+                                UpdateExpression="SET suggestedQuestions = :sq",
+                                ExpressionAttributeValues={":sq": cqs},
+                            )
+                        except Exception as e:
+                            print(f"[clarifying-questions] generate-flow failed for {queue_item_id}: {e}")
+
             knowledge_order += 1
 
     # Mark unit as ready (keep identifiedKnowledge so teacher can edit later)
@@ -2722,6 +2818,12 @@ def handler(event, context):
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
             return handle_get_knowledge_progress(event, unit_id)
+
+        if method == "POST" and path.endswith("/clarify") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_clarify_knowledge_question(event, item_id)
 
         if method == "POST" and path.endswith("/complete") and path.startswith("/knowledge-queue/"):
             item_id = params.get("itemId")

@@ -20,6 +20,7 @@ import {
   completeKnowledgeAttempt,
   listKnowledgeMessages,
   sendKnowledgeMessage,
+  clarifyKnowledgeQuestion,
 } from "../services/api";
 import { isStageCompleted, stageLabel } from "../utils/progress";
 import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, SUCCESS_GREEN } from "../theme/colors";
@@ -87,6 +88,8 @@ export default function ChatPage() {
   const [gradingInProgress, setGradingInProgress] = useState(false);
   const [gradedItemIds, setGradedItemIds] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
+  const [pendingClarify, setPendingClarify] = useState(false);
+  const [usedClarifyQuestions, setUsedClarifyQuestions] = useState<Set<string>>(new Set());
   // Track which item IDs we've already loaded messages for (avoid double-load)
   const loadedMessageItemIds = useRef<Set<string>>(new Set());
 
@@ -142,13 +145,12 @@ export default function ChatPage() {
   const knowledgeItemIsGraded = selectedKnowledgeItemId
     ? gradedItemIds.has(selectedKnowledgeItemId)
     : false;
-  const knowledgeHasStudentMessage = currentKnowledgeMessages.some((m) => m.role === "student");
   const knowledgeComposerDisabled = !knowledgeItemIsActive || knowledgeItemIsGraded || gradingInProgress;
 
-  // Suggested pills: shown only when item is active and no student messages yet
+  // Suggested pills: shown while item is active and not yet graded, minus already-asked ones
   const knowledgeSuggestedQuestions =
-    knowledgeItemIsActive && !knowledgeHasStudentMessage && !knowledgeItemIsGraded
-      ? (selectedKnowledgeItem?.suggestedQuestions ?? [])
+    knowledgeItemIsActive && !knowledgeItemIsGraded
+      ? (selectedKnowledgeItem?.suggestedQuestions ?? []).filter((q) => !usedClarifyQuestions.has(q))
       : [];
 
   // Load initial data
@@ -361,12 +363,35 @@ export default function ChatPage() {
       if (!selectedKnowledgeItemId || !selectedKnowledgeItem || !student || !unitId) return;
       if (!knowledgeItemIsActive || knowledgeItemIsGraded) return;
 
+      // Check if this is a clarifying question (pill click or free-form "Ask a question")
+      const isClarifying = pendingClarify;
+      setPendingClarify(false);
+
       // Show the student's message immediately
       const studentMsg = await sendKnowledgeMessage(selectedKnowledgeItemId, "student", content);
       setKnowledgeMessages((prev) => ({
         ...prev,
         [selectedKnowledgeItemId]: [...(prev[selectedKnowledgeItemId] ?? []), studentMsg],
       }));
+
+      if (isClarifying) {
+        // Handle clarifying question — get tutor answer, no grading
+        setIsSending(true);
+        try {
+          const { answer } = await clarifyKnowledgeQuestion(selectedKnowledgeItem.id, content);
+          const tutorMsg = await sendKnowledgeMessage(selectedKnowledgeItem.id, "tutor", answer);
+          setKnowledgeMessages((prev) => ({
+            ...prev,
+            [selectedKnowledgeItem.id]: [...(prev[selectedKnowledgeItem.id] ?? []), tutorMsg],
+          }));
+          setUsedClarifyQuestions((prev) => new Set([...prev, content]));
+        } catch (error) {
+          console.error("Error getting clarifying answer:", error);
+        } finally {
+          setIsSending(false);
+        }
+        return;
+      }
 
       // Grade immediately
       setGradingInProgress(true);
@@ -413,7 +438,7 @@ export default function ChatPage() {
         setGradingInProgress(false);
       }
     },
-    [selectedKnowledgeItemId, selectedKnowledgeItem, student, unitId, knowledgeItemIsActive, knowledgeItemIsGraded, setSearchParams]
+    [selectedKnowledgeItemId, selectedKnowledgeItem, student, unitId, knowledgeItemIsActive, knowledgeItemIsGraded, pendingClarify, setSearchParams]
   );
 
   const handleAdvanceToNextStage = useCallback(async () => {
@@ -445,6 +470,7 @@ export default function ChatPage() {
 
   const handlePillClick = useCallback((question: string) => {
     setPillText(question);
+    setPendingClarify(true);
   }, []);
 
   const displayMessages = useMemo(() => {
@@ -733,7 +759,7 @@ export default function ChatPage() {
         {isKnowledgeMode ? (
           // ── Knowledge item chat area ──
           <div style={chatAreaStyles}>
-            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} isSending={gradingInProgress} />
+            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} isSending={gradingInProgress || isSending} />
             {/* Graded status bar */}
             {knowledgeItemIsGraded && (
               <div style={ctaBarStyles}>
@@ -751,6 +777,23 @@ export default function ChatPage() {
             {/* Suggested question pills: shown for active empty chats */}
             {knowledgeSuggestedQuestions.length > 0 && (
               <div style={pillContainerStyles}>
+                <button
+                  type="button"
+                  style={{ ...pillButtonStyles, fontStyle: "italic" }}
+                  onClick={() => {
+                    setPendingClarify(true);
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "rgba(139, 122, 158, 0.1)";
+                    e.currentTarget.style.borderColor = PRIMARY;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "#f9fafb";
+                    e.currentTarget.style.borderColor = GRAY_300;
+                  }}
+                >
+                  Ask a question
+                </button>
                 {knowledgeSuggestedQuestions.map((q, i) => (
                   <button
                     key={i}
@@ -774,7 +817,7 @@ export default function ChatPage() {
             <ChatComposer
               onSend={handleSendKnowledgeMessage}
               disabled={knowledgeComposerDisabled}
-              placeholder={knowledgeItemIsGraded ? "Graded" : (!knowledgeItemIsActive ? "Completed" : undefined)}
+              placeholder={knowledgeItemIsGraded ? "Graded" : (!knowledgeItemIsActive ? "Completed" : pendingClarify ? "Type your question..." : undefined)}
               externalValue={pillText}
               onExternalValueConsumed={() => setPillText("")}
             />
