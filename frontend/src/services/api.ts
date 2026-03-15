@@ -308,6 +308,16 @@ export function completeKnowledgeAttempt(
   );
 }
 
+export function clarifyKnowledgeQuestion(
+  queueItemId: string,
+  question: string
+): Promise<{ answer: string }> {
+  return post<{ answer: string }>(
+    `/knowledge-queue/${queueItemId}/clarify`,
+    { question }
+  );
+}
+
 export function getKnowledgeProgress(
   unitId: string,
   _studentId: string
