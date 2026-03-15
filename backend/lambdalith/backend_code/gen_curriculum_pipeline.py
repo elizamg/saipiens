@@ -30,9 +30,9 @@ IDENTIFY_KNOWLEDGE_MODEL = GEM_3_FLASH
 IDENTIFY_KNOWLEDGE_TRIES = 3
 IDENTIFY_KNOWLEDGE_TIMEOUT = 11*60
 
-GEN_QUESTION_TRIES = 3
-GEN_QUESTION_TIMEOUT = 3*60
-GEN_QUESTION_CONCURRENCY = 5  # max parallel LLM calls (rate limit protection)
+GEN_QUESTION_TRIES = 6  # more retries to ride out 429 rate-limit windows
+GEN_QUESTION_TIMEOUT = 5*60
+GEN_QUESTION_CONCURRENCY = 2  # stay well under free-tier 5 req/min limit
 
 # Testing settings
 TEST_TEXTBOOK_CHAPTER_DOWNLOAD_URL = "https://files-backend.assets.thrillshare.com/documents/asset/uploaded_file/756/Jenkins_Independent_Schools/a1b6f2a0-efa2-4a86-8c48-390b571c4967/chap_03.pdf?disposition=inline"
@@ -48,13 +48,11 @@ class Gen_Curriculum_Pipeline:
 
         gen_skill_question_details = get_prompt_details("gen_skill_question")
         self.gen_skill_question_prompt = Prompt(gen_skill_question_details[RAW_PROMPT_KEY])
-        # Schema file wraps the actual schema under "generationConfig.response_schema"
-        self.gen_skill_question_schema = gen_skill_question_details[JSON_SCHEMA_KEY]["generationConfig"]["response_schema"]
+        self.gen_skill_question_schema = gen_skill_question_details[JSON_SCHEMA_KEY]
 
         gen_info_question_details = get_prompt_details("gen_info_question")
         self.gen_info_question_prompt = Prompt(gen_info_question_details[RAW_PROMPT_KEY])
-        # Schema file wraps the actual schema under "response_schema"
-        self.gen_info_question_schema = gen_info_question_details[JSON_SCHEMA_KEY]["response_schema"]
+        self.gen_info_question_schema = gen_info_question_details[JSON_SCHEMA_KEY]
     
     @retry(stop=(stop_after_attempt(DOWNLOAD_PDF_TRIES)))
     def download_pdf(self, url, output_file_path):

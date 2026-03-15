@@ -26,15 +26,23 @@ export interface Course {
   enrolledStudentIds: string[];
   /** Populated by GET /instructor/courses — number of enrolled students. */
   studentCount?: number;
+  deletedAt?: string;
 }
 
-export type UnitStatus = "active" | "completed" | "locked";
+export type UnitStatus = "active" | "completed" | "locked" | "processing" | "review" | "ready" | "error";
+
+export interface IdentifiedKnowledge {
+  type: string;
+  description: string;
+}
 
 export interface Unit {
   id: string;
   courseId: string;
   title: string;
   status: UnitStatus;
+  deadline?: string;
+  deletedAt?: string;
 }
 
 export type AwardIconKey = "early" | "medium" | "owl";
