@@ -164,14 +164,13 @@ export default function ChatPage() {
         setStudent(studentData);
         setAgentData(agentResult);
 
-        const [courseData, unitData, threadsData, progressData, kQueueData, kProgressData] = await Promise.all([
-          getCourse(courseId),
-          getUnit(unitId),
-          listChatThreadsForUnit({ courseId, unitId, studentId: studentData.id }),
-          getUnitProgress(studentData.id, unitId),
-          getKnowledgeQueue(unitId, studentData.id),
-          getKnowledgeProgress(unitId, studentData.id),
-        ]);
+        // Load sequentially to avoid 503 throttling from Lambda
+        const courseData = await getCourse(courseId);
+        const unitData = await getUnit(unitId);
+        const threadsData = await listChatThreadsForUnit({ courseId, unitId, studentId: studentData.id });
+        const progressData = await getUnitProgress(studentData.id, unitId);
+        const kQueueData = await getKnowledgeQueue(unitId, studentData.id);
+        const kProgressData = await getKnowledgeProgress(unitId, studentData.id);
 
         setCourse(courseData || null);
         setUnit(unitData || null);
@@ -382,8 +381,8 @@ export default function ChatPage() {
 
     setGradingInProgress(true);
     try {
-      // Deterministic mock grading: odd order = correct, even = incorrect
-      const is_correct = selectedKnowledgeItem.order % 2 === 1;
+      // Mark as correct — real AI grading can be wired in later
+      const is_correct = true;
       const { updatedItem, newQueueItem } = await completeKnowledgeAttempt(
         unitId,
         student.id,
@@ -393,21 +392,25 @@ export default function ChatPage() {
 
       setGradedItemIds((prev) => new Set([...prev, selectedKnowledgeItem.id]));
 
-      // Persist the result message
-      const resultContent = is_correct
-        ? "Correct! Great work on this topic."
-        : "Good try, we'll revisit this.";
-      const resultMsg = await sendKnowledgeMessage(
-        selectedKnowledgeItem.id,
-        "tutor",
-        resultContent,
-        { isSystemMessage: true, isCompletionMessage: true }
-      );
+      // Show result message in the chat
+      try {
+        const resultContent = is_correct
+          ? "Correct! Great work on this topic."
+          : "Good try, we'll revisit this.";
+        const resultMsg = await sendKnowledgeMessage(
+          selectedKnowledgeItem.id,
+          "tutor",
+          resultContent,
+          { isSystemMessage: true, isCompletionMessage: true }
+        );
 
-      setKnowledgeMessages((prev) => ({
-        ...prev,
-        [selectedKnowledgeItem.id]: [...(prev[selectedKnowledgeItem.id] ?? []), resultMsg],
-      }));
+        setKnowledgeMessages((prev) => ({
+          ...prev,
+          [selectedKnowledgeItem.id]: [...(prev[selectedKnowledgeItem.id] ?? []), resultMsg],
+        }));
+      } catch {
+        // Result message display is non-critical
+      }
 
       // Refresh queue + progress
       const [updatedQueue, kProgress] = await Promise.all([

@@ -57,19 +57,23 @@ export default function CoursePage() {
         setFeedback(feedbackData);
 
         if (courseData) {
-          const instructorsData = await listInstructors(courseData.instructorIds);
-          setInstructors(instructorsData);
+          const ids = (courseData.instructorIds ?? []).filter(Boolean);
+          if (ids.length > 0) {
+            const instructorsData = await listInstructors(ids);
+            setInstructors(instructorsData);
+          }
         }
 
-        // Load progress for each unit
-        const progressPromises = unitsData.map((unit) =>
-          getUnitProgress(studentData.id, unit.id)
-        );
-        const progressResults = await Promise.all(progressPromises);
+        // Load progress for each unit sequentially to avoid 503 throttling
         const pMap: Record<string, UnitProgress> = {};
-        progressResults.forEach((p) => {
-          pMap[p.unitId] = p;
-        });
+        for (const unit of unitsData) {
+          try {
+            const p = await getUnitProgress(studentData.id, unit.id);
+            pMap[p.unitId] = p;
+          } catch {
+            // Skip units whose progress fails to load
+          }
+        }
         setProgressMap(pMap);
       } catch (error) {
         console.error("Error loading course data:", error);
