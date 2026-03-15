@@ -14,6 +14,7 @@ import {
   listAwardsForCourse,
   listFeedbackForCourse,
   getUnitProgress,
+  getKnowledgeProgress,
 } from "../services/api";
 import { GRAY_900, GRAY_500, SUCCESS_GREEN, PRIMARY } from "../theme/colors";
 import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress } from "../types/domain";
@@ -65,11 +66,22 @@ export default function CoursePage() {
         }
 
         // Load progress for each unit sequentially to avoid 503 throttling
+        // Combine skill progress + knowledge progress into one UnitProgress
         const pMap: Record<string, UnitProgress> = {};
         for (const unit of unitsData) {
           try {
-            const p = await getUnitProgress(studentData.id, unit.id);
-            pMap[p.unitId] = p;
+            const [skillProg, knowledgeProg] = await Promise.all([
+              getUnitProgress(studentData.id, unit.id),
+              getKnowledgeProgress(unit.id, studentData.id).catch(() => null),
+            ]);
+            const totalObjectives = skillProg.totalObjectives + (knowledgeProg?.totalTopics ?? 0);
+            const completedObjectives = skillProg.completedObjectives + (knowledgeProg?.correctCount ?? 0);
+            pMap[unit.id] = {
+              unitId: unit.id,
+              totalObjectives,
+              completedObjectives,
+              progressPercent: totalObjectives > 0 ? Math.round((completedObjectives / totalObjectives) * 100) : 0,
+            };
           } catch {
             // Skip units whose progress fails to load
           }

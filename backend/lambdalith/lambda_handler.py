@@ -610,6 +610,7 @@ def handle_get_unit_progress(event, unit_id: str):
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
+    # --- Skill / Capstone objectives ---
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
     objectives = query_all(
         objectives_tbl,
@@ -618,25 +619,26 @@ def handle_get_unit_progress(event, unit_id: str):
         scan_forward=True,
     )
 
-    total = len(objectives)
-    if total == 0:
-        return resp(200, {"unitId": unit_id, "totalObjectives": 0, "completedObjectives": 0, "progressPercent": 0})
-
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     all_prog = query_all(
         prog_tbl,
         key_condition=Key("studentId").eq(student_id),
         scan_forward=True,
     )
-
     prog_by_obj = {p.get("objectiveId"): p for p in all_prog if p.get("objectiveId")}
-    completed = 0
+
+    obj_completed = 0
     for o in objectives:
         oid = o.get("id")
         p = prog_by_obj.get(oid)
-        earned = int(p.get("earnedStars") or 0) if p else 0
-        if earned == 3:
-            completed += 1
+        if p and p.get("progressState") == "challenge_complete":
+            obj_completed += 1
+
+    total = len(objectives)
+    completed = obj_completed
+
+    if total == 0:
+        return resp(200, {"unitId": unit_id, "totalObjectives": 0, "completedObjectives": 0, "progressPercent": 0})
 
     percent = int(round((completed / total) * 100))
     return resp(200, {"unitId": unit_id, "totalObjectives": total, "completedObjectives": completed, "progressPercent": percent})
@@ -944,7 +946,7 @@ def _call_tutor_pipeline(stage_type: str, objective: dict, course: dict, student
 
         elif stage_type == "challenge":
             if objective_kind == "knowledge":
-                from info_question_pipeline import grade_info
+                from backend_code.info_question_pipeline import grade_info
                 _is_correct, feedback = grade_info(
                     grade=grade,
                     subject=subject,
@@ -1667,7 +1669,7 @@ def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
             "id": item_id,
             "unitId": unit_id,
             "knowledgeTopicId": topic_id,
-            "labelIndex": 1,
+            "labelIndex": idx + 1,
             "order": idx,
             "status": "active" if idx == 0 else "pending",
             "questionPrompt": question_text,
@@ -1764,7 +1766,7 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
 
             question = existing.get("questionPrompt", "") or existing.get("question", "")
 
-            from info_question_pipeline import grade_info
+            from backend_code.info_question_pipeline import grade_info
             is_correct, tutor_feedback = grade_info(
                 grade=grade,
                 subject=subject,
@@ -1819,7 +1821,7 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
             r_student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
             r_grade = r_student.get("yearLabel", "Unknown Grade")
 
-            from info_question_pipeline import generate_info_question
+            from backend_code.info_question_pipeline import generate_info_question
             retry_question = generate_info_question(
                 grade=r_grade,
                 subject=r_subject,
@@ -1829,13 +1831,14 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
             print(f"[retry question gen error] {queue_item_id}: {e}")
             # Fall back to reusing the original question
 
+        max_label = max((i.get("labelIndex", 0) for i in unit_items), default=0)
         retry_id = str(uuid.uuid4())
         new_queue_item = {
             "studentId": student_id,
             "id": retry_id,
             "unitId": unit_id,
             "knowledgeTopicId": existing["knowledgeTopicId"],
-            "labelIndex": existing.get("labelIndex", 1) + 1,
+            "labelIndex": max_label + 1,
             "order": max_order + 1,
             "status": "pending",
             "questionPrompt": retry_question,
@@ -2398,7 +2401,7 @@ def _handle_generate_objectives_async(payload: dict):
                         "unitId": unit_id,
                         "studentId": student_id,
                         "knowledgeTopicId": topic_id,
-                        "labelIndex": knowledge_order,
+                        "labelIndex": knowledge_order + 1,
                         "order": knowledge_order,
                         "status": status,
                         "questionPrompt": question_text or description,
