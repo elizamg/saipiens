@@ -32,7 +32,7 @@ export default function EnrolledCourses({ courses, instructorsMap }: EnrolledCou
       <h2 style={headingStyles}>Your Courses</h2>
       <div style={gridStyles}>
         {courses.map((course) => {
-          const courseInstructors = course.instructorIds
+          const courseInstructors = (course.instructorIds ?? [])
             .map((id) => instructorsMap[id])
             .filter(Boolean) as Instructor[];
           return (
