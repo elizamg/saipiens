@@ -1,10 +1,12 @@
 # config.py
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from google import genai
-
-load_dotenv()
 
 class Config:
     GEMINI_API_KEY = os.getenv("SAIPIENS_GEMINI_API_KEY")  # Either from .env or "Configuration" in Lambda
