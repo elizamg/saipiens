@@ -31,13 +31,11 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    label: "Progress",
-    path: "/progress",
+    label: "Feedback",
+    path: "/feedback",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <line x1="18" y1="20" x2="18" y2="10" />
-        <line x1="12" y1="20" x2="12" y2="4" />
-        <line x1="6" y1="20" x2="6" y2="14" />
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </svg>
     ),
   },
@@ -68,7 +66,9 @@ export default function SidebarNav({ activePath, sidebarCourses, routePrefix = "
 
   const courses = sidebarCourses ?? fetchedCourses;
   const homePath = routePrefix || "/home";
-  const isCoursesActive = activePath === "/courses" || location.pathname.includes("/course/");
+  const isCoursesActive =
+    (activePath === "/courses" || location.pathname.includes("/course/")) &&
+    !location.pathname.includes("/feedback");
 
   useEffect(() => {
     if (sidebarCourses) return;
@@ -245,7 +245,7 @@ export default function SidebarNav({ activePath, sidebarCourses, routePrefix = "
         )}
       </div>
 
-      {/* Progress & Settings */}
+      {/* Feedback & Settings */}
       {navItems.slice(1).map((item) => {
         const fullPath = `${routePrefix}${item.path}`;
         return (

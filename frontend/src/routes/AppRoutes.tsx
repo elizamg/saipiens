@@ -11,8 +11,14 @@ import UnitUploadPage from "../pages/UnitUploadPage";
 import CourseCreationPage from "../pages/CourseCreationPage";
 import EditRosterPage from "../pages/EditRosterPage";
 import ChatPage from "../pages/ChatPage";
-import ProgressPage from "../pages/ProgressPage";
 import SettingsPage from "../pages/SettingsPage";
+import FeedbackPage from "../pages/FeedbackPage";
+import FeedbackCoursePage from "../pages/FeedbackCoursePage";
+import FeedbackUnitPage from "../pages/FeedbackUnitPage";
+import TeacherFeedbackPage from "../pages/TeacherFeedbackPage";
+import TeacherFeedbackCoursePage from "../pages/TeacherFeedbackCoursePage";
+import TeacherFeedbackStudentPage from "../pages/TeacherFeedbackStudentPage";
+import TeacherFeedbackUnitPage from "../pages/TeacherFeedbackUnitPage";
 import RequireRole from "../components/auth/RequireRole";
 
 export default function AppRoutes() {
@@ -26,7 +32,9 @@ export default function AppRoutes() {
       {/* Student routes */}
       <Route path="/home" element={<RequireRole role="student"><HomePage /></RequireRole>} />
       <Route path="/courses" element={<RequireRole role="student"><HomePage /></RequireRole>} />
-      <Route path="/progress" element={<RequireRole role="student"><ProgressPage /></RequireRole>} />
+      <Route path="/feedback" element={<RequireRole role="student"><FeedbackPage /></RequireRole>} />
+      <Route path="/feedback/course/:courseId" element={<RequireRole role="student"><FeedbackCoursePage /></RequireRole>} />
+      <Route path="/feedback/course/:courseId/unit/:unitId" element={<RequireRole role="student"><FeedbackUnitPage /></RequireRole>} />
       <Route path="/settings" element={<RequireRole role="student"><SettingsPage /></RequireRole>} />
       <Route path="/course/:courseId" element={<RequireRole role="student"><CoursePage /></RequireRole>} />
       <Route path="/course/:courseId/unit/:unitId/chat" element={<RequireRole role="student"><ChatPage /></RequireRole>} />
@@ -38,7 +46,10 @@ export default function AppRoutes() {
       <Route path="/teacher/course/:courseId/roster" element={<RequireRole role="instructor"><EditRosterPage /></RequireRole>} />
       <Route path="/teacher/course/:courseId/unit/:unitId" element={<RequireRole role="instructor"><CourseEditorPage /></RequireRole>} />
       <Route path="/teacher/course/:courseId/upload" element={<RequireRole role="instructor"><UnitUploadPage /></RequireRole>} />
-      <Route path="/teacher/progress" element={<RequireRole role="instructor"><ProgressPage /></RequireRole>} />
+      <Route path="/teacher/feedback" element={<RequireRole role="instructor"><TeacherFeedbackPage /></RequireRole>} />
+      <Route path="/teacher/feedback/course/:courseId" element={<RequireRole role="instructor"><TeacherFeedbackCoursePage /></RequireRole>} />
+      <Route path="/teacher/feedback/course/:courseId/student/:studentId" element={<RequireRole role="instructor"><TeacherFeedbackStudentPage /></RequireRole>} />
+      <Route path="/teacher/feedback/course/:courseId/student/:studentId/unit/:unitId" element={<RequireRole role="instructor"><TeacherFeedbackUnitPage /></RequireRole>} />
       <Route path="/teacher/settings" element={<RequireRole role="instructor"><SettingsPage /></RequireRole>} />
 
       {/* Fallback redirect */}
