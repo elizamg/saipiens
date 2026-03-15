@@ -300,11 +300,11 @@ export function completeKnowledgeAttempt(
   _unitId: string,
   _studentId: string,
   queueItemId: string,
-  is_correct: boolean
-): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }> {
-  return post<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }>(
+  answer: string
+): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem; tutorFeedback?: string }> {
+  return post<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem; tutorFeedback?: string }>(
     `/knowledge-queue/${queueItemId}/complete`,
-    { is_correct }
+    { answer }
   );
 }
 

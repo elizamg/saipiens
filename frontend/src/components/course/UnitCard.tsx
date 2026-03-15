@@ -14,7 +14,7 @@ interface UnitCardProps {
 
 export default function UnitCard({ unit, courseId, progress, routePrefix }: UnitCardProps) {
   const navigate = useNavigate();
-  const isActive = unit.status === "active";
+  const isActive = unit.status === "active" || unit.status === "ready" || !unit.status;
   const isCompleted = unit.status === "completed";
   const isLocked = unit.status === "locked";
 

@@ -37,6 +37,33 @@ def grade_info(grade: str, subject: str, information: str, question: str, answer
     return result["is_correct"], result["tutor_feedback"]  # type: ignore
 
 
+GEN_QUESTION_TRIES = 3
+
+# Load question-generation prompt and schema once at module level
+_gen_question_details = get_prompt_details("gen_info_question")
+_gen_question_prompt = Prompt(_gen_question_details[RAW_PROMPT_KEY])
+_gen_question_schema = _gen_question_details[JSON_SCHEMA_KEY]["response_schema"]
+
+
+@retry(stop=stop_after_attempt(GEN_QUESTION_TRIES))
+def generate_info_question(grade: str, subject: str, description: str) -> str:
+    """Generate a new knowledge question for the given topic description."""
+    content = _gen_question_prompt.arguments_to_content(
+        GRADE=grade,
+        SUBJECT=subject,
+        DESCRIPTION=description,
+    )
+    response = ai_client.models.generate_content(
+        model=GEM_3_FLASH,
+        contents=content,
+        config={
+            "response_mime_type": "application/json",
+            "response_schema": _gen_question_schema,
+        },
+    )
+    return response.parsed["Question"]  # type: ignore
+
+
 if __name__ == "__main__":
     import random
 
