@@ -4,7 +4,7 @@ import Card from "../ui/Card";
 import Button from "../ui/Button";
 import Avatar from "../ui/Avatar";
 import TintedImage from "../ui/TintedImage";
-import { GRAY_900, GRAY_500, SUCCESS_GREEN, PRIMARY } from "../../theme/colors";
+import { GRAY_900, GRAY_500, PRIMARY } from "../../theme/colors";
 import type { Course, Instructor } from "../../types/domain";
 import historyLogo from "../../assets/history-logo.png";
 import scienceLogo from "../../assets/science-logo.png";
@@ -35,12 +35,14 @@ export default function CourseCard({ course, instructors }: CourseCardProps) {
     objectFit: "contain",
   };
 
-  const emojiIconStyles: React.CSSProperties = {
-    fontSize: 32,
-  };
+  const bookIcon = (
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={iconStyles}>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
 
   const iconSrc = course.icon ? courseIconMap[course.icon] : null;
-  const isEmoji = course.icon && !iconSrc;
 
   const titleStyles: React.CSSProperties = {
     margin: 0,
@@ -68,18 +70,11 @@ export default function CourseCard({ course, instructors }: CourseCardProps) {
   return (
     <Card>
       <div style={headerStyles}>
-        {course.icon &&
-          (iconSrc ? (
-            <TintedImage
-              src={iconSrc}
-              color={course.icon === "science" || course.icon === "history" ? PRIMARY : SUCCESS_GREEN}
-              width={40}
-              height={40}
-              style={iconStyles}
-            />
-          ) : isEmoji ? (
-            <span style={emojiIconStyles}>{course.icon}</span>
-          ) : null)}
+        {iconSrc ? (
+          <TintedImage src={iconSrc} color={PRIMARY} width={40} height={40} style={iconStyles} />
+        ) : (
+          bookIcon
+        )}
         <h3 style={titleStyles}>{course.title}</h3>
       </div>
       <div style={instructorSectionStyles}>

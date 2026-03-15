@@ -71,6 +71,16 @@ export interface FeedbackItem {
   instructorId?: string;
 }
 
+/** Sam's AI-generated grading report for a student's unit performance */
+export interface GradingReport {
+  id: string;
+  unitId: string;
+  studentId: string;
+  /** Content shown to the caller — teacher gets detailed view, student gets encouraging view */
+  summary: string;
+  createdAt: string;
+}
+
 // ============ Objective (Sidebar Item) & Stage Types ============
 
 export type ObjectiveKind = "knowledge" | "skill" | "capstone";

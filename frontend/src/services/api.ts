@@ -13,6 +13,7 @@ import type {
   Unit,
   Award,
   FeedbackItem,
+  GradingReport,
   Objective,
   ItemStage,
   StudentObjectiveProgress as ProgressType,
@@ -207,6 +208,57 @@ export function listFeedback(_studentId: string): Promise<FeedbackItem[]> {
 
 export function listFeedbackForCourse(courseId: string): Promise<FeedbackItem[]> {
   return get<FeedbackItem[]>(`/courses/${courseId}/feedback`);
+}
+
+// ---------------------------------------------------------------------------
+// Grading Reports & Per-Unit Feedback
+// ---------------------------------------------------------------------------
+
+/** Teacher: Sam's grading report for a specific student's unit (teacher view). */
+export function getUnitGradingReport(
+  unitId: string,
+  studentId: string
+): Promise<GradingReport | null> {
+  return get<GradingReport | null>(
+    `/units/${unitId}/grading-report?studentId=${encodeURIComponent(studentId)}`
+  );
+}
+
+/** Teacher: Retrieve teacher's written feedback for a student in a unit. */
+export function getUnitFeedbackForStudent(
+  unitId: string,
+  studentId: string
+): Promise<FeedbackItem | null> {
+  return get<FeedbackItem | null>(
+    `/units/${unitId}/feedback?studentId=${encodeURIComponent(studentId)}`
+  );
+}
+
+/** Teacher: Create new teacher feedback for a student in a unit. */
+export function createUnitFeedback(
+  unitId: string,
+  studentId: string,
+  body: string
+): Promise<FeedbackItem> {
+  return post<FeedbackItem>(`/units/${unitId}/feedback`, { studentId, body });
+}
+
+/** Teacher: Update existing teacher feedback by id. */
+export function updateFeedback(
+  feedbackId: string,
+  body: string
+): Promise<FeedbackItem> {
+  return patch<FeedbackItem>(`/feedback/${feedbackId}`, { body });
+}
+
+/** Student: Sam's grading report for the current student's unit (student view). */
+export function getMyUnitGradingReport(unitId: string): Promise<GradingReport | null> {
+  return get<GradingReport | null>(`/units/${unitId}/my-grading-report`);
+}
+
+/** Student: Teacher's feedback message for the current student in a unit. */
+export function getMyUnitFeedback(unitId: string): Promise<FeedbackItem | null> {
+  return get<FeedbackItem | null>(`/units/${unitId}/my-feedback`);
 }
 
 // ---------------------------------------------------------------------------

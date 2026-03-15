@@ -10,9 +10,11 @@ interface UnitCardProps {
   courseId: string;
   progress?: UnitProgress;
   routePrefix?: string;
+  /** Override the default View/Review navigation. */
+  onView?: () => void;
 }
 
-export default function UnitCard({ unit, courseId, progress, routePrefix }: UnitCardProps) {
+export default function UnitCard({ unit, courseId, progress, routePrefix, onView }: UnitCardProps) {
   const navigate = useNavigate();
   const isActive = unit.status === "active" || unit.status === "ready" || !unit.status;
   const isCompleted = unit.status === "completed";
@@ -167,7 +169,7 @@ export default function UnitCard({ unit, courseId, progress, routePrefix }: Unit
       // Student view — only active/completed get View
       if (isActive || isCompleted) {
         return (
-          <Button variant="primary" onClick={handleView} style={{ padding: "8px 16px", fontSize: 14 }}>
+          <Button variant="primary" onClick={onView ?? handleView} style={{ padding: "8px 16px", fontSize: 14 }}>
             View
           </Button>
         );
@@ -178,7 +180,7 @@ export default function UnitCard({ unit, courseId, progress, routePrefix }: Unit
     // Teacher view
     if (isActive || isCompleted || isReady) {
       return (
-        <Button variant="primary" onClick={handleView} style={{ padding: "8px 16px", fontSize: 14 }}>
+        <Button variant="primary" onClick={onView ?? handleView} style={{ padding: "8px 16px", fontSize: 14 }}>
           View
         </Button>
       );
