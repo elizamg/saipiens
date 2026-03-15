@@ -50,9 +50,13 @@ export default function HomePage() {
         });
         setCoursesMap(cMap);
 
-        // Get all instructor IDs from courses
-        const instructorIds = [...new Set(coursesData.flatMap((c) => c.instructorIds))];
-        const instructorsData = await listInstructors(instructorIds);
+        // Get all instructor IDs from courses (filter out null/undefined to avoid DynamoDB errors)
+        const instructorIds = [...new Set(
+          coursesData.flatMap((c) => c.instructorIds ?? []).filter(Boolean)
+        )];
+        const instructorsData = instructorIds.length > 0
+          ? await listInstructors(instructorIds)
+          : [];
         const iMap: Record<string, Instructor> = {};
         instructorsData.forEach((i) => {
           iMap[i.id] = i;
