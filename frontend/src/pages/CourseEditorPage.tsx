@@ -6,7 +6,6 @@ import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
 import type { ObjectiveKind, Course, Unit, Objective, Student, KnowledgeTopic } from "../types/domain";
 import {
   getCourse,
-  listUnits,
   listTeacherObjectives,
   getCurrentInstructor,
   listTeacherCourses,
