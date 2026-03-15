@@ -370,7 +370,7 @@ export default function ChatPage() {
       // Grade immediately
       setGradingInProgress(true);
       try {
-        const { updatedItem, newQueueItem, tutorFeedback } = await completeKnowledgeAttempt(
+        const { updatedItem, tutorFeedback } = await completeKnowledgeAttempt(
           unitId,
           student.id,
           selectedKnowledgeItem.id,
