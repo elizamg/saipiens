@@ -145,7 +145,6 @@ export default function ChatPage() {
   const knowledgeItemIsGraded = selectedKnowledgeItemId
     ? gradedItemIds.has(selectedKnowledgeItemId)
     : false;
-  const knowledgeHasStudentMessage = currentKnowledgeMessages.some((m) => m.role === "student");
   const knowledgeComposerDisabled = !knowledgeItemIsActive || knowledgeItemIsGraded || gradingInProgress;
 
   // Suggested pills: shown while item is active and not yet graded, minus already-asked ones
