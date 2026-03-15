@@ -634,25 +634,8 @@ def handle_get_unit_progress(event, unit_id: str):
         if p and p.get("progressState") == "challenge_complete":
             obj_completed += 1
 
-    # --- Knowledge topics ---
-    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
-    topics = query_all(
-        topics_tbl,
-        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
-        key_condition=Key("unitId").eq(unit_id),
-    )
-
-    knowledge_completed = 0
-    if topics:
-        queue_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
-        all_items = query_all(queue_tbl, key_condition=Key("studentId").eq(student_id))
-        unit_items = [i for i in all_items if i.get("unitId") == unit_id]
-        # A topic is completed if any queue item for it is completed_correct
-        correct_topic_ids = {i.get("knowledgeTopicId") for i in unit_items if i.get("status") == "completed_correct"}
-        knowledge_completed = len(correct_topic_ids)
-
-    total = len(objectives) + len(topics)
-    completed = obj_completed + knowledge_completed
+    total = len(objectives)
+    completed = obj_completed
 
     if total == 0:
         return resp(200, {"unitId": unit_id, "totalObjectives": 0, "completedObjectives": 0, "progressPercent": 0})
