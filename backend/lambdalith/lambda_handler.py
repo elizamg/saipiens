@@ -405,13 +405,20 @@ def handle_instructors_batch(event):
     return resp(200, ordered)
 
 
+def _normalize_course(item: dict) -> dict:
+    """Ensure the course object has `instructorIds` (array) for the frontend."""
+    if "instructorIds" not in item and "instructorId" in item:
+        item["instructorIds"] = [item["instructorId"]]
+    return item
+
+
 def handle_get_course(course_id: str):
     courses = dynamodb.Table(T["COURSES"])
     got = courses.get_item(Key={"id": course_id})
     item = got.get("Item")
     if not item:
         return resp_not_found("Course")
-    return resp(200, item)
+    return resp(200, _normalize_course(item))
 
 
 def handle_list_units(course_id: str, include_deleted: bool = False):
@@ -501,7 +508,7 @@ def handle_list_courses_for_student(event, student_id_param: str | None):
     items = batch_get_all(T["COURSES"], keys)
 
     by_id = {it.get("id"): it for it in items if it.get("id")}
-    ordered = [by_id.get(cid) for cid in course_ids if by_id.get(cid) is not None and not by_id.get(cid, {}).get("deletedAt")]
+    ordered = [_normalize_course(by_id[cid]) for cid in course_ids if by_id.get(cid) is not None and not by_id.get(cid, {}).get("deletedAt")]
     return resp(200, ordered)
 
 
@@ -1111,7 +1118,7 @@ def handle_list_instructor_courses(event):
         else:
             item["studentCount"] = 0
 
-    return resp(200, items)
+    return resp(200, [_normalize_course(i) for i in items])
 
 
 def handle_create_course(event):
@@ -1361,7 +1368,7 @@ def handle_update_course_title(event, course_id: str):
         ExpressionAttributeValues={":t": title, ":u": now},
     )
     updated = courses_tbl.get_item(Key={"id": course_id}).get("Item")
-    return resp(200, updated)
+    return resp(200, _normalize_course(updated))
 
 
 def handle_soft_delete_unit(event, unit_id: str):
@@ -1443,7 +1450,7 @@ def handle_restore_course(event, course_id: str):
         ExpressionAttributeValues={":u": now},
     )
     updated = courses_tbl.get_item(Key={"id": course_id}).get("Item")
-    return resp(200, updated)
+    return resp(200, _normalize_course(updated))
 
 
 def _hard_delete_unit_records(unit_id: str):
@@ -2061,11 +2068,7 @@ def _handle_identify_async(payload: dict):
                 os.unlink(p)
             except Exception:
                 pass
-        for entry in s3_keys:
-            try:
-                s3.delete_object(Bucket=UPLOAD_BUCKET, Key=entry["key"])
-            except Exception:
-                pass
+        # Keep S3 files so they appear on the re-upload page
 
     if not all_identified:
         units_tbl.update_item(

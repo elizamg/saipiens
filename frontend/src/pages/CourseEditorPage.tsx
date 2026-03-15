@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
-import type { ObjectiveKind, Course, Unit, Objective, Student } from "../types/domain";
+import type { ObjectiveKind, Course, Unit, Objective, Student, KnowledgeTopic } from "../types/domain";
 import {
   getCourse,
   listUnits,
@@ -17,6 +17,7 @@ import {
   getUnit,
   updateUnitDeadline,
   deleteUnit,
+  listKnowledgeTopics,
 } from "../services/api";
 
 const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
@@ -48,6 +49,9 @@ export default function CourseEditorPage() {
   const [deadline, setDeadline] = useState<string>("");
   const [editingDeadline, setEditingDeadline] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Knowledge topics (shown alongside objectives for "ready" units)
+  const [knowledgeTopics, setKnowledgeTopics] = useState<KnowledgeTopic[]>([]);
 
   // For units in "review" status (no objectives yet, only identified knowledge)
   const [identifiedKnowledge, setIdentifiedKnowledge] = useState<
@@ -97,8 +101,20 @@ export default function CourseEditorPage() {
             const data = await getIdentifiedKnowledge(unitId);
             setIdentifiedKnowledge(data.identifiedKnowledge);
             setSelectedReviewIndices(new Set(data.identifiedKnowledge.map((_, i) => i)));
+            // Allow saving the default selection immediately
+            if (data.identifiedKnowledge.length > 0) setDirty(true);
           } catch {
             // no identified knowledge available
+          }
+        }
+
+        // Fetch knowledge topics for ready units (shown alongside skill objectives)
+        if (unitStatus === "ready" || (unitStatus !== "processing" && objs.length > 0)) {
+          try {
+            const topics = await listKnowledgeTopics(unitId);
+            setKnowledgeTopics(topics);
+          } catch {
+            // no knowledge topics available
           }
         }
       })
@@ -122,6 +138,11 @@ export default function CourseEditorPage() {
             setEnabledIds(new Set(objs.filter((o) => o.enabled !== false).map((o) => o.id)));
             setIdentifiedKnowledge([]);
             setGenerating(false);
+            // Fetch knowledge topics for the newly ready unit
+            try {
+              const topics = await listKnowledgeTopics(unitId);
+              setKnowledgeTopics(topics);
+            } catch { /* ignore */ }
             return;
           }
         } catch {
@@ -346,8 +367,8 @@ export default function CourseEditorPage() {
   const isReviewMode = identifiedKnowledge.length > 0 && objectives.length === 0;
   const enabledCount = isReviewMode
     ? selectedReviewIndices.size
-    : enabledIds.size;
-  const totalCount = isReviewMode ? identifiedKnowledge.length : objectives.length;
+    : enabledIds.size + knowledgeTopics.length;
+  const totalCount = isReviewMode ? identifiedKnowledge.length : objectives.length + knowledgeTopics.length;
 
   const renderObjectiveRow = (
     id: string,
@@ -570,25 +591,55 @@ export default function CourseEditorPage() {
               )}
             </>
           ) : (
-            SECTION_ORDER.map((kind) => {
-              const items = grouped[kind];
-              if (items.length === 0) return null;
-              return (
-                <section key={kind} style={sectionStyles}>
+            <>
+              {SECTION_ORDER.filter((k) => k !== "knowledge").map((kind) => {
+                const items = grouped[kind];
+                if (items.length === 0) return null;
+                return (
+                  <section key={kind} style={sectionStyles}>
+                    <h2 style={sectionHeadingStyles}>
+                      {SECTION_LABELS[kind]} ({items.length})
+                    </h2>
+                    {items.map((obj) =>
+                      renderObjectiveRow(
+                        obj.id,
+                        obj.description || obj.title,
+                        enabledIds.has(obj.id),
+                        () => toggleObjective(obj.id)
+                      )
+                    )}
+                  </section>
+                );
+              })}
+              {knowledgeTopics.length > 0 && (
+                <section style={sectionStyles}>
                   <h2 style={sectionHeadingStyles}>
-                    {SECTION_LABELS[kind]} ({items.length})
+                    Knowledge ({knowledgeTopics.length})
                   </h2>
-                  {items.map((obj) =>
-                    renderObjectiveRow(
-                      obj.id,
-                      obj.description || obj.title,
-                      enabledIds.has(obj.id),
-                      () => toggleObjective(obj.id)
-                    )
-                  )}
+                  {knowledgeTopics
+                    .sort((a, b) => a.order - b.order)
+                    .map((topic) => (
+                      <div
+                        key={topic.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 10,
+                          padding: "10px 12px",
+                          borderRadius: 8,
+                          backgroundColor: "#f9fafb",
+                          marginBottom: 6,
+                          fontSize: 14,
+                          color: GRAY_900,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        <span>{topic.knowledgeTopic}</span>
+                      </div>
+                    ))}
                 </section>
-              );
-            })
+              )}
+            </>
           )}
         </>
       )}
