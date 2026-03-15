@@ -12,8 +12,7 @@ import type {
   KnowledgeProgress,
 } from "../../types/domain";
 
-const SKILL_SECTION_ORDER: ObjectiveKind[] = ["skill", "capstone"];
-
+const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
 const SECTION_LABELS: Record<ObjectiveKind, string> = {
   knowledge: "Knowledge",
   skill: "Skills",
@@ -27,6 +26,7 @@ interface ThreadListProps {
   selectedKnowledgeItemId?: string;
   onSelectThread: (threadId: string) => void;
   onSelectKnowledgeItem?: (itemId: string) => void;
+  onBack?: () => void;
   unitProgress?: UnitProgress;
   knowledgeProgress?: KnowledgeProgress;
 }
@@ -38,6 +38,7 @@ export default function ThreadList({
   selectedKnowledgeItemId,
   onSelectThread,
   onSelectKnowledgeItem,
+  onBack,
   unitProgress,
   knowledgeProgress,
 }: ThreadListProps) {
@@ -55,8 +56,8 @@ export default function ThreadList({
     threads
       .filter((t) => t.kind === kind)
       .sort((a, b) => a.order - b.order);
-
-  const hasKnowledge = knowledgeItems.length > 0;
+  const knowledgeThreads = threadsByKind("knowledge");
+  const hasKnowledgeSection = knowledgeItems.length > 0 || knowledgeThreads.length > 0;
 
   const containerStyles: React.CSSProperties = {
     width: 280,
@@ -72,6 +73,23 @@ export default function ThreadList({
   const headerStyles: React.CSSProperties = {
     padding: "20px 16px 16px",
     borderBottom: "1px solid #e5e7eb",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  };
+
+  const backButtonStyles: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 36,
+    height: 36,
+    flexShrink: 0,
+    border: `1px solid ${GRAY_500}`,
+    borderRadius: 8,
+    backgroundColor: WHITE,
+    color: GRAY_900,
+    cursor: "pointer",
   };
 
   const titleStyles: React.CSSProperties = {
@@ -90,20 +108,35 @@ export default function ThreadList({
   return (
     <div style={containerStyles}>
       <div style={headerStyles}>
+        {onBack && (
+          <button
+            type="button"
+            style={backButtonStyles}
+            onClick={onBack}
+            aria-label="Back to course"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+        )}
         <h3 style={titleStyles}>Questions</h3>
       </div>
       <div style={listStyles}>
-        {hasKnowledge && (
+        {hasKnowledgeSection && (
           <KnowledgeSectionGroup
             items={knowledgeItems}
+            knowledgeThreads={knowledgeThreads}
             isCollapsed={collapsed.knowledge}
             onToggle={() => toggleSection("knowledge")}
             selectedItemId={selectedKnowledgeItemId}
+            selectedThreadId={selectedThreadId}
             onSelectItem={onSelectKnowledgeItem}
+            onSelectThread={onSelectThread}
             knowledgeProgress={knowledgeProgress}
           />
         )}
-        {SKILL_SECTION_ORDER.map((kind) => {
+        {SECTION_ORDER.filter((k) => k !== "knowledge").map((kind) => {
           const sectionThreads = threadsByKind(kind);
           if (sectionThreads.length === 0) return null;
           return (
@@ -125,23 +158,29 @@ export default function ThreadList({
   );
 }
 
-// ============ Knowledge Section ============
+// ============ Knowledge Section (queue items + knowledge-kind threads) ============
 
 interface KnowledgeSectionGroupProps {
   items: KnowledgeQueueItem[];
+  knowledgeThreads: ThreadWithProgress[];
   isCollapsed: boolean;
   onToggle: () => void;
   selectedItemId?: string;
+  selectedThreadId?: string;
   onSelectItem?: (itemId: string) => void;
+  onSelectThread?: (threadId: string) => void;
   knowledgeProgress?: KnowledgeProgress;
 }
 
 function KnowledgeSectionGroup({
   items,
+  knowledgeThreads,
   isCollapsed,
   onToggle,
   selectedItemId,
+  selectedThreadId,
   onSelectItem,
+  onSelectThread,
   knowledgeProgress,
 }: KnowledgeSectionGroupProps) {
   const sorted = [...items].sort((a, b) => a.order - b.order);
@@ -210,15 +249,26 @@ function KnowledgeSectionGroup({
           </span>
         </div>
       )}
-      {!isCollapsed &&
-        sorted.map((item) => (
-          <KnowledgeItem
-            key={item.id}
-            item={item}
-            isSelected={item.id === selectedItemId}
-            onSelect={() => onSelectItem?.(item.id)}
-          />
-        ))}
+      {!isCollapsed && (
+        <>
+          {sorted.map((item) => (
+            <KnowledgeItem
+              key={item.id}
+              item={item}
+              isSelected={item.id === selectedItemId}
+              onSelect={() => onSelectItem?.(item.id)}
+            />
+          ))}
+          {knowledgeThreads.map((thread) => (
+            <ThreadItem
+              key={thread.id}
+              thread={thread}
+              isThreadSelected={thread.id === selectedThreadId}
+              onSelectThread={() => onSelectThread?.(thread.id)}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
 }

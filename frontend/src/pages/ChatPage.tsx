@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import ThreadList from "../components/chat/ThreadList";
 import MessageList from "../components/chat/MessageList";
 import ChatComposer from "../components/chat/ChatComposer";
@@ -67,6 +67,7 @@ const NAVIGABLE_STAGES: StageType[] = ["walkthrough", "challenge"];
 export default function ChatPage() {
   const { courseId, unitId } = useParams<{ courseId: string; unitId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [student, setStudent] = useState<Student | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
@@ -654,6 +655,7 @@ export default function ChatPage() {
         selectedKnowledgeItemId={selectedKnowledgeItemId}
         onSelectThread={handleSelectThread}
         onSelectKnowledgeItem={handleSelectKnowledgeItem}
+        onBack={() => (courseId ? navigate(`/course/${courseId}`) : navigate(-1))}
         unitProgress={unitProgress || undefined}
         knowledgeProgress={knowledgeProgress || undefined}
       />
