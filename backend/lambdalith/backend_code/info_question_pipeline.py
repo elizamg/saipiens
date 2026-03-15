@@ -42,7 +42,7 @@ GEN_QUESTION_TRIES = 3
 # Load question-generation prompt and schema once at module level
 _gen_question_details = get_prompt_details("gen_info_question")
 _gen_question_prompt = Prompt(_gen_question_details[RAW_PROMPT_KEY])
-_gen_question_schema = _gen_question_details[JSON_SCHEMA_KEY]["response_schema"]
+_gen_question_schema = _gen_question_details[JSON_SCHEMA_KEY]
 
 
 @retry(stop=stop_after_attempt(GEN_QUESTION_TRIES))
@@ -84,10 +84,9 @@ if __name__ == "__main__":
     ]
 
     # Load gen_info_question prompt and schema
-    # Note: gen_info_question_schema.json wraps the schema under a "response_schema" key
     _gen_question_details = get_prompt_details("gen_info_question")
     _gen_question_prompt = Prompt(_gen_question_details[RAW_PROMPT_KEY])
-    _gen_question_schema = _gen_question_details[JSON_SCHEMA_KEY]["response_schema"]
+    _gen_question_schema = _gen_question_details[JSON_SCHEMA_KEY]
 
     # Pick a random piece of information
     information = random.choice(SCIENCE_INFO)
