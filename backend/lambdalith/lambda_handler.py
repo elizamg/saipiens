@@ -1908,6 +1908,7 @@ def handle_create_unit_from_upload(event, course_id: str):
         "title": unit_name,
         "order": 0,
         "status": "processing",
+        "uploadedFileNames": file_names,
         "createdAt": now,
         "updatedAt": now,
     }
@@ -1972,12 +1973,13 @@ def handle_process_unit(event, unit_id: str):
     # Clean up existing objectives/questions (safe now — files are in S3)
     _cleanup_unit_objectives(unit_id)
 
-    # Set status to processing and clear stale fields
+    # Persist file names and set status to processing
+    file_names = [entry["filename"] for entry in s3_keys]
     units_tbl.update_item(
         Key={"id": unit_id},
-        UpdateExpression="SET #s = :s, updatedAt = :u REMOVE identifiedKnowledge, statusError",
+        UpdateExpression="SET #s = :s, uploadedFileNames = :f, updatedAt = :u REMOVE identifiedKnowledge, statusError",
         ExpressionAttributeNames={"#s": "status"},
-        ExpressionAttributeValues={":s": "processing", ":u": iso_now()},
+        ExpressionAttributeValues={":s": "processing", ":f": file_names, ":u": iso_now()},
     )
 
     # Invoke self async to run the pipeline in the background
@@ -2490,6 +2492,14 @@ def handle_reupload(event, unit_id: str):
     if not item:
         return resp_not_found("Unit")
 
+    # Persist file names on the unit record so the re-upload page can
+    # show them even after S3 files are cleaned up.
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET uploadedFileNames = :f, updatedAt = :u",
+        ExpressionAttributeValues={":f": file_names, ":u": iso_now()},
+    )
+
     # Generate pre-signed PUT URLs (use regional client for SigV4)
     # NOTE: We do NOT clean up objectives or change status here.
     # Cleanup and status change happen in handle_process_unit after
@@ -2514,19 +2524,38 @@ def handle_reupload(event, unit_id: str):
 
 
 def handle_list_unit_files(unit_id: str):
-    """GET /units/{unitId}/files — list uploaded files for a unit from S3."""
-    prefix = f"uploads/{unit_id}/"
-    response = s3.list_objects_v2(Bucket=UPLOAD_BUCKET, Prefix=prefix)
-    contents = response.get("Contents", [])
+    """GET /units/{unitId}/files — list uploaded files for a unit.
+
+    Tries S3 first; falls back to the uploadedFileNames stored on the
+    Unit record (file names are persisted at upload time so they survive
+    even if S3 objects are cleaned up after processing).
+    """
+    # Try S3 first
     files = []
-    for obj in contents:
-        filename = obj["Key"].split("/")[-1]
-        if filename:
-            files.append({
-                "name": filename,
-                "size": obj.get("Size", 0),
-                "lastModified": obj.get("LastModified", "").isoformat() if hasattr(obj.get("LastModified", ""), "isoformat") else str(obj.get("LastModified", "")),
-            })
+    try:
+        prefix = f"uploads/{unit_id}/"
+        response = s3.list_objects_v2(Bucket=UPLOAD_BUCKET, Prefix=prefix)
+        contents = response.get("Contents", [])
+        for obj in contents:
+            filename = obj["Key"].split("/")[-1]
+            if filename:
+                files.append({
+                    "name": filename,
+                    "size": obj.get("Size", 0),
+                    "lastModified": obj.get("LastModified", "").isoformat() if hasattr(obj.get("LastModified", ""), "isoformat") else str(obj.get("LastModified", "")),
+                })
+    except Exception:
+        pass
+
+    # Fall back to stored file names on the Unit record
+    if not files:
+        units_tbl = dynamodb.Table(T["UNITS"])
+        got = units_tbl.get_item(Key={"id": unit_id})
+        item = got.get("Item")
+        if item:
+            stored_names = item.get("uploadedFileNames", [])
+            files = [{"name": n, "size": 0} for n in stored_names]
+
     return resp(200, {"files": files})
 
 
