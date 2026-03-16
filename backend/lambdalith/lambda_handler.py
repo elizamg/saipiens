@@ -833,10 +833,12 @@ def handle_get_unit_grading_report(event, unit_id: str):
             "createdAt": existing.get("createdAt", ""),
             "skillCompleted": existing.get("skillCompleted", 0),
             "skillTotal": existing.get("skillTotal", 0),
+            "skillCompletedBeforeDeadline": existing.get("skillCompletedBeforeDeadline", 0),
             "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
             "knowledgeTotal": existing.get("knowledgeTotal", 0),
             "deadline": existing.get("deadline", ""),
             "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
+            "objectiveDetails": existing.get("objectiveDetails", []),
         })
 
     # Generate on-demand: gather data
@@ -897,14 +899,28 @@ def handle_get_unit_grading_report(event, unit_id: str):
     skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
     skill_total = len(skill_objs)
     skill_completed = 0
+    skill_completed_before_deadline = 0
     latest_completion_ts = None
+    objective_details = []
     for o in skill_objs:
         p = progress_map.get(o.get("id"), {})
-        if p.get("stars", 0) >= 3 or p.get("currentStageType") == "challenge":
+        completed = p.get("stars", 0) >= 3 or p.get("currentStageType") == "challenge"
+        ts = p.get("updatedAt") or p.get("createdAt") if completed else None
+        detail = {
+            "title": o.get("title", ""),
+            "completed": completed,
+            "completedAt": ts or "",
+        }
+        if completed:
             skill_completed += 1
-            ts = p.get("updatedAt") or p.get("createdAt")
             if ts and (latest_completion_ts is None or ts > latest_completion_ts):
                 latest_completion_ts = ts
+            if deadline and ts and ts <= deadline:
+                skill_completed_before_deadline += 1
+                detail["beforeDeadline"] = True
+            elif deadline and ts:
+                detail["beforeDeadline"] = False
+        objective_details.append(detail)
 
     # Knowledge stats from queue items
     by_topic: dict[str, list[dict]] = {}
@@ -951,10 +967,12 @@ def handle_get_unit_grading_report(event, unit_id: str):
         "studentSummary": student_summary,
         "skillCompleted": skill_completed,
         "skillTotal": skill_total,
+        "skillCompletedBeforeDeadline": skill_completed_before_deadline,
         "knowledgeCorrect": knowledge_correct,
         "knowledgeTotal": knowledge_total,
         "deadline": deadline or "",
         "completedBeforeDeadline": completed_before_deadline,
+        "objectiveDetails": objective_details,
         "createdAt": now,
     }
     gr_tbl.put_item(Item=report_item)
@@ -967,10 +985,12 @@ def handle_get_unit_grading_report(event, unit_id: str):
         "createdAt": now,
         "skillCompleted": skill_completed,
         "skillTotal": skill_total,
+        "skillCompletedBeforeDeadline": skill_completed_before_deadline,
         "knowledgeCorrect": knowledge_correct,
         "knowledgeTotal": knowledge_total,
         "deadline": deadline or "",
         "completedBeforeDeadline": completed_before_deadline,
+        "objectiveDetails": objective_details,
     })
 
 
@@ -1095,10 +1115,12 @@ def handle_get_my_grading_report(event, unit_id: str):
             "createdAt": existing.get("createdAt", ""),
             "skillCompleted": existing.get("skillCompleted", 0),
             "skillTotal": existing.get("skillTotal", 0),
+            "skillCompletedBeforeDeadline": existing.get("skillCompletedBeforeDeadline", 0),
             "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
             "knowledgeTotal": existing.get("knowledgeTotal", 0),
             "deadline": existing.get("deadline", ""),
             "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
+            "objectiveDetails": existing.get("objectiveDetails", []),
         })
     return resp_null()
 

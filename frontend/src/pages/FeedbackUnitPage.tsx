@@ -64,6 +64,8 @@ export default function FeedbackUnitPage() {
 
   const skillPct = report && report.skillTotal ? Math.round((report.skillCompleted! / report.skillTotal) * 100) : 0;
   const knowledgePct = report && report.knowledgeTotal ? Math.round((report.knowledgeCorrect! / report.knowledgeTotal) * 100) : 0;
+  // Use unit deadline as fallback if report was cached before deadline field was added
+  const deadline = report?.deadline || unit?.deadline;
 
   return (
     <AppShell student={student} activePath="/feedback">
@@ -89,7 +91,7 @@ export default function FeedbackUnitPage() {
                   <StatCard label="Skills Completed" value={`${report.skillCompleted ?? 0}/${report.skillTotal ?? 0}`} pct={skillPct} />
                   <StatCard label="Knowledge Correct" value={`${report.knowledgeCorrect ?? 0}/${report.knowledgeTotal ?? 0}`} pct={knowledgePct} />
                 </div>
-                {report.deadline && (
+                {deadline && (
                   <div style={{
                     background: WHITE,
                     border: `1px solid ${GRAY_200}`,
@@ -105,19 +107,31 @@ export default function FeedbackUnitPage() {
                         Deadline
                       </p>
                       <p style={{ margin: "2px 0 0 0", fontSize: 15, fontWeight: 600, color: GRAY_900 }}>
-                        {new Date(report.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                        {new Date(deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                       </p>
                     </div>
-                    {report.completedBeforeDeadline != null && (
+                    {report.completedBeforeDeadline === true && (
                       <span style={{
                         fontSize: 13,
                         fontWeight: 600,
-                        color: report.completedBeforeDeadline ? SUCCESS_GREEN : "#c45a3c",
-                        background: report.completedBeforeDeadline ? "rgba(92,143,106,0.1)" : "rgba(196,90,60,0.1)",
+                        color: SUCCESS_GREEN,
+                        background: "rgba(92,143,106,0.1)",
                         padding: "4px 10px",
                         borderRadius: 6,
                       }}>
-                        {report.completedBeforeDeadline ? "Completed on time" : "Completed late"}
+                        Completed on time
+                      </span>
+                    )}
+                    {report.completedBeforeDeadline === false && (
+                      <span style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#c45a3c",
+                        background: "rgba(196,90,60,0.1)",
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                      }}>
+                        Completed late
                       </span>
                     )}
                     {report.completedBeforeDeadline == null && skillPct < 100 && (
