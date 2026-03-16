@@ -246,9 +246,10 @@ export function createUnitFeedback(
 /** Teacher: Update existing teacher feedback by id. */
 export function updateFeedback(
   feedbackId: string,
-  body: string
+  body: string,
+  studentId?: string
 ): Promise<FeedbackItem> {
-  return patch<FeedbackItem>(`/feedback/${feedbackId}`, { body });
+  return patch<FeedbackItem>(`/feedback/${feedbackId}`, { body, studentId });
 }
 
 /** Student: Sam's grading report for the current student's unit (student view). */

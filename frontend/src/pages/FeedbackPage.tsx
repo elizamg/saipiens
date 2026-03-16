@@ -5,13 +5,7 @@ import TintedImage from "../components/ui/TintedImage";
 import { getCurrentStudent, listCoursesForStudent } from "../services/api";
 import type { Student, Course } from "../types/domain";
 import { GRAY_600, GRAY_900, GRAY_200, WHITE, PRIMARY } from "../theme/colors";
-import historyLogo from "../assets/history-logo.png";
-import scienceLogo from "../assets/science-logo.png";
-
-const courseIconMap: Record<string, string> = {
-  history: historyLogo,
-  science: scienceLogo,
-};
+import { courseIconMap } from "../theme/courseIcons";
 
 const bookIcon = (
   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
