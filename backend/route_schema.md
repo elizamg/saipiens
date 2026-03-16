@@ -107,12 +107,19 @@ Auto-creates student record on first access. Name is pulled from JWT `given_name
   - Each item's `question` is pulled from the corresponding objective's Question record
 
 - **POST** `/knowledge-queue/{queueItemId}/complete`
-  - Body: `{ "is_correct": boolean }`
-  - Returns: `{ "updatedItem": KnowledgeQueueItem, "newQueueItem"?: KnowledgeQueueItem }`
+  - Body: `{ "answer": string }` (preferred — triggers AI grading via Gemini)
+  - Fallback body: `{ "is_correct": boolean }` (skips AI, sets result directly)
+  - Returns: `{ "updatedItem": KnowledgeQueueItem, "newQueueItem"?: KnowledgeQueueItem, "tutorFeedback"?: string }`
   - Side effects:
+    - Grades via `grade_info()` AI pipeline when `answer` is provided
     - Sets `status` to `completed_correct` or `completed_incorrect` and sets `is_correct`
     - If `is_correct: false`: creates a new `pending` retry item for the same `knowledgeTopicId` with incremented `labelIndex` and `order`
     - Advances the next `pending` item in the queue to `active`
+
+- **POST** `/knowledge-queue/{queueItemId}/clarify`
+  - Body: `{ "question": string }`
+  - Returns: `{ "answer": string }`
+  - Sends a clarifying question to the AI tutor (does NOT grade). Item must be `active`.
 
 - **GET** `/units/{unitId}/knowledge-progress` → `KnowledgeProgress`
   - Returns `{ unitId, totalTopics, correctCount, incorrectCount, correctPercent, incorrectPercent }`
@@ -175,13 +182,73 @@ All instructor routes require instructor identity via `effective_instructor_id()
 
 ### Upload status polling
 - **GET** `/units/{unitId}/upload-status` → `{ unitId, status, statusError? }`
-  - `status` is one of: `"processing"`, `"ready"`, `"error"`
+  - `status` is one of: `"processing"`, `"review"`, `"ready"`, `"error"`
   - `statusError` is present only when `status === "error"`
   - Frontend polls this every 3s after upload returns, then navigates to the unit page when `"ready"`
 
+### Unit files
+- **GET** `/units/{unitId}/files` → `{ unitId, files: [{ name, size?, lastModified? }] }`
+  - Lists uploaded files for a unit. Tries S3 first; falls back to `uploadedFileNames` stored on the Unit record.
+
+### Identified knowledge (review step)
+- **GET** `/units/{unitId}/identified-knowledge` → `{ unitId, identifiedKnowledge: [{ type, description }] }`
+  - Returns AI-identified knowledge/skill items for teacher review (stored on Unit record after initial processing).
+
+### Objective generation (after teacher review)
+- **POST** `/units/{unitId}/generate`
+  - Body: `{ "selectedObjectives": [{ "type": string, "description": string }, ...] }`
+  - Triggers async question generation for teacher-selected items only. Sets unit status to `"processing"`.
+  - Returns: `202` with `{ unitId, status: "processing" }`
+
+### Edit objectives (re-review)
+- **POST** `/units/{unitId}/edit-objectives` → `{ unitId, status: "review" }`
+  - Resets unit to `"review"` status so the teacher can re-select objectives. Deletes existing objectives and related records.
+
+### Reupload documents
+- **POST** `/units/{unitId}/reupload`
+  - Body: `{ "fileNames": string[] }`
+  - Returns: `{ unitId, uploadUrls: { [filename]: presignedUrl } }`
+  - Generates pre-signed S3 PUT URLs for re-uploading documents to an existing unit. Caller must upload files then call `POST /units/{unitId}/process`.
+
+### Process unit (trigger pipeline after S3 upload)
+- **POST** `/units/{unitId}/process` → `202` with `{ unitId, status: "processing" }`
+  - Triggers the async curriculum pipeline after files have been uploaded to S3. Lists staged S3 files, cleans up existing objectives, and invokes Lambda async.
+
+### Deadline management
+- **PATCH** `/units/{unitId}/deadline` → `Unit`
+  - Body: `{ "deadline": string }` (ISO 8601 timestamp) to set, or `{ "deadline": null }` to clear.
+  - Returns the full updated unit record.
+
+### Course title update
+- **PATCH** `/courses/{courseId}/title` → `Course`
+  - Body: `{ "title": string }`
+  - Returns the full updated course record.
+
 ---
 
-## 18) Grading Reports & Per-Unit Feedback
+## 16) Delete & Restore (instructor auth required)
+
+### Soft delete
+- **DELETE** `/units/{unitId}` → `{ unitId, deletedAt }`
+  - Sets `deletedAt` timestamp. Unit is excluded from listings but not permanently removed.
+- **DELETE** `/courses/{courseId}` → `{ courseId, deletedAt }`
+  - Sets `deletedAt` timestamp. Course is excluded from listings but not permanently removed.
+
+### Hard delete (permanent)
+- **DELETE** `/units/{unitId}/permanent` → `{ unitId, deleted: true }`
+  - Permanently deletes the unit and all child records (objectives, questions, stages, threads, messages, progress, knowledge topics, knowledge queue items). Also cleans up S3 uploads.
+- **DELETE** `/courses/{courseId}/permanent` → `{ courseId, deleted: true }`
+  - Permanently deletes the course, all its units (and their children), and all enrollments.
+
+### Restore
+- **PATCH** `/units/{unitId}/restore` → `Unit`
+  - Removes `deletedAt`, restoring the unit to active listings.
+- **PATCH** `/courses/{courseId}/restore` → `Course`
+  - Removes `deletedAt`, restoring the course to active listings.
+
+---
+
+## 17) Grading Reports & Per-Unit Feedback
 
 ### Teacher endpoints (require instructor auth)
 

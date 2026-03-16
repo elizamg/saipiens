@@ -323,17 +323,19 @@ The backend is:
 
 All major domain surfaces are implemented:
 
--   Courses (student read + instructor create)
--   Units (student read + instructor create via upload + title edit)
--   Objectives (student read + instructor toggle enabled)
+-   Courses (student read + instructor create/update title/soft-delete/restore/hard-delete)
+-   Units (student read + instructor create via upload/title edit/deadline/soft-delete/restore/hard-delete)
+-   Objectives (student read + instructor toggle enabled + edit-objectives + generate)
 -   Stages (student read)
 -   Progress (student read + advance)
 -   Chat (with synchronous AI tutor pipeline)
 -   Awards
--   Feedback
--   Instructor/Teacher flows (current-instructor, course management, roster, student management, curriculum upload)
+-   Feedback (teacher create/update + student read)
+-   Grading Reports (on-demand AI generation, teacher + student summaries)
+-   Instructor/Teacher flows (current-instructor, course management, roster, student management, curriculum upload, reupload, process)
 -   Knowledge Topics (teacher-visible, created during upload)
--   Knowledge Queue (student-facing, auto-initialized, retry on incorrect, progress tracking)
+-   Knowledge Queue (student-facing, auto-initialized, AI grading, clarifying questions, retry on incorrect, progress tracking)
+-   Delete & Restore (soft-delete with `deletedAt`, restore, permanent hard-delete with cascading child cleanup)
 
 ## AI Tutor Pipeline
 
@@ -356,20 +358,22 @@ Lambda timeout is 60s; memory is 512MB.
 
 ## AI Curriculum Generation Pipeline
 
-`POST /courses/{courseId}/units/upload` accepts multipart PDF upload and runs the full `Gen_Curriculum_Pipeline`:
+`POST /courses/{courseId}/units/upload` accepts multipart PDF upload and runs the full `Gen_Curriculum_Pipeline` using the async pattern described in Section 2:
 
 1. Uploads PDF(s) to Gemini Files API
 2. Calls `identify_knowledge` → returns list of `{ type, description }` items
-3. Generates one question per item in parallel (concurrency=5)
-4. Persists to DynamoDB:
+3. Teacher reviews identified items and selects which to keep (`POST /units/{unitId}/generate`)
+4. Generates one question per selected item
+5. Persists to DynamoDB:
    - `Units` — one new unit
    - `Objectives` — one per knowledge item (`kind: "knowledge"|"skill"`)
    - `ItemStages` — 3 per objective (`begin`/`walkthrough`/`challenge`)
    - `Questions` — one per objective
+   - `KnowledgeTopics` — one per objective (teacher-visible topic name)
 
-Returns `{ unit: Unit, objectives: Objective[] }`.
+Returns `202` with `{ unit, objectives: [] }` immediately. Background Lambda processes in up to 300s (5 min).
 
-⚠ This call can take 30–120s for large PDFs. The Lambda timeout may need to be increased (currently 60s) for production use.
+Teachers can also re-upload documents (`POST /units/{unitId}/reupload`) or re-select objectives (`POST /units/{unitId}/edit-objectives`) after initial processing.
 
 ------------------------------------------------------------------------
 
