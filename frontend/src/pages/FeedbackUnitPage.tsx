@@ -9,7 +9,7 @@ import {
   getAgent,
 } from "../services/api";
 import type { Student, Unit, GradingReport, FeedbackItem, Agent } from "../types/domain";
-import { GRAY_400, GRAY_600, GRAY_900, GRAY_200, GRAY_100, WHITE, PRIMARY } from "../theme/colors";
+import { GRAY_400, GRAY_600, GRAY_900, GRAY_200, GRAY_100, WHITE, PRIMARY, SUCCESS_GREEN } from "../theme/colors";
 
 export default function FeedbackUnitPage() {
   const { courseId, unitId } = useParams<{ courseId: string; unitId: string }>();
@@ -84,10 +84,57 @@ export default function FeedbackUnitPage() {
           <>
             {/* Structured Stats */}
             {report && (
-              <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-                <StatCard label="Skills Completed" value={`${report.skillCompleted ?? 0}/${report.skillTotal ?? 0}`} pct={skillPct} />
-                <StatCard label="Knowledge Correct" value={`${report.knowledgeCorrect ?? 0}/${report.knowledgeTotal ?? 0}`} pct={knowledgePct} />
-              </div>
+              <>
+                <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                  <StatCard label="Skills Completed" value={`${report.skillCompleted ?? 0}/${report.skillTotal ?? 0}`} pct={skillPct} />
+                  <StatCard label="Knowledge Correct" value={`${report.knowledgeCorrect ?? 0}/${report.knowledgeTotal ?? 0}`} pct={knowledgePct} />
+                </div>
+                {report.deadline && (
+                  <div style={{
+                    background: WHITE,
+                    border: `1px solid ${GRAY_200}`,
+                    borderRadius: 12,
+                    padding: "12px 20px",
+                    marginBottom: 20,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 12, color: GRAY_400, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        Deadline
+                      </p>
+                      <p style={{ margin: "2px 0 0 0", fontSize: 15, fontWeight: 600, color: GRAY_900 }}>
+                        {new Date(report.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                      </p>
+                    </div>
+                    {report.completedBeforeDeadline != null && (
+                      <span style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: report.completedBeforeDeadline ? SUCCESS_GREEN : "#c45a3c",
+                        background: report.completedBeforeDeadline ? "rgba(92,143,106,0.1)" : "rgba(196,90,60,0.1)",
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                      }}>
+                        {report.completedBeforeDeadline ? "Completed on time" : "Completed late"}
+                      </span>
+                    )}
+                    {report.completedBeforeDeadline == null && skillPct < 100 && (
+                      <span style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: GRAY_400,
+                        background: GRAY_100,
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                      }}>
+                        In progress
+                      </span>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
             {/* Sam's Report */}

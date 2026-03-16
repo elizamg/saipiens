@@ -835,6 +835,8 @@ def handle_get_unit_grading_report(event, unit_id: str):
             "skillTotal": existing.get("skillTotal", 0),
             "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
             "knowledgeTotal": existing.get("knowledgeTotal", 0),
+            "deadline": existing.get("deadline", ""),
+            "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
         })
 
     # Generate on-demand: gather data
@@ -895,10 +897,14 @@ def handle_get_unit_grading_report(event, unit_id: str):
     skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
     skill_total = len(skill_objs)
     skill_completed = 0
+    latest_completion_ts = None
     for o in skill_objs:
         p = progress_map.get(o.get("id"), {})
         if p.get("stars", 0) >= 3 or p.get("currentStageType") == "challenge":
             skill_completed += 1
+            ts = p.get("updatedAt") or p.get("createdAt")
+            if ts and (latest_completion_ts is None or ts > latest_completion_ts):
+                latest_completion_ts = ts
 
     # Knowledge stats from queue items
     by_topic: dict[str, list[dict]] = {}
@@ -927,6 +933,12 @@ def handle_get_unit_grading_report(event, unit_id: str):
         knowledge_data=knowledge_data,
     )
 
+    # Deadline completion status
+    all_completed = skill_completed == skill_total and skill_total > 0
+    completed_before_deadline = None
+    if deadline and all_completed and latest_completion_ts:
+        completed_before_deadline = latest_completion_ts <= deadline
+
     # Store
     report_id = str(uuid.uuid4())
     now = iso_now()
@@ -941,6 +953,8 @@ def handle_get_unit_grading_report(event, unit_id: str):
         "skillTotal": skill_total,
         "knowledgeCorrect": knowledge_correct,
         "knowledgeTotal": knowledge_total,
+        "deadline": deadline or "",
+        "completedBeforeDeadline": completed_before_deadline,
         "createdAt": now,
     }
     gr_tbl.put_item(Item=report_item)
@@ -955,6 +969,8 @@ def handle_get_unit_grading_report(event, unit_id: str):
         "skillTotal": skill_total,
         "knowledgeCorrect": knowledge_correct,
         "knowledgeTotal": knowledge_total,
+        "deadline": deadline or "",
+        "completedBeforeDeadline": completed_before_deadline,
     })
 
 
@@ -1081,6 +1097,8 @@ def handle_get_my_grading_report(event, unit_id: str):
             "skillTotal": existing.get("skillTotal", 0),
             "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
             "knowledgeTotal": existing.get("knowledgeTotal", 0),
+            "deadline": existing.get("deadline", ""),
+            "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
         })
     return resp_null()
 

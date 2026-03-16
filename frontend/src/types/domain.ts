@@ -86,6 +86,8 @@ export interface GradingReport {
   skillTotal?: number;
   knowledgeCorrect?: number;
   knowledgeTotal?: number;
+  deadline?: string;
+  completedBeforeDeadline?: boolean | null;
 }
 
 // ============ Objective (Sidebar Item) & Stage Types ============
