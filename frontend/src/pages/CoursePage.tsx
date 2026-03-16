@@ -17,14 +17,8 @@ import {
   getKnowledgeProgress,
 } from "../services/api";
 import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
+import { courseIconMap } from "../theme/courseIcons";
 import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress } from "../types/domain";
-import historyLogo from "../assets/history-logo.png";
-import scienceLogo from "../assets/science-logo.png";
-
-const courseIconMap: Record<string, string> = {
-  history: historyLogo,
-  science: scienceLogo,
-};
 
 export default function CoursePage() {
   const { courseId } = useParams<{ courseId: string }>();

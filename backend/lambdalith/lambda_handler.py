@@ -1,5 +1,4 @@
 import base64
-import cgi
 import io
 import json
 import os
@@ -127,16 +126,9 @@ def resp(status: int, obj=None, extra_headers: dict | None = None):
 
 def resp_null():
     """Return HTTP 200 with JSON null body (null-not-404 contract)."""
-    return {
-        "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": CORS_ALLOW_ORIGIN,
-            "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
-            "Access-Control-Allow-Methods": CORS_ALLOW_METHODS,
-        },
-        "body": "null",
-    }
+    r = resp(200)
+    r["body"] = "null"
+    return r
 
 
 def resp_options():
@@ -740,7 +732,7 @@ def _format_objectives_data(objectives: list[dict], progress_map: dict, deadline
         stage = prog.get("currentStageType", "begin")
         updated_at = prog.get("updatedAt", "")
 
-        completed = stars >= 3 or stage == "challenge"
+        completed = stars >= 3 or stage == "challenge" or prog.get("progressState") == "challenge_complete"
         status = "not started"
         if completed:
             status = "completed"
@@ -861,17 +853,17 @@ def handle_get_unit_grading_report(event, unit_id: str):
         key_condition=Key("unitId").eq(unit_id),
     )
 
-    # Progress for each objective
+    # Progress for all objectives in one query (avoid N+1)
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
-    progress_map = {}
-    for obj in objectives:
-        oid = obj.get("id")
-        if not oid:
-            continue
-        p_got = prog_tbl.get_item(Key={"studentId": student_id, "objectiveId": oid})
-        p = p_got.get("Item")
-        if p:
-            progress_map[oid] = p
+    all_prog = query_all(
+        prog_tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    obj_id_set = {obj.get("id") for obj in objectives if obj.get("id")}
+    progress_map = {
+        p["objectiveId"]: p for p in all_prog
+        if p.get("objectiveId") in obj_id_set
+    }
 
     # Knowledge queue items for this student + unit
     kq_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
@@ -904,7 +896,7 @@ def handle_get_unit_grading_report(event, unit_id: str):
     objective_details = []
     for o in skill_objs:
         p = progress_map.get(o.get("id"), {})
-        completed = p.get("stars", 0) >= 3 or p.get("currentStageType") == "challenge"
+        completed = int(p.get("earnedStars", 0)) >= 3 or p.get("currentStageType") == "challenge"
         ts = p.get("updatedAt") or p.get("createdAt") if completed else None
         detail = {
             "title": o.get("title", ""),
@@ -1066,7 +1058,11 @@ def handle_create_unit_feedback(event, unit_id: str):
 
 
 def handle_update_feedback(event, feedback_id: str):
-    """PATCH /feedback/{feedbackId} — teacher updates feedback."""
+    """PATCH /feedback/{feedbackId} — teacher updates feedback.
+    Body: { "body": string, "studentId": string }
+    studentId is required so we can do a direct lookup (PK=studentId, SK=id)
+    instead of an expensive table scan.
+    """
     instructor_id = effective_instructor_id(event)
     if not instructor_id:
         return resp(401, {"error": "Unauthorized"})
@@ -1076,18 +1072,26 @@ def handle_update_feedback(event, feedback_id: str):
         return err
 
     new_body = body.get("body")
+    student_id = body.get("studentId")
     if not new_body:
         return resp(400, {"error": "Missing body"})
 
-    # Find the feedback item by id (scan — acceptable at current scale)
     fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
-    from boto3.dynamodb.conditions import Attr
-    scan_result = fb_tbl.scan(FilterExpression=Attr("id").eq(feedback_id), Limit=100)
-    items = scan_result.get("Items", [])
-    if not items:
+
+    if student_id:
+        # Direct lookup using composite key
+        got = fb_tbl.get_item(Key={"studentId": student_id, "id": feedback_id})
+        item = got.get("Item")
+    else:
+        # Fallback scan for backwards compatibility
+        from boto3.dynamodb.conditions import Attr
+        scan_result = fb_tbl.scan(FilterExpression=Attr("id").eq(feedback_id), Limit=100)
+        items = scan_result.get("Items", [])
+        item = items[0] if items else None
+
+    if not item:
         return resp_not_found("FeedbackItem")
 
-    item = items[0]
     fb_tbl.update_item(
         Key={"studentId": item["studentId"], "id": item["id"]},
         UpdateExpression="SET body = :b",
@@ -2256,37 +2260,23 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
     now = iso_now()
     tutor_feedback = None
 
+    # Pre-fetch context used by both grading and retry question generation
+    topic_id = existing.get("knowledgeTopicId")
+    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
+    topic_description = (topic.get("knowledgeTopic", "") if topic else "") or existing.get("questionPrompt", "") or existing.get("question", "")
+    question = existing.get("questionPrompt", "") or existing.get("question", "")
+
+    subject, grade = _get_unit_context(unit_id, student_id)
+
     # Grade via AI if answer text was provided
     if answer is not None and is_correct is None:
         try:
-            # Look up the knowledge topic to get the information/description
-            topic_id = existing.get("knowledgeTopicId")
-            topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
-            topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
-            information = (topic.get("knowledgeTopic", "") if topic else "") or existing.get("questionPrompt", "") or existing.get("question", "")
-
-            # Look up the unit to find the course for subject context
-            units_tbl = dynamodb.Table(T["UNITS"])
-            unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
-            course_id = unit.get("courseId", "") if unit else ""
-            subject = "Unknown Subject"
-            if course_id:
-                courses_tbl = dynamodb.Table(T["COURSES"])
-                course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
-                subject = course.get("title", "Unknown Subject") if course else "Unknown Subject"
-
-            # Get student grade level
-            students_tbl = dynamodb.Table(T["STUDENTS"])
-            student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
-            grade = student.get("yearLabel", "Unknown Grade")
-
-            question = existing.get("questionPrompt", "") or existing.get("question", "")
-
             from backend_code.info_question_pipeline import grade_info
             is_correct, tutor_feedback = grade_info(
                 grade=grade,
                 subject=subject,
-                information=information,
+                information=topic_description,
                 question=question,
                 answer=answer,
             )
@@ -2315,32 +2305,13 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
         unit_items = [i for i in all_items if i.get("unitId") == unit_id]
         max_order = max((i.get("order", 0) for i in unit_items), default=0)
 
-        # Generate a new question for the retry item
-        retry_question = existing.get("questionPrompt", "") or existing.get("question", "")
+        # Generate a new question for the retry item (reuse context from above)
+        retry_question = question
         try:
-            # Look up topic info if not already available from grading
-            topic_id = existing.get("knowledgeTopicId")
-            topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
-            topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
-            topic_description = (topic.get("knowledgeTopic", "") if topic else "") or retry_question
-
-            units_tbl = dynamodb.Table(T["UNITS"])
-            unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
-            course_id = unit.get("courseId", "") if unit else ""
-            r_subject = "Unknown Subject"
-            if course_id:
-                courses_tbl = dynamodb.Table(T["COURSES"])
-                course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
-                r_subject = course.get("title", "Unknown Subject") if course else "Unknown Subject"
-
-            students_tbl = dynamodb.Table(T["STUDENTS"])
-            r_student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
-            r_grade = r_student.get("yearLabel", "Unknown Grade")
-
             from backend_code.info_question_pipeline import generate_info_question
             retry_question = generate_info_question(
-                grade=r_grade,
-                subject=r_subject,
+                grade=grade,
+                subject=subject,
                 description=topic_description,
             )
         except Exception as e:
@@ -2436,35 +2407,35 @@ def _parse_multipart(event) -> tuple[dict, list[tuple[str, bytes]]]:
     Returns (fields: {name: value}, files: [(filename, bytes)]).
     API Gateway v2 base64-encodes binary payloads when isBase64Encoded=True.
     """
+    from email.parser import BytesParser
+    from email.policy import default as default_policy
+
     raw_body = event.get("body") or ""
     is_b64 = event.get("isBase64Encoded", False)
     body_bytes = base64.b64decode(raw_body) if is_b64 else raw_body.encode("utf-8")
 
     content_type = header(event, "content-type") or ""
 
-    # Use cgi.FieldStorage to parse multipart
-    environ = {
-        "REQUEST_METHOD": "POST",
-        "CONTENT_TYPE": content_type,
-        "CONTENT_LENGTH": str(len(body_bytes)),
-    }
-    fp = io.BytesIO(body_bytes)
-    fs = cgi.FieldStorage(fp=fp, environ=environ, keep_blank_values=True)
+    # Build a full MIME message so the email parser can handle it
+    mime_header = f"Content-Type: {content_type}\r\n\r\n".encode("utf-8")
+    msg = BytesParser(policy=default_policy).parsebytes(mime_header + body_bytes)
 
     fields: dict = {}
     files: list[tuple[str, bytes]] = []
 
-    for key in fs.keys():
-        item = fs[key]
-        if isinstance(item, list):
-            items = item
-        else:
-            items = [item]
-        for part in items:
-            if part.filename:
-                files.append((part.filename, part.file.read()))
-            else:
-                fields[key] = part.value
+    for part in msg.walk():
+        cd = part.get("Content-Disposition", "")
+        if "form-data" not in cd:
+            continue
+
+        name = part.get_param("name", header="Content-Disposition") or ""
+        filename = part.get_filename()
+        payload = part.get_payload(decode=True)
+
+        if filename:
+            files.append((filename, payload or b""))
+        elif name:
+            fields[name] = payload.decode("utf-8") if payload else ""
 
     return fields, files
 
@@ -3015,16 +2986,16 @@ def _cleanup_unit_objectives(unit_id: str):
         key_condition=Key("unitId").eq(unit_id),
     )
     for topic in kt:
-        tid = topic["id"]
-        knowledge_topics_tbl.delete_item(Key={"id": tid})
-        # Delete queue items for this topic
-        qi = query_all(
-            knowledge_queue_tbl,
-            index_name=IDX["UNIT_QUEUE"],
-            key_condition=Key("unitId").eq(unit_id),
-        )
-        for item in qi:
-            knowledge_queue_tbl.delete_item(Key={"studentId": item["studentId"], "id": item["id"]})
+        knowledge_topics_tbl.delete_item(Key={"id": topic["id"]})
+
+    # 4) Delete knowledge queue items for this unit (single query, not per-topic)
+    qi = query_all(
+        knowledge_queue_tbl,
+        index_name=IDX["UNIT_QUEUE"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for item in qi:
+        knowledge_queue_tbl.delete_item(Key={"studentId": item["studentId"], "id": item["id"]})
 
     print(f"[cleanup] Deleted {len(objs)} objectives + related data for unit {unit_id}")
 
