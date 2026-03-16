@@ -224,12 +224,12 @@ export function getUnitGradingReport(
   );
 }
 
-/** Teacher: Retrieve teacher's written feedback for a student in a unit. */
+/** Teacher: Retrieve all teacher feedback messages for a student in a unit. */
 export function getUnitFeedbackForStudent(
   unitId: string,
   studentId: string
-): Promise<FeedbackItem | null> {
-  return get<FeedbackItem | null>(
+): Promise<FeedbackItem[]> {
+  return get<FeedbackItem[]>(
     `/units/${unitId}/feedback?studentId=${encodeURIComponent(studentId)}`
   );
 }
@@ -256,9 +256,9 @@ export function getMyUnitGradingReport(unitId: string): Promise<GradingReport | 
   return get<GradingReport | null>(`/units/${unitId}/my-grading-report`);
 }
 
-/** Student: Teacher's feedback message for the current student in a unit. */
-export function getMyUnitFeedback(unitId: string): Promise<FeedbackItem | null> {
-  return get<FeedbackItem | null>(`/units/${unitId}/my-feedback`);
+/** Student: All teacher feedback messages for the current student in a unit. */
+export function getMyUnitFeedback(unitId: string): Promise<FeedbackItem[]> {
+  return get<FeedbackItem[]>(`/units/${unitId}/my-feedback`);
 }
 
 // ---------------------------------------------------------------------------

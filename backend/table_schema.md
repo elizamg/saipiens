@@ -262,3 +262,20 @@ Access patterns:
 - List queue items for (studentId, unitId): query by PK, filter by unitId
 - Get single item: query by PK + SK
 - Update item status: update by PK + SK
+
+---
+
+## 16) GradingReports
+**Table:** `GradingReports`
+**PK:** `studentId` (String)
+**SK:** `unitId` (String)
+
+Typical attributes:
+- `id` (UUID), `studentId`, `unitId`, `courseId`
+- `teacherSummary` (String) — detailed analytical summary for teachers
+- `studentSummary` (String) — encouraging actionable summary for students
+- `createdAt` (ISO timestamp)
+
+Access patterns:
+- Get report for (studentId, unitId): get_item by PK + SK
+- Create report: put_item by PK + SK
