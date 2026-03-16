@@ -49,6 +49,7 @@ T = {
     "FEEDBACK_ITEMS": os.environ["FEEDBACK_ITEMS_TABLE"],
     "KNOWLEDGE_TOPICS": os.environ["KNOWLEDGE_TOPICS_TABLE"],
     "KNOWLEDGE_QUEUE_ITEMS": os.environ["KNOWLEDGE_QUEUE_ITEMS_TABLE"],
+    "GRADING_REPORTS": os.environ.get("GRADING_REPORTS_TABLE", ""),
 }
 
 # ---- Indexes (env vars) ----
@@ -122,6 +123,20 @@ def resp(status: int, obj=None, extra_headers: dict | None = None):
         body = json.dumps(_sanitize_for_json(obj), default=_json_default)
 
     return {"statusCode": status, "headers": headers, "body": body}
+
+
+def resp_null():
+    """Return HTTP 200 with JSON null body (null-not-404 contract)."""
+    return {
+        "statusCode": 200,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": CORS_ALLOW_ORIGIN,
+            "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
+            "Access-Control-Allow-Methods": CORS_ALLOW_METHODS,
+        },
+        "body": "null",
+    }
 
 
 def resp_options():
@@ -709,6 +724,425 @@ def handle_list_feedback(event, course_id: str | None = None):
     if course_id:
         items = [f for f in items if f.get("courseId") == course_id]
     return resp(200, items)
+
+
+# ---- Grading Reports & Per-Unit Feedback ----
+
+def _format_objectives_data(objectives: list[dict], progress_map: dict, deadline: str | None) -> str:
+    """Format skill objective progress into a human-readable string for the AI prompt."""
+    lines = []
+    for obj in objectives:
+        oid = obj.get("id", "")
+        title = obj.get("title", "Unknown")
+        kind = obj.get("kind", "skill")
+        prog = progress_map.get(oid, {})
+        stars = int(prog.get("earnedStars", 0))
+        stage = prog.get("currentStageType", "begin")
+        updated_at = prog.get("updatedAt", "")
+
+        completed = stars >= 3 or stage == "challenge"
+        status = "not started"
+        if completed:
+            status = "completed"
+            if deadline and updated_at:
+                try:
+                    dl = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+                    ua = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                    if ua > dl:
+                        diff = ua - dl
+                        days = diff.days
+                        if days == 0:
+                            status = "completed (same day as deadline)"
+                        elif days == 1:
+                            status = "completed (1 day after deadline)"
+                        else:
+                            status = f"completed ({days} days after deadline)"
+                    else:
+                        status = "completed (before deadline)"
+                except Exception:
+                    pass
+        elif stars > 0 or stage != "begin":
+            status = "in progress"
+
+        scaffolded = stage == "walkthrough" and kind != "knowledge"
+        scaffold_note = " (needed scaffolding)" if scaffolded else ""
+
+        lines.append(
+            f"{kind.capitalize()}: \"{title}\" — Stars: {stars}/3, Stage: {stage}{scaffold_note}, Status: {status}"
+        )
+    return "\n".join(lines) if lines else "No skill objectives in this unit."
+
+
+def _format_knowledge_data(queue_items: list[dict], topics_map: dict) -> str:
+    """Format knowledge topic results into a human-readable string for the AI prompt."""
+    # Group by topicId to detect retries
+    by_topic: dict[str, list[dict]] = {}
+    for qi in queue_items:
+        tid = qi.get("knowledgeTopicId", "")
+        by_topic.setdefault(tid, []).append(qi)
+
+    lines = []
+    for topic_id, attempts in by_topic.items():
+        topic = topics_map.get(topic_id, {})
+        description = topic.get("knowledgeTopic", topic.get("description", "Unknown topic"))
+
+        # Find final result
+        final_correct = any(a.get("status") == "completed_correct" for a in attempts)
+        attempt_count = len(attempts)
+
+        if final_correct:
+            if attempt_count > 1:
+                result = f"Correct (after {attempt_count} attempts)"
+            else:
+                result = "Correct"
+        else:
+            has_incorrect = any(a.get("status") == "completed_incorrect" for a in attempts)
+            if has_incorrect:
+                if attempt_count > 1:
+                    result = f"Incorrect (after {attempt_count} attempts)"
+                else:
+                    result = "Incorrect"
+            else:
+                result = "Not attempted"
+
+        lines.append(f"Topic: \"{description}\" — {result}")
+    return "\n".join(lines) if lines else "No knowledge topics in this unit."
+
+
+def handle_get_unit_grading_report(event, unit_id: str):
+    """GET /units/{unitId}/grading-report?studentId={studentId} — teacher view."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    qs = event.get("queryStringParameters") or {}
+    student_id = qs.get("studentId")
+    if not student_id:
+        return resp(400, {"error": "Missing studentId query parameter"})
+
+    # Check for existing report
+    gr_tbl = dynamodb.Table(T["GRADING_REPORTS"])
+    got = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id})
+    existing = got.get("Item")
+    if existing:
+        return resp(200, {
+            "id": existing["id"],
+            "unitId": unit_id,
+            "studentId": student_id,
+            "summary": existing.get("teacherSummary", ""),
+            "createdAt": existing.get("createdAt", ""),
+            "skillCompleted": existing.get("skillCompleted", 0),
+            "skillTotal": existing.get("skillTotal", 0),
+            "skillCompletedBeforeDeadline": existing.get("skillCompletedBeforeDeadline", 0),
+            "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
+            "knowledgeTotal": existing.get("knowledgeTotal", 0),
+            "deadline": existing.get("deadline", ""),
+            "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
+            "objectiveDetails": existing.get("objectiveDetails", []),
+        })
+
+    # Generate on-demand: gather data
+    units_tbl = dynamodb.Table(T["UNITS"])
+    unit_got = units_tbl.get_item(Key={"id": unit_id})
+    unit = unit_got.get("Item")
+    if not unit:
+        return resp_not_found("Unit")
+
+    course_id = unit.get("courseId", "")
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    course_got = courses_tbl.get_item(Key={"id": course_id})
+    course = course_got.get("Item") or {}
+
+    # Objectives for this unit
+    obj_tbl = dynamodb.Table(T["OBJECTIVES"])
+    objectives = query_all(
+        obj_tbl,
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+
+    # Progress for each objective
+    prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
+    progress_map = {}
+    for obj in objectives:
+        oid = obj.get("id")
+        if not oid:
+            continue
+        p_got = prog_tbl.get_item(Key={"studentId": student_id, "objectiveId": oid})
+        p = p_got.get("Item")
+        if p:
+            progress_map[oid] = p
+
+    # Knowledge queue items for this student + unit
+    kq_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    all_kq = query_all(
+        kq_tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    unit_kq = [qi for qi in all_kq if qi.get("unitId") == unit_id]
+
+    # Knowledge topics for this unit
+    kt_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topics = query_all(
+        kt_tbl,
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    topics_map = {t["id"]: t for t in topics if t.get("id")}
+
+    # Format data
+    deadline = unit.get("deadline")
+    objectives_data = _format_objectives_data(objectives, progress_map, deadline)
+    knowledge_data = _format_knowledge_data(unit_kq, topics_map)
+
+    # Compute stats for structured display
+    skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
+    skill_total = len(skill_objs)
+    skill_completed = 0
+    skill_completed_before_deadline = 0
+    latest_completion_ts = None
+    objective_details = []
+    for o in skill_objs:
+        p = progress_map.get(o.get("id"), {})
+        completed = p.get("stars", 0) >= 3 or p.get("currentStageType") == "challenge"
+        ts = p.get("updatedAt") or p.get("createdAt") if completed else None
+        detail = {
+            "title": o.get("title", ""),
+            "completed": completed,
+            "completedAt": ts or "",
+        }
+        if completed:
+            skill_completed += 1
+            if ts and (latest_completion_ts is None or ts > latest_completion_ts):
+                latest_completion_ts = ts
+            if deadline and ts and ts <= deadline:
+                skill_completed_before_deadline += 1
+                detail["beforeDeadline"] = True
+            elif deadline and ts:
+                detail["beforeDeadline"] = False
+        objective_details.append(detail)
+
+    # Knowledge stats from queue items
+    by_topic: dict[str, list[dict]] = {}
+    for qi in unit_kq:
+        tid = qi.get("knowledgeTopicId", "")
+        by_topic.setdefault(tid, []).append(qi)
+    knowledge_total = len(topics_map)
+    knowledge_correct = sum(
+        1 for attempts in by_topic.values()
+        if any(a.get("status") == "completed_correct" for a in attempts)
+    )
+
+    # Generate report
+    from backend_code.grading_report_pipeline import generate_teacher_summary, generate_student_summary
+
+    teacher_summary = generate_teacher_summary(
+        unit_title=unit.get("title", ""),
+        course_title=course.get("title", ""),
+        objectives_data=objectives_data,
+        knowledge_data=knowledge_data,
+    )
+    student_summary = generate_student_summary(
+        unit_title=unit.get("title", ""),
+        course_title=course.get("title", ""),
+        objectives_data=objectives_data,
+        knowledge_data=knowledge_data,
+    )
+
+    # Deadline completion status
+    all_completed = skill_completed == skill_total and skill_total > 0
+    completed_before_deadline = None
+    if deadline and all_completed and latest_completion_ts:
+        completed_before_deadline = latest_completion_ts <= deadline
+
+    # Store
+    report_id = str(uuid.uuid4())
+    now = iso_now()
+    report_item = {
+        "studentId": student_id,
+        "unitId": unit_id,
+        "id": report_id,
+        "courseId": course_id,
+        "teacherSummary": teacher_summary,
+        "studentSummary": student_summary,
+        "skillCompleted": skill_completed,
+        "skillTotal": skill_total,
+        "skillCompletedBeforeDeadline": skill_completed_before_deadline,
+        "knowledgeCorrect": knowledge_correct,
+        "knowledgeTotal": knowledge_total,
+        "deadline": deadline or "",
+        "completedBeforeDeadline": completed_before_deadline,
+        "objectiveDetails": objective_details,
+        "createdAt": now,
+    }
+    gr_tbl.put_item(Item=report_item)
+
+    return resp(200, {
+        "id": report_id,
+        "unitId": unit_id,
+        "studentId": student_id,
+        "summary": teacher_summary,
+        "createdAt": now,
+        "skillCompleted": skill_completed,
+        "skillTotal": skill_total,
+        "skillCompletedBeforeDeadline": skill_completed_before_deadline,
+        "knowledgeCorrect": knowledge_correct,
+        "knowledgeTotal": knowledge_total,
+        "deadline": deadline or "",
+        "completedBeforeDeadline": completed_before_deadline,
+        "objectiveDetails": objective_details,
+    })
+
+
+def handle_get_unit_feedback_for_student(event, unit_id: str):
+    """GET /units/{unitId}/feedback?studentId={studentId} — teacher view.
+    Returns a list of all teacher feedback messages for this student+unit."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    qs = event.get("queryStringParameters") or {}
+    student_id = qs.get("studentId")
+    if not student_id:
+        return resp(400, {"error": "Missing studentId query parameter"})
+
+    fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
+    items = query_all(
+        fb_tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    matches = [
+        f for f in items
+        if f.get("unitId") == unit_id and f.get("sourceType") == "teacher"
+    ]
+    # Sort oldest first
+    matches.sort(key=lambda f: f.get("createdAt", ""))
+    return resp(200, matches)
+
+
+def handle_create_unit_feedback(event, unit_id: str):
+    """POST /units/{unitId}/feedback — teacher creates feedback."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    student_id = body.get("studentId")
+    feedback_body = body.get("body")
+    if not student_id or not feedback_body:
+        return resp(400, {"error": "Missing studentId or body"})
+
+    # Look up unit for courseId and title
+    units_tbl = dynamodb.Table(T["UNITS"])
+    unit_got = units_tbl.get_item(Key={"id": unit_id})
+    unit = unit_got.get("Item")
+    if not unit:
+        return resp_not_found("Unit")
+
+    # Look up instructor name
+    instr_tbl = dynamodb.Table(T["INSTRUCTORS"])
+    instr_got = instr_tbl.get_item(Key={"id": instructor_id})
+    instr = instr_got.get("Item") or {}
+    instructor_name = instr.get("name", "Teacher")
+
+    item = {
+        "id": str(uuid.uuid4()),
+        "studentId": student_id,
+        "courseId": unit.get("courseId", ""),
+        "unitId": unit_id,
+        "title": unit.get("title", ""),
+        "body": feedback_body,
+        "sourceType": "teacher",
+        "instructorId": instructor_id,
+        "instructorName": instructor_name,
+        "createdAt": iso_now(),
+    }
+    fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
+    fb_tbl.put_item(Item=item)
+    return resp(201, item)
+
+
+def handle_update_feedback(event, feedback_id: str):
+    """PATCH /feedback/{feedbackId} — teacher updates feedback."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    new_body = body.get("body")
+    if not new_body:
+        return resp(400, {"error": "Missing body"})
+
+    # Find the feedback item by id (scan — acceptable at current scale)
+    fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
+    from boto3.dynamodb.conditions import Attr
+    scan_result = fb_tbl.scan(FilterExpression=Attr("id").eq(feedback_id), Limit=100)
+    items = scan_result.get("Items", [])
+    if not items:
+        return resp_not_found("FeedbackItem")
+
+    item = items[0]
+    fb_tbl.update_item(
+        Key={"studentId": item["studentId"], "id": item["id"]},
+        UpdateExpression="SET body = :b",
+        ExpressionAttributeValues={":b": new_body},
+    )
+    item["body"] = new_body
+    return resp(200, item)
+
+
+def handle_get_my_grading_report(event, unit_id: str):
+    """GET /units/{unitId}/my-grading-report — student view."""
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    gr_tbl = dynamodb.Table(T["GRADING_REPORTS"])
+    got = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id})
+    existing = got.get("Item")
+    if existing:
+        return resp(200, {
+            "id": existing["id"],
+            "unitId": unit_id,
+            "studentId": student_id,
+            "summary": existing.get("studentSummary", ""),
+            "createdAt": existing.get("createdAt", ""),
+            "skillCompleted": existing.get("skillCompleted", 0),
+            "skillTotal": existing.get("skillTotal", 0),
+            "skillCompletedBeforeDeadline": existing.get("skillCompletedBeforeDeadline", 0),
+            "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
+            "knowledgeTotal": existing.get("knowledgeTotal", 0),
+            "deadline": existing.get("deadline", ""),
+            "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
+            "objectiveDetails": existing.get("objectiveDetails", []),
+        })
+    return resp_null()
+
+
+def handle_get_my_feedback(event, unit_id: str):
+    """GET /units/{unitId}/my-feedback — student view.
+    Returns a list of all teacher feedback messages for this student+unit."""
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
+    items = query_all(
+        fb_tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    matches = [
+        f for f in items
+        if f.get("unitId") == unit_id and f.get("sourceType") == "teacher"
+    ]
+    matches.sort(key=lambda f: f.get("createdAt", ""))
+    return resp(200, matches)
 
 
 # ---- Chat ----
@@ -2867,7 +3301,21 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_reupload(event, unit_id)
 
-        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path and "/upload-status" not in path and "/identified-knowledge" not in path and "/files" not in path:
+        # ---- Student grading/feedback routes ----
+
+        if method == "GET" and path.endswith("/my-grading-report") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_my_grading_report(event, unit_id)
+
+        if method == "GET" and path.endswith("/my-feedback") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_my_feedback(event, unit_id)
+
+        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path and "/upload-status" not in path and "/identified-knowledge" not in path and "/files" not in path and "/grading-report" not in path and "/feedback" not in path and "/my-grading-report" not in path and "/my-feedback" not in path:
             unit_id = params.get("unitId")
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
@@ -2944,6 +3392,36 @@ def handler(event, context):
             if not course_id:
                 return resp(400, {"error": "Missing courseId"})
             return handle_list_feedback(event, course_id=course_id)
+
+        # ---- Teacher grading/feedback routes ----
+
+        if method == "GET" and path.endswith("/grading-report") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_unit_grading_report(event, unit_id)
+
+        if method == "GET" and path.endswith("/feedback") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_unit_feedback_for_student(event, unit_id)
+
+        if method == "POST" and path.endswith("/feedback") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_create_unit_feedback(event, unit_id)
+
+        if method == "PATCH" and path.startswith("/feedback/"):
+            feedback_id = params.get("feedbackId")
+            if not feedback_id:
+                # Extract from path manually if pathParameters doesn't have it
+                parts = path.strip("/").split("/")
+                feedback_id = parts[1] if len(parts) >= 2 else None
+            if not feedback_id:
+                return resp(400, {"error": "Missing feedbackId"})
+            return handle_update_feedback(event, feedback_id)
 
         if method == "GET" and path.endswith("/threads") and path.startswith("/units/"):
             unit_id = params.get("unitId")

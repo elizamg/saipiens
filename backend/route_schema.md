@@ -178,3 +178,36 @@ All instructor routes require instructor identity via `effective_instructor_id()
   - `status` is one of: `"processing"`, `"ready"`, `"error"`
   - `statusError` is present only when `status === "error"`
   - Frontend polls this every 3s after upload returns, then navigates to the unit page when `"ready"`
+
+---
+
+## 18) Grading Reports & Per-Unit Feedback
+
+### Teacher endpoints (require instructor auth)
+
+- **GET** `/units/{unitId}/grading-report?studentId={studentId}` → `GradingReport | null`
+  - Returns Sam's AI-generated grading report (teacher summary).
+  - If no report exists, generates one on-demand (calls Gemini to summarize student performance).
+  - Returns HTTP 200 with `null` body when no data is available yet (null-not-404).
+
+- **GET** `/units/{unitId}/feedback?studentId={studentId}` → `FeedbackItem | null`
+  - Returns teacher's written feedback for a student on a unit.
+  - Returns HTTP 200 with `null` body if no feedback written yet.
+
+- **POST** `/units/{unitId}/feedback` → `FeedbackItem`
+  - Body: `{ studentId: string, body: string }`
+  - Creates a new teacher feedback item (`sourceType: "teacher"`).
+
+- **PATCH** `/feedback/{feedbackId}` → `FeedbackItem`
+  - Body: `{ body: string }`
+  - Updates an existing teacher feedback item's body text.
+
+### Student endpoints (require student auth)
+
+- **GET** `/units/{unitId}/my-grading-report` → `GradingReport | null`
+  - Returns Sam's AI-generated grading report (student summary).
+  - Students cannot trigger generation — returns `null` if report hasn't been generated yet.
+
+- **GET** `/units/{unitId}/my-feedback` → `FeedbackItem | null`
+  - Returns teacher's feedback for the current student on a unit.
+  - Returns `null` if no feedback has been written.

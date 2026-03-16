@@ -10,11 +10,10 @@ import {
   getUnitGradingReport,
   getUnitFeedbackForStudent,
   createUnitFeedback,
-  updateFeedback,
   getAgent,
 } from "../services/api";
 import type { Course, Instructor, Student, Unit, GradingReport, FeedbackItem, Agent } from "../types/domain";
-import { GRAY_400, GRAY_600, GRAY_900, GRAY_200, GRAY_100, WHITE, SUCCESS_GREEN } from "../theme/colors";
+import { GRAY_400, GRAY_600, GRAY_900, GRAY_200, GRAY_100, WHITE, SUCCESS_GREEN, PRIMARY } from "../theme/colors";
 
 export default function TeacherFeedbackUnitPage() {
   const { courseId, studentId, unitId } = useParams<{
@@ -29,7 +28,7 @@ export default function TeacherFeedbackUnitPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [unit, setUnit] = useState<Unit | null>(null);
   const [report, setReport] = useState<GradingReport | null>(null);
-  const [existingFeedback, setExistingFeedback] = useState<FeedbackItem | null>(null);
+  const [feedbackMessages, setFeedbackMessages] = useState<FeedbackItem[]>([]);
   const [agent, setAgent] = useState<Agent | null>(null);
   const [feedbackBody, setFeedbackBody] = useState("");
   const [saving, setSaving] = useState(false);
@@ -46,7 +45,7 @@ export default function TeacherFeedbackUnitPage() {
           listTeacherStudents(),
           getUnit(unitId!),
           getUnitGradingReport(unitId!, studentId!).catch(() => null),
-          getUnitFeedbackForStudent(unitId!, studentId!).catch(() => null),
+          getUnitFeedbackForStudent(unitId!, studentId!).catch(() => []),
           getAgent(),
         ]);
         setInstructor(instr);
@@ -54,8 +53,7 @@ export default function TeacherFeedbackUnitPage() {
         setStudent(allStudents.find((s) => s.id === studentId) ?? null);
         setUnit(u);
         setReport(r);
-        setExistingFeedback(fb);
-        setFeedbackBody(fb?.body ?? "");
+        setFeedbackMessages(fb);
         setAgent(ag);
       } catch (e) {
         console.error(e);
@@ -71,13 +69,9 @@ export default function TeacherFeedbackUnitPage() {
     setSaving(true);
     setSaved(false);
     try {
-      if (existingFeedback) {
-        const updated = await updateFeedback(existingFeedback.id, feedbackBody.trim());
-        setExistingFeedback(updated);
-      } else {
-        const created = await createUnitFeedback(unitId, studentId, feedbackBody.trim());
-        setExistingFeedback(created);
-      }
+      const created = await createUnitFeedback(unitId, studentId, feedbackBody.trim());
+      setFeedbackMessages((prev) => [...prev, created]);
+      setFeedbackBody("");
       setSaved(true);
     } catch (e) {
       console.error(e);
@@ -102,6 +96,11 @@ export default function TeacherFeedbackUnitPage() {
     flexShrink: 0,
   };
 
+  const skillPct = report && report.skillTotal ? Math.round((report.skillCompleted! / report.skillTotal) * 100) : 0;
+  const knowledgePct = report && report.knowledgeTotal ? Math.round((report.knowledgeCorrect! / report.knowledgeTotal) * 100) : 0;
+  // Use unit deadline as fallback if report was cached before deadline field was added
+  const deadline = report?.deadline || unit?.deadline;
+
   return (
     <AppShell
       student={instructor ? { ...instructor, yearLabel: "" } : null}
@@ -125,7 +124,74 @@ export default function TeacherFeedbackUnitPage() {
           <p style={{ fontSize: 14, color: GRAY_600 }}>Loading…</p>
         ) : (
           <>
-            {/* Sam's Report — identical to student view */}
+            {/* Structured Stats */}
+            {report && (
+              <>
+                <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                  <StatCard label="Skills Completed" value={`${report.skillCompleted ?? 0}/${report.skillTotal ?? 0}`} pct={skillPct} />
+                  <StatCard label="Knowledge Correct" value={`${report.knowledgeCorrect ?? 0}/${report.knowledgeTotal ?? 0}`} pct={knowledgePct} />
+                </div>
+                {deadline && (
+                  <div style={{
+                    background: WHITE,
+                    border: `1px solid ${GRAY_200}`,
+                    borderRadius: 12,
+                    padding: "12px 20px",
+                    marginBottom: 20,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 12, color: GRAY_400, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        Deadline
+                      </p>
+                      <p style={{ margin: "2px 0 0 0", fontSize: 15, fontWeight: 600, color: GRAY_900 }}>
+                        {new Date(deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                      </p>
+                    </div>
+                    {report.completedBeforeDeadline === true && (
+                      <span style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: SUCCESS_GREEN,
+                        background: "rgba(92,143,106,0.1)",
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                      }}>
+                        Completed on time
+                      </span>
+                    )}
+                    {report.completedBeforeDeadline === false && (
+                      <span style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#c45a3c",
+                        background: "rgba(196,90,60,0.1)",
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                      }}>
+                        Completed late
+                      </span>
+                    )}
+                    {report.completedBeforeDeadline == null && skillPct < 100 && (
+                      <span style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: GRAY_400,
+                        background: GRAY_100,
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                      }}>
+                        In progress
+                      </span>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Sam's Report */}
             <div style={cardStyles}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                 {agent?.avatarUrl ? (
@@ -136,7 +202,11 @@ export default function TeacherFeedbackUnitPage() {
                 <span style={{ fontWeight: 600, fontSize: 15, color: GRAY_900 }}>Sam</span>
               </div>
               {report ? (
-                <p style={{ margin: 0, fontSize: 14, color: GRAY_600, lineHeight: 1.6 }}>{report.summary}</p>
+                <div style={{ margin: 0, fontSize: 14, color: GRAY_600, lineHeight: 1.6 }}>
+                  {report.summary.split("\n").map((para, i) => (
+                    <p key={i} style={{ margin: i === 0 ? 0 : "12px 0 0 0" }}>{para}</p>
+                  ))}
+                </div>
               ) : (
                 <div style={{ background: GRAY_100, borderRadius: 8, padding: "12px 16px" }}>
                   <p style={{ margin: 0, fontSize: 14, color: GRAY_400 }}>Waiting for Sam's feedback…</p>
@@ -144,19 +214,46 @@ export default function TeacherFeedbackUnitPage() {
               )}
             </div>
 
-            {/* Teacher Feedback — same card structure, body is editable */}
+            {/* Past Teacher Messages */}
+            {feedbackMessages.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_600, margin: "0 0 8px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Your Messages
+                </p>
+                {feedbackMessages.map((fb) => (
+                  <div key={fb.id} style={{ ...cardStyles, marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <div style={{ ...avatarStyles, width: 28, height: 28, background: GRAY_200, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: GRAY_600 }}>
+                        {(instructor?.name ?? "T").charAt(0).toUpperCase()}
+                      </div>
+                      <span style={{ fontWeight: 600, fontSize: 14, color: GRAY_900 }}>{instructor?.name ?? "Teacher"}</span>
+                      {fb.createdAt && (
+                        <span style={{ fontSize: 12, color: GRAY_400, marginLeft: "auto" }}>
+                          {new Date(fb.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: 0, fontSize: 14, color: GRAY_600, lineHeight: 1.6 }}>{fb.body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* New Feedback Input */}
             <div style={cardStyles}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                 <div style={{ ...avatarStyles, background: GRAY_200, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: GRAY_600 }}>
-                  T
+                  {(instructor?.name ?? "T").charAt(0).toUpperCase()}
                 </div>
-                <span style={{ fontWeight: 600, fontSize: 15, color: GRAY_900 }}>Your Feedback</span>
+                <span style={{ fontWeight: 600, fontSize: 15, color: GRAY_900 }}>
+                  {feedbackMessages.length > 0 ? "Add Another Message" : "Write Feedback"}
+                </span>
               </div>
               <textarea
                 value={feedbackBody}
                 onChange={(e) => { setFeedbackBody(e.target.value); setSaved(false); }}
                 placeholder="Write your feedback for this student…"
-                rows={5}
+                rows={4}
                 style={{
                   width: "100%",
                   padding: "10px 12px",
@@ -177,11 +274,11 @@ export default function TeacherFeedbackUnitPage() {
                   disabled={saving || !feedbackBody.trim()}
                   style={{ padding: "10px 20px", fontSize: 14 }}
                 >
-                  {saving ? "Saving…" : existingFeedback ? "Update Feedback" : "Send Feedback"}
+                  {saving ? "Sending…" : "Send"}
                 </Button>
                 {saved && (
                   <span style={{ fontSize: 13, color: SUCCESS_GREEN, fontWeight: 500 }}>
-                    ✓ Saved
+                    ✓ Sent
                   </span>
                 )}
               </div>
@@ -190,5 +287,27 @@ export default function TeacherFeedbackUnitPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function StatCard({ label, value, pct }: { label: string; value: string; pct: number }) {
+  return (
+    <div style={{
+      flex: 1,
+      background: WHITE,
+      border: `1px solid ${GRAY_200}`,
+      borderRadius: 12,
+      padding: "16px 20px",
+    }}>
+      <p style={{ margin: "0 0 4px 0", fontSize: 12, color: GRAY_400, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+        {label}
+      </p>
+      <p style={{ margin: "0 0 8px 0", fontSize: 22, fontWeight: 700, color: GRAY_900 }}>
+        {value}
+      </p>
+      <div style={{ height: 6, background: GRAY_100, borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: PRIMARY, borderRadius: 3, transition: "width 0.3s" }} />
+      </div>
+    </div>
   );
 }

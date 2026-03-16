@@ -51,7 +51,7 @@ export default function TeacherFeedbackStudentPage() {
           units.map((unit, i) => ({
             unit,
             reportReady: reports[i] !== null,
-            feedbackSent: feedbacks[i] !== null,
+            feedbackSent: Array.isArray(feedbacks[i]) ? feedbacks[i].length > 0 : feedbacks[i] !== null,
           }))
         );
       } catch (e) {

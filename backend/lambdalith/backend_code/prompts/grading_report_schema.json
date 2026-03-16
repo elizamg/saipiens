@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "The grading report summary."
+    }
+  },
+  "required": [
+    "summary"
+  ]
+}

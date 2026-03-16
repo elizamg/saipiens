@@ -69,6 +69,9 @@ export interface FeedbackItem {
   sourceType: FeedbackSourceType;
   /** Set when sourceType is "teacher". */
   instructorId?: string;
+  /** Instructor display name, set when sourceType is "teacher". */
+  instructorName?: string;
+  createdAt?: string;
 }
 
 /** Sam's AI-generated grading report for a student's unit performance */
@@ -79,6 +82,12 @@ export interface GradingReport {
   /** Content shown to the caller — teacher gets detailed view, student gets encouraging view */
   summary: string;
   createdAt: string;
+  skillCompleted?: number;
+  skillTotal?: number;
+  knowledgeCorrect?: number;
+  knowledgeTotal?: number;
+  deadline?: string;
+  completedBeforeDeadline?: boolean | null;
 }
 
 // ============ Objective (Sidebar Item) & Stage Types ============
