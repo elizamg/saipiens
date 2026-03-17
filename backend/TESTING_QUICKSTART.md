@@ -1,10 +1,14 @@
 # Backend Testing Quickstart
 
-No AWS credentials needed. The API is publicly accessible with dev auth headers.
-
 **Base URL:** `https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod`
+
+**Primary auth:** Cognito JWT (see `dev_credentials.md` for test account emails/passwords)
+**Dev auth fallback:** Dev headers still work when `DEV_AUTH_ENABLED=true` on the Lambda, but are blocked by the API Gateway JWT authorizer. Dev headers only work for direct Lambda invocations or when the authorizer is temporarily removed.
+
 **Dev student ID:** `student_demo_1`
 **Dev token:** `dev-secret`
+
+> **Note:** Since the API Gateway JWT authorizer is now active on all routes (except `/health`), the dev-header examples below require either (a) removing the authorizer temporarily, or (b) using Cognito JWT tokens instead. See the Cognito auth section at the bottom for JWT-based testing.
 
 ---
 
@@ -226,4 +230,50 @@ await api("/units/unit_demo_1/knowledge-queue");
 
 // Knowledge progress (correct/incorrect counts)
 await api("/units/unit_demo_1/knowledge-progress");
+
+// Ask a clarifying question (does NOT grade)
+await api("/knowledge-queue/<queueItemId>/clarify", {
+  method: "POST",
+  body: JSON.stringify({ question: "Can you explain this differently?" }),
+});
+
+// Submit an answer for grading (AI grades via Gemini)
+await api("/knowledge-queue/<queueItemId>/complete", {
+  method: "POST",
+  body: JSON.stringify({ answer: "The answer is photosynthesis." }),
+});
 ```
+
+---
+
+## Testing with Cognito JWT tokens
+
+Since the API Gateway JWT authorizer is active, you can get tokens using the `amazon-cognito-identity-js` SDK:
+
+```bash
+# Install the SDK in the frontend directory
+cd frontend && npm install
+
+# Get tokens via Node.js
+node -e "
+const AmazonCognitoIdentity = require('amazon-cognito-identity-js');
+const pool = new AmazonCognitoIdentity.CognitoUserPool({
+  UserPoolId: 'us-west-1_pzs7P5vGg',
+  ClientId: '34es28m8ocaom5rt55khms7p07'
+});
+const user = new AmazonCognitoIdentity.CognitoUser({ Username: 'dev-student@sapiens.dev', Pool: pool });
+user.authenticateUser(
+  new AmazonCognitoIdentity.AuthenticationDetails({ Username: 'dev-student@sapiens.dev', Password: 'SapiensStudent#2026' }),
+  { onSuccess: (r) => console.log(r.getIdToken().getJwtToken()), onFailure: (e) => console.error(e) }
+);
+"
+```
+
+Then use the token with curl:
+
+```bash
+TOKEN="<paste token here>"
+curl "$BASE/current-student" -H "Authorization: Bearer $TOKEN"
+```
+
+Tokens expire after 1 hour. See also `run_tests.sh` in the repo root for an automated test script that handles token refresh.

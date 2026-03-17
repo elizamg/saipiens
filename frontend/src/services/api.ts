@@ -13,6 +13,7 @@ import type {
   Unit,
   Award,
   FeedbackItem,
+  GradingReport,
   Objective,
   ItemStage,
   StudentObjectiveProgress as ProgressType,
@@ -210,6 +211,58 @@ export function listFeedbackForCourse(courseId: string): Promise<FeedbackItem[]>
 }
 
 // ---------------------------------------------------------------------------
+// Grading Reports & Per-Unit Feedback
+// ---------------------------------------------------------------------------
+
+/** Teacher: Sam's grading report for a specific student's unit (teacher view). */
+export function getUnitGradingReport(
+  unitId: string,
+  studentId: string
+): Promise<GradingReport | null> {
+  return get<GradingReport | null>(
+    `/units/${unitId}/grading-report?studentId=${encodeURIComponent(studentId)}`
+  );
+}
+
+/** Teacher: Retrieve all teacher feedback messages for a student in a unit. */
+export function getUnitFeedbackForStudent(
+  unitId: string,
+  studentId: string
+): Promise<FeedbackItem[]> {
+  return get<FeedbackItem[]>(
+    `/units/${unitId}/feedback?studentId=${encodeURIComponent(studentId)}`
+  );
+}
+
+/** Teacher: Create new teacher feedback for a student in a unit. */
+export function createUnitFeedback(
+  unitId: string,
+  studentId: string,
+  body: string
+): Promise<FeedbackItem> {
+  return post<FeedbackItem>(`/units/${unitId}/feedback`, { studentId, body });
+}
+
+/** Teacher: Update existing teacher feedback by id. */
+export function updateFeedback(
+  feedbackId: string,
+  body: string,
+  studentId?: string
+): Promise<FeedbackItem> {
+  return patch<FeedbackItem>(`/feedback/${feedbackId}`, { body, studentId });
+}
+
+/** Student: Sam's grading report for the current student's unit (student view). */
+export function getMyUnitGradingReport(unitId: string): Promise<GradingReport | null> {
+  return get<GradingReport | null>(`/units/${unitId}/my-grading-report`);
+}
+
+/** Student: All teacher feedback messages for the current student in a unit. */
+export function getMyUnitFeedback(unitId: string): Promise<FeedbackItem[]> {
+  return get<FeedbackItem[]>(`/units/${unitId}/my-feedback`);
+}
+
+// ---------------------------------------------------------------------------
 // Chat Threads
 // ---------------------------------------------------------------------------
 
@@ -271,13 +324,22 @@ export function listKnowledgeMessages(_queueItemId: string): Promise<ChatMessage
 }
 
 export function sendKnowledgeMessage(
-  _queueItemId: string,
-  _role: "student" | "tutor",
-  _content: string,
-  _metadata?: ChatMessage["metadata"]
+  queueItemId: string,
+  role: "student" | "tutor",
+  content: string,
+  metadata?: ChatMessage["metadata"]
 ): Promise<ChatMessage> {
-  // Knowledge queue doesn't use a chat interface — stub for UI compat.
-  return Promise.reject(new Error("Knowledge queue does not support chat messages"));
+  // Knowledge messages are session-only (no backend persistence).
+  // Create a local ChatMessage object for the UI.
+  const msg: ChatMessage = {
+    id: `kqi_msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    threadId: queueItemId,
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    ...(metadata ? { metadata } : {}),
+  };
+  return Promise.resolve(msg);
 }
 
 export function getKnowledgeQueue(
@@ -291,11 +353,21 @@ export function completeKnowledgeAttempt(
   _unitId: string,
   _studentId: string,
   queueItemId: string,
-  is_correct: boolean
-): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }> {
-  return post<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem }>(
+  answer: string
+): Promise<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem; tutorFeedback?: string }> {
+  return post<{ updatedItem: KnowledgeQueueItem; newQueueItem?: KnowledgeQueueItem; tutorFeedback?: string }>(
     `/knowledge-queue/${queueItemId}/complete`,
-    { is_correct }
+    { answer }
+  );
+}
+
+export function clarifyKnowledgeQuestion(
+  queueItemId: string,
+  question: string
+): Promise<{ answer: string }> {
+  return post<{ answer: string }>(
+    `/knowledge-queue/${queueItemId}/clarify`,
+    { question }
   );
 }
 
@@ -322,37 +394,51 @@ export function updateObjectiveEnabled(
 }
 
 // ---------------------------------------------------------------------------
-// Teacher: Unit upload (multipart/form-data)
+// Teacher: Unit upload (pre-signed S3 URLs)
 // ---------------------------------------------------------------------------
 
+/**
+ * Upload documents to create a new unit.
+ *
+ * Uses a 3-step flow to bypass the API Gateway 10 MB payload limit:
+ *   1. POST /courses/{courseId}/units/upload — creates Unit, returns pre-signed S3 PUT URLs
+ *   2. PUT each file directly to S3 via its pre-signed URL (parallel)
+ *   3. POST /units/{unitId}/process — triggers the async curriculum pipeline
+ */
 export async function createUnitFromUpload(
   courseId: string,
   files: File[],
   unitTitle?: string
-): Promise<{ unit: Unit; objectives: Objective[] }> {
-  const token = await getAuthToken();
-  const formData = new FormData();
-  formData.append("unitName", unitTitle ?? "Untitled Unit");
-  for (const file of files) {
-    formData.append("files", file, file.name);
-  }
-
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  // Do NOT set Content-Type — the browser adds it with the multipart boundary.
-
-  const res = await fetch(`${BASE}/courses/${courseId}/units/upload`, {
-    method: "POST",
-    headers,
-    body: formData,
+): Promise<{ unitId: string }> {
+  // Step 1: Create the unit and get pre-signed upload URLs
+  const { unitId, uploadUrls } = await post<{
+    unitId: string;
+    uploadUrls: Record<string, string>;
+  }>(`/courses/${courseId}/units/upload`, {
+    unitName: unitTitle ?? "Untitled Unit",
+    fileNames: files.map((f) => f.name),
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+
+  // Step 2: Upload files directly to S3 (parallel)
+  const uploadResults = await Promise.all(
+    files.map((file) => {
+      const url = uploadUrls[file.name];
+      if (!url) throw new Error(`No upload URL for file: ${file.name}`);
+      return fetch(url, { method: "PUT", body: file });
+    })
+  );
+  for (const res of uploadResults) {
+    if (!res.ok) throw new Error(`S3 upload failed: ${res.status} ${res.statusText}`);
   }
-  return res.json();
+
+  // Step 3: Trigger the processing pipeline
+  await post(`/units/${unitId}/process`, {});
+
+  return { unitId };
+}
+
+export function processUnit(unitId: string): Promise<{ unitId: string; status: string }> {
+  return post(`/units/${unitId}/process`, {});
 }
 
 export function getUploadStatus(
@@ -363,8 +449,88 @@ export function getUploadStatus(
   );
 }
 
+export function getIdentifiedKnowledge(
+  unitId: string
+): Promise<{ unitId: string; identifiedKnowledge: { type: string; description: string }[] }> {
+  return get(`/units/${unitId}/identified-knowledge`);
+}
+
+export function generateSelectedObjectives(
+  unitId: string,
+  selectedObjectives: { type: string; description: string }[]
+): Promise<{ unitId: string; status: string }> {
+  return post(`/units/${unitId}/generate`, { selectedObjectives });
+}
+
 export function updateUnitTitle(unitId: string, title: string): Promise<Unit> {
   return patch<Unit>(`/units/${unitId}/title`, { title });
+}
+
+export function updateUnitDeadline(unitId: string, deadline: string | null): Promise<Unit> {
+  return patch<Unit>(`/units/${unitId}/deadline`, { deadline });
+}
+
+export function updateCourseTitle(courseId: string, title: string): Promise<Course> {
+  return patch<Course>(`/courses/${courseId}/title`, { title });
+}
+
+export function deleteUnit(unitId: string): Promise<void> {
+  return apiFetch(`/units/${unitId}`, { method: "DELETE" });
+}
+
+export function deleteCourse(courseId: string): Promise<void> {
+  return apiFetch(`/courses/${courseId}`, { method: "DELETE" });
+}
+
+export function restoreUnit(unitId: string): Promise<Unit> {
+  return patch<Unit>(`/units/${unitId}/restore`, {});
+}
+
+export function restoreCourse(courseId: string): Promise<Course> {
+  return patch<Course>(`/courses/${courseId}/restore`, {});
+}
+
+export function permanentlyDeleteUnit(unitId: string): Promise<void> {
+  return apiFetch(`/units/${unitId}/permanent`, { method: "DELETE" });
+}
+
+export function permanentlyDeleteCourse(courseId: string): Promise<void> {
+  return apiFetch(`/courses/${courseId}/permanent`, { method: "DELETE" });
+}
+
+/**
+ * Reset a unit back to "review" status so the teacher can re-select objectives.
+ * Deletes existing objectives, questions, threads, etc. for the unit.
+ */
+export function editObjectives(
+  unitId: string
+): Promise<{ unitId: string; status: string }> {
+  return post(`/units/${unitId}/edit-objectives`, {});
+}
+
+/**
+ * List uploaded files for a unit from S3.
+ */
+export function listUnitFiles(
+  unitId: string
+): Promise<{ files: { name: string; size: number; lastModified: string }[] }> {
+  return get(`/units/${unitId}/files`);
+}
+
+/**
+ * Re-upload documents for an existing unit.
+ * Returns pre-signed S3 PUT URLs. The caller must upload files to S3,
+ * then call POST /units/{unitId}/process to trigger the pipeline.
+ */
+export async function reuploadUnit(
+  unitId: string,
+  fileNames: string[]
+): Promise<{ uploadUrls: Record<string, string> }> {
+  const result = await post<{ unitId: string; uploadUrls: Record<string, string> }>(
+    `/units/${unitId}/reupload`,
+    { fileNames }
+  );
+  return { uploadUrls: result.uploadUrls };
 }
 
 // ---------------------------------------------------------------------------
@@ -394,6 +560,8 @@ export function createCourse(params: {
   title: string;
   icon: string;
   studentIds: string[];
+  subject?: string;
+  gradeLevel?: string;
 }): Promise<{ id: string; title: string; studentCount: number; icon: string }> {
   return post("/courses", params);
 }

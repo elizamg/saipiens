@@ -1,5 +1,4 @@
 import base64
-import cgi
 import io
 import json
 import os
@@ -11,6 +10,7 @@ from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.config import Config
 
 # Add backend_code to path so pipeline modules can import `utils` correctly
 _BACKEND_CODE_DIR = os.path.join(os.path.dirname(__file__), "backend_code")
@@ -18,7 +18,12 @@ if _BACKEND_CODE_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_CODE_DIR)
 
 dynamodb = boto3.resource("dynamodb")
-s3 = boto3.client("s3")
+s3 = boto3.client(
+    "s3",
+    region_name="us-west-1",
+    config=Config(s3={"addressing_style": "virtual"}, signature_version="s3v4"),
+    endpoint_url="https://s3.us-west-1.amazonaws.com",
+)
 lambda_client = boto3.client("lambda")
 
 UPLOAD_BUCKET = "sapiens-upload-staging-681816819209"
@@ -43,6 +48,7 @@ T = {
     "FEEDBACK_ITEMS": os.environ["FEEDBACK_ITEMS_TABLE"],
     "KNOWLEDGE_TOPICS": os.environ["KNOWLEDGE_TOPICS_TABLE"],
     "KNOWLEDGE_QUEUE_ITEMS": os.environ["KNOWLEDGE_QUEUE_ITEMS_TABLE"],
+    "GRADING_REPORTS": os.environ.get("GRADING_REPORTS_TABLE", ""),
 }
 
 # ---- Indexes (env vars) ----
@@ -116,6 +122,13 @@ def resp(status: int, obj=None, extra_headers: dict | None = None):
         body = json.dumps(_sanitize_for_json(obj), default=_json_default)
 
     return {"statusCode": status, "headers": headers, "body": body}
+
+
+def resp_null():
+    """Return HTTP 200 with JSON null body (null-not-404 contract)."""
+    r = resp(200)
+    r["body"] = "null"
+    return r
 
 
 def resp_options():
@@ -410,16 +423,23 @@ def handle_instructors_batch(event):
     return resp(200, ordered)
 
 
+def _normalize_course(item: dict) -> dict:
+    """Ensure the course object has `instructorIds` (array) for the frontend."""
+    if "instructorIds" not in item and "instructorId" in item:
+        item["instructorIds"] = [item["instructorId"]]
+    return item
+
+
 def handle_get_course(course_id: str):
     courses = dynamodb.Table(T["COURSES"])
     got = courses.get_item(Key={"id": course_id})
     item = got.get("Item")
     if not item:
         return resp_not_found("Course")
-    return resp(200, item)
+    return resp(200, _normalize_course(item))
 
 
-def handle_list_units(course_id: str):
+def handle_list_units(course_id: str, include_deleted: bool = False):
     units = dynamodb.Table(T["UNITS"])
     items = query_all(
         units,
@@ -427,6 +447,8 @@ def handle_list_units(course_id: str):
         key_condition=Key("courseId").eq(course_id),
         scan_forward=True,
     )
+    if not include_deleted:
+        items = [i for i in items if not i.get("deletedAt")]
     return resp(200, items)
 
 
@@ -504,7 +526,7 @@ def handle_list_courses_for_student(event, student_id_param: str | None):
     items = batch_get_all(T["COURSES"], keys)
 
     by_id = {it.get("id"): it for it in items if it.get("id")}
-    ordered = [by_id.get(cid) for cid in course_ids if by_id.get(cid) is not None]
+    ordered = [_normalize_course(by_id[cid]) for cid in course_ids if by_id.get(cid) is not None and not by_id.get(cid, {}).get("deletedAt")]
     return resp(200, ordered)
 
 
@@ -606,6 +628,7 @@ def handle_get_unit_progress(event, unit_id: str):
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
+    # --- Skill / Capstone objectives ---
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
     objectives = query_all(
         objectives_tbl,
@@ -614,25 +637,26 @@ def handle_get_unit_progress(event, unit_id: str):
         scan_forward=True,
     )
 
-    total = len(objectives)
-    if total == 0:
-        return resp(200, {"unitId": unit_id, "totalObjectives": 0, "completedObjectives": 0, "progressPercent": 0})
-
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     all_prog = query_all(
         prog_tbl,
         key_condition=Key("studentId").eq(student_id),
         scan_forward=True,
     )
-
     prog_by_obj = {p.get("objectiveId"): p for p in all_prog if p.get("objectiveId")}
-    completed = 0
+
+    obj_completed = 0
     for o in objectives:
         oid = o.get("id")
         p = prog_by_obj.get(oid)
-        earned = int(p.get("earnedStars") or 0) if p else 0
-        if earned == 3:
-            completed += 1
+        if p and p.get("progressState") == "challenge_complete":
+            obj_completed += 1
+
+    total = len(objectives)
+    completed = obj_completed
+
+    if total == 0:
+        return resp(200, {"unitId": unit_id, "totalObjectives": 0, "completedObjectives": 0, "progressPercent": 0})
 
     percent = int(round((completed / total) * 100))
     return resp(200, {"unitId": unit_id, "totalObjectives": total, "completedObjectives": completed, "progressPercent": percent})
@@ -664,6 +688,8 @@ def handle_advance_stage(event, objective_id: str):
     item["earnedStars"] = earned
     item["currentStageType"] = _compute_current_stage_type(earned)
     item["updatedAt"] = now
+    if earned == 3:
+        item["completedAt"] = now
 
     prog_tbl.put_item(Item=item)
     return resp(200, item)
@@ -701,6 +727,437 @@ def handle_list_feedback(event, course_id: str | None = None):
     if course_id:
         items = [f for f in items if f.get("courseId") == course_id]
     return resp(200, items)
+
+
+# ---- Grading Reports & Per-Unit Feedback ----
+
+def _format_objectives_data(objectives: list[dict], progress_map: dict, deadline: str | None) -> str:
+    """Format skill objective progress into a human-readable string for the AI prompt."""
+    lines = []
+    for obj in objectives:
+        oid = obj.get("id", "")
+        title = obj.get("title", "Unknown")
+        kind = obj.get("kind", "skill")
+        prog = progress_map.get(oid, {})
+        stars = int(prog.get("earnedStars", 0))
+        stage = prog.get("currentStageType", "begin")
+        updated_at = prog.get("updatedAt", "")
+
+        completed = stars >= 3 or stage == "challenge" or prog.get("progressState") == "challenge_complete"
+        status = "not started"
+        if completed:
+            status = "completed"
+            if deadline and updated_at:
+                try:
+                    dl = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+                    ua = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                    if ua > dl:
+                        diff = ua - dl
+                        days = diff.days
+                        if days == 0:
+                            status = "completed (same day as deadline)"
+                        elif days == 1:
+                            status = "completed (1 day after deadline)"
+                        else:
+                            status = f"completed ({days} days after deadline)"
+                    else:
+                        status = "completed (before deadline)"
+                except Exception:
+                    pass
+        elif stars > 0 or stage != "begin":
+            status = "in progress"
+
+        scaffolded = stage == "walkthrough" and kind != "knowledge"
+        scaffold_note = " (needed scaffolding)" if scaffolded else ""
+
+        lines.append(
+            f"{kind.capitalize()}: \"{title}\" — Stars: {stars}/3, Stage: {stage}{scaffold_note}, Status: {status}"
+        )
+    return "\n".join(lines) if lines else "No skill objectives in this unit."
+
+
+def _format_knowledge_data(queue_items: list[dict], topics_map: dict) -> str:
+    """Format knowledge topic results into a human-readable string for the AI prompt."""
+    # Group by topicId to detect retries
+    by_topic: dict[str, list[dict]] = {}
+    for qi in queue_items:
+        tid = qi.get("knowledgeTopicId", "")
+        by_topic.setdefault(tid, []).append(qi)
+
+    lines = []
+    for topic_id, attempts in by_topic.items():
+        topic = topics_map.get(topic_id, {})
+        description = topic.get("knowledgeTopic", topic.get("description", "Unknown topic"))
+
+        # Find final result
+        final_correct = any(a.get("status") == "completed_correct" for a in attempts)
+        attempt_count = len(attempts)
+
+        if final_correct:
+            if attempt_count > 1:
+                result = f"Correct (after {attempt_count} attempts)"
+            else:
+                result = "Correct"
+        else:
+            has_incorrect = any(a.get("status") == "completed_incorrect" for a in attempts)
+            if has_incorrect:
+                if attempt_count > 1:
+                    result = f"Incorrect (after {attempt_count} attempts)"
+                else:
+                    result = "Incorrect"
+            else:
+                result = "Not attempted"
+
+        lines.append(f"Topic: \"{description}\" — {result}")
+    return "\n".join(lines) if lines else "No knowledge topics in this unit."
+
+
+def handle_get_unit_grading_report(event, unit_id: str):
+    """GET /units/{unitId}/grading-report?studentId={studentId} — teacher view."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    qs = event.get("queryStringParameters") or {}
+    student_id = qs.get("studentId")
+    if not student_id:
+        return resp(400, {"error": "Missing studentId query parameter"})
+
+    # Check for existing report
+    gr_tbl = dynamodb.Table(T["GRADING_REPORTS"])
+    got = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id})
+    existing = got.get("Item")
+    if existing:
+        return resp(200, {
+            "id": existing["id"],
+            "unitId": unit_id,
+            "studentId": student_id,
+            "summary": existing.get("teacherSummary", ""),
+            "createdAt": existing.get("createdAt", ""),
+            "skillCompleted": existing.get("skillCompleted", 0),
+            "skillTotal": existing.get("skillTotal", 0),
+            "skillCompletedBeforeDeadline": existing.get("skillCompletedBeforeDeadline", 0),
+            "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
+            "knowledgeTotal": existing.get("knowledgeTotal", 0),
+            "deadline": existing.get("deadline", ""),
+            "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
+            "objectiveDetails": existing.get("objectiveDetails", []),
+        })
+
+    # Generate on-demand: gather data
+    units_tbl = dynamodb.Table(T["UNITS"])
+    unit_got = units_tbl.get_item(Key={"id": unit_id})
+    unit = unit_got.get("Item")
+    if not unit:
+        return resp_not_found("Unit")
+
+    course_id = unit.get("courseId", "")
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    course_got = courses_tbl.get_item(Key={"id": course_id})
+    course = course_got.get("Item") or {}
+
+    # Objectives for this unit
+    obj_tbl = dynamodb.Table(T["OBJECTIVES"])
+    objectives = query_all(
+        obj_tbl,
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+
+    # Progress for all objectives in one query (avoid N+1)
+    prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
+    all_prog = query_all(
+        prog_tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    obj_id_set = {obj.get("id") for obj in objectives if obj.get("id")}
+    progress_map = {
+        p["objectiveId"]: p for p in all_prog
+        if p.get("objectiveId") in obj_id_set
+    }
+
+    # Knowledge queue items for this student + unit
+    kq_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    all_kq = query_all(
+        kq_tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    unit_kq = [qi for qi in all_kq if qi.get("unitId") == unit_id]
+
+    # Knowledge topics for this unit
+    kt_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topics = query_all(
+        kt_tbl,
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    topics_map = {t["id"]: t for t in topics if t.get("id")}
+
+    # Format data
+    deadline = unit.get("deadline")
+    objectives_data = _format_objectives_data(objectives, progress_map, deadline)
+    knowledge_data = _format_knowledge_data(unit_kq, topics_map)
+
+    # Compute stats for structured display
+    skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
+    skill_total = len(skill_objs)
+    skill_completed = 0
+    skill_completed_before_deadline = 0
+    latest_completion_ts = None
+    objective_details = []
+    for o in skill_objs:
+        p = progress_map.get(o.get("id"), {})
+        completed = int(p.get("earnedStars", 0)) >= 3 or p.get("currentStageType") == "challenge"
+        ts = p.get("updatedAt") or p.get("createdAt") if completed else None
+        detail = {
+            "title": o.get("title", ""),
+            "completed": completed,
+            "completedAt": ts or "",
+        }
+        if completed:
+            skill_completed += 1
+            if ts and (latest_completion_ts is None or ts > latest_completion_ts):
+                latest_completion_ts = ts
+            if deadline and ts and ts <= deadline:
+                skill_completed_before_deadline += 1
+                detail["beforeDeadline"] = True
+            elif deadline and ts:
+                detail["beforeDeadline"] = False
+        objective_details.append(detail)
+
+    # Knowledge stats from queue items
+    by_topic: dict[str, list[dict]] = {}
+    for qi in unit_kq:
+        tid = qi.get("knowledgeTopicId", "")
+        by_topic.setdefault(tid, []).append(qi)
+    knowledge_total = len(topics_map)
+    knowledge_correct = sum(
+        1 for attempts in by_topic.values()
+        if any(a.get("status") == "completed_correct" for a in attempts)
+    )
+
+    # Generate report
+    from backend_code.grading_report_pipeline import generate_teacher_summary, generate_student_summary
+
+    teacher_summary = generate_teacher_summary(
+        unit_title=unit.get("title", ""),
+        course_title=course.get("title", ""),
+        objectives_data=objectives_data,
+        knowledge_data=knowledge_data,
+    )
+    student_summary = generate_student_summary(
+        unit_title=unit.get("title", ""),
+        course_title=course.get("title", ""),
+        objectives_data=objectives_data,
+        knowledge_data=knowledge_data,
+    )
+
+    # Deadline completion status
+    all_completed = skill_completed == skill_total and skill_total > 0
+    completed_before_deadline = None
+    if deadline and all_completed and latest_completion_ts:
+        completed_before_deadline = latest_completion_ts <= deadline
+
+    # Store
+    report_id = str(uuid.uuid4())
+    now = iso_now()
+    report_item = {
+        "studentId": student_id,
+        "unitId": unit_id,
+        "id": report_id,
+        "courseId": course_id,
+        "teacherSummary": teacher_summary,
+        "studentSummary": student_summary,
+        "skillCompleted": skill_completed,
+        "skillTotal": skill_total,
+        "skillCompletedBeforeDeadline": skill_completed_before_deadline,
+        "knowledgeCorrect": knowledge_correct,
+        "knowledgeTotal": knowledge_total,
+        "deadline": deadline or "",
+        "completedBeforeDeadline": completed_before_deadline,
+        "objectiveDetails": objective_details,
+        "createdAt": now,
+    }
+    gr_tbl.put_item(Item=report_item)
+
+    return resp(200, {
+        "id": report_id,
+        "unitId": unit_id,
+        "studentId": student_id,
+        "summary": teacher_summary,
+        "createdAt": now,
+        "skillCompleted": skill_completed,
+        "skillTotal": skill_total,
+        "skillCompletedBeforeDeadline": skill_completed_before_deadline,
+        "knowledgeCorrect": knowledge_correct,
+        "knowledgeTotal": knowledge_total,
+        "deadline": deadline or "",
+        "completedBeforeDeadline": completed_before_deadline,
+        "objectiveDetails": objective_details,
+    })
+
+
+def handle_get_unit_feedback_for_student(event, unit_id: str):
+    """GET /units/{unitId}/feedback?studentId={studentId} — teacher view.
+    Returns a list of all teacher feedback messages for this student+unit."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    qs = event.get("queryStringParameters") or {}
+    student_id = qs.get("studentId")
+    if not student_id:
+        return resp(400, {"error": "Missing studentId query parameter"})
+
+    fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
+    items = query_all(
+        fb_tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    matches = [
+        f for f in items
+        if f.get("unitId") == unit_id and f.get("sourceType") == "teacher"
+    ]
+    # Sort oldest first
+    matches.sort(key=lambda f: f.get("createdAt", ""))
+    return resp(200, matches)
+
+
+def handle_create_unit_feedback(event, unit_id: str):
+    """POST /units/{unitId}/feedback — teacher creates feedback."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    student_id = body.get("studentId")
+    feedback_body = body.get("body")
+    if not student_id or not feedback_body:
+        return resp(400, {"error": "Missing studentId or body"})
+
+    # Look up unit for courseId and title
+    units_tbl = dynamodb.Table(T["UNITS"])
+    unit_got = units_tbl.get_item(Key={"id": unit_id})
+    unit = unit_got.get("Item")
+    if not unit:
+        return resp_not_found("Unit")
+
+    # Look up instructor name
+    instr_tbl = dynamodb.Table(T["INSTRUCTORS"])
+    instr_got = instr_tbl.get_item(Key={"id": instructor_id})
+    instr = instr_got.get("Item") or {}
+    instructor_name = instr.get("name", "Teacher")
+
+    item = {
+        "id": str(uuid.uuid4()),
+        "studentId": student_id,
+        "courseId": unit.get("courseId", ""),
+        "unitId": unit_id,
+        "title": unit.get("title", ""),
+        "body": feedback_body,
+        "sourceType": "teacher",
+        "instructorId": instructor_id,
+        "instructorName": instructor_name,
+        "createdAt": iso_now(),
+    }
+    fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
+    fb_tbl.put_item(Item=item)
+    return resp(201, item)
+
+
+def handle_update_feedback(event, feedback_id: str):
+    """PATCH /feedback/{feedbackId} — teacher updates feedback.
+    Body: { "body": string, "studentId": string }
+    studentId is required so we can do a direct lookup (PK=studentId, SK=id)
+    instead of an expensive table scan.
+    """
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    new_body = body.get("body")
+    student_id = body.get("studentId")
+    if not new_body:
+        return resp(400, {"error": "Missing body"})
+
+    fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
+
+    if student_id:
+        # Direct lookup using composite key
+        got = fb_tbl.get_item(Key={"studentId": student_id, "id": feedback_id})
+        item = got.get("Item")
+    else:
+        # Fallback scan for backwards compatibility
+        from boto3.dynamodb.conditions import Attr
+        scan_result = fb_tbl.scan(FilterExpression=Attr("id").eq(feedback_id), Limit=100)
+        items = scan_result.get("Items", [])
+        item = items[0] if items else None
+
+    if not item:
+        return resp_not_found("FeedbackItem")
+
+    fb_tbl.update_item(
+        Key={"studentId": item["studentId"], "id": item["id"]},
+        UpdateExpression="SET body = :b",
+        ExpressionAttributeValues={":b": new_body},
+    )
+    item["body"] = new_body
+    return resp(200, item)
+
+
+def handle_get_my_grading_report(event, unit_id: str):
+    """GET /units/{unitId}/my-grading-report — student view."""
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    gr_tbl = dynamodb.Table(T["GRADING_REPORTS"])
+    got = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id})
+    existing = got.get("Item")
+    if existing:
+        return resp(200, {
+            "id": existing["id"],
+            "unitId": unit_id,
+            "studentId": student_id,
+            "summary": existing.get("studentSummary", ""),
+            "createdAt": existing.get("createdAt", ""),
+            "skillCompleted": existing.get("skillCompleted", 0),
+            "skillTotal": existing.get("skillTotal", 0),
+            "skillCompletedBeforeDeadline": existing.get("skillCompletedBeforeDeadline", 0),
+            "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
+            "knowledgeTotal": existing.get("knowledgeTotal", 0),
+            "deadline": existing.get("deadline", ""),
+            "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
+            "objectiveDetails": existing.get("objectiveDetails", []),
+        })
+    return resp_null()
+
+
+def handle_get_my_feedback(event, unit_id: str):
+    """GET /units/{unitId}/my-feedback — student view.
+    Returns a list of all teacher feedback messages for this student+unit."""
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
+    items = query_all(
+        fb_tbl,
+        key_condition=Key("studentId").eq(student_id),
+    )
+    matches = [
+        f for f in items
+        if f.get("unitId") == unit_id and f.get("sourceType") == "teacher"
+    ]
+    matches.sort(key=lambda f: f.get("createdAt", ""))
+    return resp(200, matches)
 
 
 # ---- Chat ----
@@ -974,7 +1431,7 @@ def _call_tutor_pipeline(
 
         elif stage_type == "challenge":
             if objective_kind == "knowledge":
-                from info_question_pipeline import grade_info
+                from backend_code.info_question_pipeline import grade_info
                 _is_correct, feedback = grade_info(
                     grade=grade,
                     subject=subject,
@@ -1165,6 +1622,9 @@ def handle_list_instructor_courses(event):
         scan_forward=True,
     )
 
+    # Filter out soft-deleted courses
+    items = [i for i in items if not i.get("deletedAt")]
+
     # Attach studentCount to each course by counting enrollments
     enrollments_tbl = dynamodb.Table(T["ENROLLMENTS"])
     for item in items:
@@ -1179,7 +1639,7 @@ def handle_list_instructor_courses(event):
         else:
             item["studentCount"] = 0
 
-    return resp(200, items)
+    return resp(200, [_normalize_course(i) for i in items])
 
 
 def handle_create_course(event):
@@ -1196,6 +1656,8 @@ def handle_create_course(event):
         return resp(400, {"error": "Missing title"})
 
     icon = (body.get("icon") or "general").strip() if isinstance(body, dict) else "general"
+    subject = (body.get("subject") or "").strip() if isinstance(body, dict) else ""
+    grade_level = (body.get("gradeLevel") or "").strip() if isinstance(body, dict) else ""
     student_ids = body.get("studentIds") if isinstance(body, dict) else None
     if not isinstance(student_ids, list):
         student_ids = []
@@ -1210,6 +1672,10 @@ def handle_create_course(event):
         "createdAt": now,
         "updatedAt": now,
     }
+    if subject:
+        item["subject"] = subject
+    if grade_level:
+        item["gradeLevel"] = grade_level
     dynamodb.Table(T["COURSES"]).put_item(Item=item)
 
     # Create enrollment records for the initial roster
@@ -1295,6 +1761,16 @@ def handle_list_students(event):
     while result.get("LastEvaluatedKey"):
         result = students_tbl.scan(ExclusiveStartKey=result["LastEvaluatedKey"])
         items.extend(result.get("Items", []))
+
+    # Filter out users who are also instructors
+    instructors_tbl = dynamodb.Table(T["INSTRUCTORS"])
+    instr_result = instructors_tbl.scan(ProjectionExpression="id")
+    instructor_ids = {i["id"] for i in instr_result.get("Items", [])}
+    while instr_result.get("LastEvaluatedKey"):
+        instr_result = instructors_tbl.scan(ProjectionExpression="id", ExclusiveStartKey=instr_result["LastEvaluatedKey"])
+        instructor_ids.update(i["id"] for i in instr_result.get("Items", []))
+
+    items = [s for s in items if s.get("id") not in instructor_ids]
     return resp(200, items)
 
 
@@ -1353,6 +1829,278 @@ def handle_update_unit_title(event, unit_id: str):
     return resp(200, updated)
 
 
+def handle_update_unit_deadline(event, unit_id: str):
+    """PATCH /units/{unitId}/deadline — set or clear a unit deadline."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    deadline = body.get("deadline") if isinstance(body, dict) else None
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    now = iso_now()
+    if deadline:
+        units_tbl.update_item(
+            Key={"id": unit_id},
+            UpdateExpression="SET deadline = :d, updatedAt = :u",
+            ExpressionAttributeValues={":d": deadline, ":u": now},
+        )
+    else:
+        units_tbl.update_item(
+            Key={"id": unit_id},
+            UpdateExpression="SET updatedAt = :u REMOVE deadline",
+            ExpressionAttributeValues={":u": now},
+        )
+    updated = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+    return resp(200, updated)
+
+
+def handle_update_course_title(event, course_id: str):
+    """PATCH /courses/{courseId}/title — update course title."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    title = (body.get("title") or "").strip() if isinstance(body, dict) else ""
+    if not title:
+        return resp(400, {"error": "Missing title"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    got = courses_tbl.get_item(Key={"id": course_id})
+    if not got.get("Item"):
+        return resp_not_found("Course")
+
+    now = iso_now()
+    courses_tbl.update_item(
+        Key={"id": course_id},
+        UpdateExpression="SET title = :t, updatedAt = :u",
+        ExpressionAttributeValues={":t": title, ":u": now},
+    )
+    updated = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+    return resp(200, _normalize_course(updated))
+
+
+def handle_soft_delete_unit(event, unit_id: str):
+    """DELETE /units/{unitId} — soft delete (sets deletedAt timestamp)."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    now = iso_now()
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET deletedAt = :d, updatedAt = :u",
+        ExpressionAttributeValues={":d": now, ":u": now},
+    )
+    return resp(200, {"unitId": unit_id, "deletedAt": now})
+
+
+def handle_soft_delete_course(event, course_id: str):
+    """DELETE /courses/{courseId} — soft delete (sets deletedAt timestamp)."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    got = courses_tbl.get_item(Key={"id": course_id})
+    if not got.get("Item"):
+        return resp_not_found("Course")
+
+    now = iso_now()
+    courses_tbl.update_item(
+        Key={"id": course_id},
+        UpdateExpression="SET deletedAt = :d, updatedAt = :u",
+        ExpressionAttributeValues={":d": now, ":u": now},
+    )
+    return resp(200, {"courseId": course_id, "deletedAt": now})
+
+
+def handle_restore_unit(event, unit_id: str):
+    """PATCH /units/{unitId}/restore — restore a soft-deleted unit."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    now = iso_now()
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="REMOVE deletedAt SET updatedAt = :u",
+        ExpressionAttributeValues={":u": now},
+    )
+    updated = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+    return resp(200, updated)
+
+
+def handle_restore_course(event, course_id: str):
+    """PATCH /courses/{courseId}/restore — restore a soft-deleted course."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    got = courses_tbl.get_item(Key={"id": course_id})
+    if not got.get("Item"):
+        return resp_not_found("Course")
+
+    now = iso_now()
+    courses_tbl.update_item(
+        Key={"id": course_id},
+        UpdateExpression="REMOVE deletedAt SET updatedAt = :u",
+        ExpressionAttributeValues={":u": now},
+    )
+    updated = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+    return resp(200, _normalize_course(updated))
+
+
+def _hard_delete_unit_records(unit_id: str):
+    """Delete all child records for a unit (objectives, questions, stages, threads, messages, progress, knowledge)."""
+    # Objectives + their children
+    obj_items = query_all(
+        dynamodb.Table(T["OBJECTIVES"]),
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for obj in obj_items:
+        oid = obj["id"]
+        # Questions
+        for q in query_all(dynamodb.Table(T["QUESTIONS"]), index_name=IDX["OBJECTIVE_QUESTIONS"], key_condition=Key("objectiveId").eq(oid)):
+            dynamodb.Table(T["QUESTIONS"]).delete_item(Key={"id": q["id"]})
+        # Item stages
+        for s in query_all(dynamodb.Table(T["ITEM_STAGES"]), index_name=IDX["ITEM_STAGES_BY_ITEM"], key_condition=Key("itemId").eq(oid)):
+            dynamodb.Table(T["ITEM_STAGES"]).delete_item(Key={"id": s["id"]})
+        # Objective itself
+        dynamodb.Table(T["OBJECTIVES"]).delete_item(Key={"id": oid})
+
+    # Chat threads + messages
+    threads = query_all(
+        dynamodb.Table(T["CHAT_THREADS"]),
+        index_name=IDX["UNIT_THREADS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for t in threads:
+        tid = t["id"]
+        # Messages for this thread
+        msgs = query_all(dynamodb.Table(T["CHAT_MESSAGES"]), key_condition=Key("threadId").eq(tid))
+        for m in msgs:
+            dynamodb.Table(T["CHAT_MESSAGES"]).delete_item(Key={"threadId": tid, "id": m["id"]})
+        dynamodb.Table(T["CHAT_THREADS"]).delete_item(Key={"id": tid})
+
+    # Knowledge topics
+    topics = query_all(
+        dynamodb.Table(T["KNOWLEDGE_TOPICS"]),
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for topic in topics:
+        dynamodb.Table(T["KNOWLEDGE_TOPICS"]).delete_item(Key={"id": topic["id"]})
+
+    # Knowledge queue items (scan and filter — no unit-level index with studentId PK)
+    kqi_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    result = kqi_tbl.scan(FilterExpression=Key("unitId").eq(unit_id))
+    for item in result.get("Items", []):
+        kqi_tbl.delete_item(Key={"studentId": item["studentId"], "id": item["id"]})
+    while result.get("LastEvaluatedKey"):
+        result = kqi_tbl.scan(FilterExpression=Key("unitId").eq(unit_id), ExclusiveStartKey=result["LastEvaluatedKey"])
+        for item in result.get("Items", []):
+            kqi_tbl.delete_item(Key={"studentId": item["studentId"], "id": item["id"]})
+
+    # Student objective progress (scan and filter by objective IDs)
+    if obj_items:
+        prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
+        obj_id_set = {o["id"] for o in obj_items}
+        result = prog_tbl.scan()
+        for item in result.get("Items", []):
+            if item.get("objectiveId") in obj_id_set:
+                prog_tbl.delete_item(Key={"studentId": item["studentId"], "objectiveId": item["objectiveId"]})
+        while result.get("LastEvaluatedKey"):
+            result = prog_tbl.scan(ExclusiveStartKey=result["LastEvaluatedKey"])
+            for item in result.get("Items", []):
+                if item.get("objectiveId") in obj_id_set:
+                    prog_tbl.delete_item(Key={"studentId": item["studentId"], "objectiveId": item["objectiveId"]})
+
+
+def handle_hard_delete_unit(event, unit_id: str):
+    """DELETE /units/{unitId}/permanent — permanently delete unit and all child records."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    if not got.get("Item"):
+        return resp_not_found("Unit")
+
+    _hard_delete_unit_records(unit_id)
+    units_tbl.delete_item(Key={"id": unit_id})
+
+    # Clean up S3 uploads
+    try:
+        objs = s3.list_objects_v2(Bucket=UPLOAD_BUCKET, Prefix=f"uploads/{unit_id}/")
+        for obj in objs.get("Contents", []):
+            s3.delete_object(Bucket=UPLOAD_BUCKET, Key=obj["Key"])
+    except Exception:
+        pass  # S3 cleanup is best-effort
+
+    return resp(200, {"unitId": unit_id, "deleted": True})
+
+
+def handle_hard_delete_course(event, course_id: str):
+    """DELETE /courses/{courseId}/permanent — permanently delete course, its units, and enrollments."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    got = courses_tbl.get_item(Key={"id": course_id})
+    if not got.get("Item"):
+        return resp_not_found("Course")
+
+    # Delete all units in this course
+    unit_items = query_all(
+        dynamodb.Table(T["UNITS"]),
+        index_name=IDX["COURSE_UNITS"],
+        key_condition=Key("courseId").eq(course_id),
+    )
+    for u in unit_items:
+        _hard_delete_unit_records(u["id"])
+        dynamodb.Table(T["UNITS"]).delete_item(Key={"id": u["id"]})
+
+    # Delete enrollments
+    enroll_items = query_all(
+        dynamodb.Table(T["ENROLLMENTS"]),
+        index_name=IDX["COURSE_ENROLLMENTS"],
+        key_condition=Key("courseId").eq(course_id),
+    )
+    for e in enroll_items:
+        dynamodb.Table(T["ENROLLMENTS"]).delete_item(Key={"studentId": e["studentId"], "courseId": e["courseId"]})
+
+    # Delete course
+    courses_tbl.delete_item(Key={"id": course_id})
+    return resp(200, {"courseId": course_id, "deleted": True})
+
+
 def handle_update_objective_enabled(event, objective_id: str):
     instructor_id = effective_instructor_id(event)
     if not instructor_id:
@@ -1393,6 +2141,24 @@ def handle_list_knowledge_topics(unit_id: str):
         key_condition=Key("unitId").eq(unit_id),
     )
     return resp(200, items)
+
+
+# ---- Knowledge Queue helpers ----
+
+def _get_unit_context(unit_id: str, student_id: str) -> tuple:
+    """Return (subject, grade) for a unit + student."""
+    units_tbl = dynamodb.Table(T["UNITS"])
+    unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+    course_id = unit.get("courseId", "") if unit else ""
+    subject = "Unknown Subject"
+    if course_id:
+        courses_tbl = dynamodb.Table(T["COURSES"])
+        course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
+        subject = course.get("title", "Unknown Subject") if course else "Unknown Subject"
+    students_tbl = dynamodb.Table(T["STUDENTS"])
+    student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
+    grade = student.get("yearLabel", "Unknown Grade")
+    return subject, grade
 
 
 # ---- Knowledge Queue (student-facing) ----
@@ -1440,10 +2206,10 @@ def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
             "id": item_id,
             "unitId": unit_id,
             "knowledgeTopicId": topic_id,
-            "labelIndex": 1,
+            "labelIndex": idx + 1,
             "order": idx,
             "status": "active" if idx == 0 else "pending",
-            "question": question_text,
+            "questionPrompt": question_text,
             "createdAt": now,
         }
         queue_tbl.put_item(Item=item)
@@ -1478,22 +2244,93 @@ def handle_list_knowledge_queue(event, unit_id: str):
     visible = [i for i in unit_items if i.get("status") != "pending"]
     visible.sort(key=lambda x: x.get("order", 0))
 
+    # Normalize legacy "question" field to "questionPrompt" for frontend compat
+    for item in visible:
+        if "questionPrompt" not in item and "question" in item:
+            item["questionPrompt"] = item["question"]
+
+    # Backfill clarifying questions for any visible items missing them
+    needs_backfill = [i for i in visible if not i.get("suggestedQuestions") and i.get("questionPrompt")]
+    if needs_backfill:
+        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+        subject, grade = _get_unit_context(unit_id, student_id)
+        for item in needs_backfill:
+            try:
+                cqs = gen_clarifying_questions(subject, grade, item["questionPrompt"])
+                tbl.update_item(
+                    Key={"studentId": student_id, "id": item["id"]},
+                    UpdateExpression="SET suggestedQuestions = :sq",
+                    ExpressionAttributeValues={":sq": cqs},
+                )
+                item["suggestedQuestions"] = cqs
+            except Exception as e:
+                print(f"[clarifying-questions] backfill failed for {item['id']}: {e}")
+
     return resp(200, visible)
 
 
-def handle_complete_knowledge_queue_item(event, queue_item_id: str):
-    """POST /knowledge-queue/{queueItemId}/complete
-    Body: { "is_correct": boolean }
-    Sets status, optionally creates retry item, advances next pending item.
+def handle_clarify_knowledge_question(event, queue_item_id: str):
+    """POST /knowledge-queue/{queueItemId}/clarify
+    Body: { "question": string }
+    Returns the tutor's answer to a clarifying question (does NOT grade).
     """
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
     body = json.loads(event.get("body") or "{}")
+    clarifying_question = body.get("question")
+    if not clarifying_question:
+        return resp(400, {"error": "Missing question"})
+
+    tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    existing = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    if not existing:
+        return resp_not_found("KnowledgeQueueItem")
+    if existing.get("status") != "active":
+        return resp(400, {"error": "Item is not active"})
+
+    unit_id = existing["unitId"]
+    question = existing.get("questionPrompt", "") or existing.get("question", "")
+
+    # Look up topic description (skill being tested)
+    topic_id = existing.get("knowledgeTopicId")
+    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
+    skill_description = (topic.get("knowledgeTopic", "") if topic else "") or question
+
+    subject, grade = _get_unit_context(unit_id, student_id)
+
+    try:
+        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_question_answer
+        answer = gen_clarifying_question_answer(
+            subject=subject,
+            grade=grade,
+            skill_description=skill_description,
+            question=question,
+            clarifying_question=clarifying_question,
+        )
+        return resp(200, {"answer": answer})
+    except Exception as e:
+        print(f"[clarifying-answer] failed for {queue_item_id}: {e}")
+        return resp(500, {"error": "Failed to generate clarifying answer"})
+
+
+def handle_complete_knowledge_queue_item(event, queue_item_id: str):
+    """POST /knowledge-queue/{queueItemId}/complete
+    Body: { "answer": string }
+    Grades the student's answer via AI, sets status, optionally creates retry item,
+    advances next pending item.  Falls back to { "is_correct": boolean } if provided.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    body = json.loads(event.get("body") or "{}")
+    answer = body.get("answer")
     is_correct = body.get("is_correct")
-    if is_correct is None:
-        return resp(400, {"error": "Missing is_correct"})
+    if answer is None and is_correct is None:
+        return resp(400, {"error": "Missing answer"})
 
     tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
     existing = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
@@ -1502,36 +2339,77 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
 
     unit_id = existing["unitId"]
     now = iso_now()
+    tutor_feedback = None
+
+    # Pre-fetch context used by both grading and retry question generation
+    topic_id = existing.get("knowledgeTopicId")
+    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
+    topic_description = (topic.get("knowledgeTopic", "") if topic else "") or existing.get("questionPrompt", "") or existing.get("question", "")
+    question = existing.get("questionPrompt", "") or existing.get("question", "")
+
+    subject, grade = _get_unit_context(unit_id, student_id)
+
+    # Grade via AI if answer text was provided
+    if answer is not None and is_correct is None:
+        try:
+            from backend_code.info_question_pipeline import grade_info
+            is_correct, tutor_feedback = grade_info(
+                grade=grade,
+                subject=subject,
+                information=topic_description,
+                question=question,
+                answer=answer,
+            )
+        except Exception as e:
+            print(f"[grading error] knowledge queue item {queue_item_id}: {e}")
+            return resp(500, {"error": "Grading failed"})
 
     # Update the completed item
     new_status = "completed_correct" if is_correct else "completed_incorrect"
     tbl.update_item(
         Key={"studentId": student_id, "id": queue_item_id},
-        UpdateExpression="SET #s = :s, is_correct = :ic, updatedAt = :u",
+        UpdateExpression="SET #s = :s, is_correct = :ic, updatedAt = :u, completedAt = :c",
         ExpressionAttributeNames={"#s": "status"},
-        ExpressionAttributeValues={":s": new_status, ":ic": is_correct, ":u": now},
+        ExpressionAttributeValues={":s": new_status, ":ic": is_correct, ":u": now, ":c": now},
     )
     updated_item = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
 
     result: dict = {"updatedItem": updated_item}
+    if tutor_feedback is not None:
+        result["tutorFeedback"] = tutor_feedback
 
-    # If incorrect, create a retry item (pending, at end of queue)
+    # If incorrect, create a retry item with a newly generated question
     new_queue_item = None
     if not is_correct:
         all_items = query_all(tbl, key_condition=Key("studentId").eq(student_id))
         unit_items = [i for i in all_items if i.get("unitId") == unit_id]
         max_order = max((i.get("order", 0) for i in unit_items), default=0)
 
+        # Generate a new question for the retry item (reuse context from above)
+        retry_question = question
+        try:
+            from backend_code.info_question_pipeline import generate_info_question
+            retry_question = generate_info_question(
+                grade=grade,
+                subject=subject,
+                description=topic_description,
+            )
+        except Exception as e:
+            print(f"[retry question gen error] {queue_item_id}: {e}")
+            # Fall back to reusing the original question
+
+        max_label = max((i.get("labelIndex", 0) for i in unit_items), default=0)
         retry_id = str(uuid.uuid4())
         new_queue_item = {
             "studentId": student_id,
             "id": retry_id,
             "unitId": unit_id,
             "knowledgeTopicId": existing["knowledgeTopicId"],
-            "labelIndex": existing.get("labelIndex", 1) + 1,
+            "labelIndex": max_label + 1,
             "order": max_order + 1,
             "status": "pending",
-            "question": existing.get("question", ""),
+            "questionPrompt": retry_question,
             "createdAt": now,
         }
         tbl.put_item(Item=new_queue_item)
@@ -1610,61 +2488,60 @@ def _parse_multipart(event) -> tuple[dict, list[tuple[str, bytes]]]:
     Returns (fields: {name: value}, files: [(filename, bytes)]).
     API Gateway v2 base64-encodes binary payloads when isBase64Encoded=True.
     """
+    from email.parser import BytesParser
+    from email.policy import default as default_policy
+
     raw_body = event.get("body") or ""
     is_b64 = event.get("isBase64Encoded", False)
     body_bytes = base64.b64decode(raw_body) if is_b64 else raw_body.encode("utf-8")
 
     content_type = header(event, "content-type") or ""
 
-    # Use cgi.FieldStorage to parse multipart
-    environ = {
-        "REQUEST_METHOD": "POST",
-        "CONTENT_TYPE": content_type,
-        "CONTENT_LENGTH": str(len(body_bytes)),
-    }
-    fp = io.BytesIO(body_bytes)
-    fs = cgi.FieldStorage(fp=fp, environ=environ, keep_blank_values=True)
+    # Build a full MIME message so the email parser can handle it
+    mime_header = f"Content-Type: {content_type}\r\n\r\n".encode("utf-8")
+    msg = BytesParser(policy=default_policy).parsebytes(mime_header + body_bytes)
 
     fields: dict = {}
     files: list[tuple[str, bytes]] = []
 
-    for key in fs.keys():
-        item = fs[key]
-        if isinstance(item, list):
-            items = item
-        else:
-            items = [item]
-        for part in items:
-            if part.filename:
-                files.append((part.filename, part.file.read()))
-            else:
-                fields[key] = part.value
+    for part in msg.walk():
+        cd = part.get("Content-Disposition", "")
+        if "form-data" not in cd:
+            continue
+
+        name = part.get_param("name", header="Content-Disposition") or ""
+        filename = part.get_filename()
+        payload = part.get_payload(decode=True)
+
+        if filename:
+            files.append((filename, payload or b""))
+        elif name:
+            fields[name] = payload.decode("utf-8") if payload else ""
 
     return fields, files
 
 
 def handle_create_unit_from_upload(event, course_id: str):
     """
-    POST /courses/{courseId}/units/upload  (async version)
-    Multipart form: unitName (string), files (one or more PDFs).
-    1. Parses upload, stages files in S3
-    2. Creates Unit with status="processing"
-    3. Invokes Lambda async to run the pipeline
-    4. Returns { unit, objectives: [] } immediately
+    POST /courses/{courseId}/units/upload
+    JSON body: { unitName: string, fileNames: string[] }
+
+    Creates a Unit record with status="processing" and returns pre-signed
+    S3 PUT URLs so the browser can upload files directly — bypassing the
+    API Gateway 10 MB payload limit.
+
+    Returns 201 { unitId, uploadUrls: { filename: presignedUrl, ... } }
     """
     instructor_id = effective_instructor_id(event)
     if not instructor_id:
         return resp(401, {"error": "Unauthorized"})
 
-    try:
-        fields, files = _parse_multipart(event)
-    except Exception as e:
-        return resp(400, {"error": f"Failed to parse multipart body: {e}"})
+    body = json.loads(event.get("body") or "{}")
+    file_names: list[str] = body.get("fileNames") or []
+    if not file_names:
+        return resp(400, {"error": "fileNames is required (non-empty list)"})
 
-    if not files:
-        return resp(400, {"error": "No files uploaded"})
-
-    unit_name = (fields.get("unitName") or "Untitled Unit").strip()
+    unit_name = (body.get("unitName") or "Untitled Unit").strip()
 
     # Verify the course exists
     courses_tbl = dynamodb.Table(T["COURSES"])
@@ -1674,14 +2551,6 @@ def handle_create_unit_from_upload(event, course_id: str):
 
     now = iso_now()
     unit_id = str(uuid.uuid4())
-    grade = fields.get("grade") or "Unknown Grade"
-
-    # Upload files to S3 staging
-    s3_keys: list[dict] = []
-    for filename, data in files:
-        s3_key = f"uploads/{unit_id}/{filename}"
-        s3.put_object(Bucket=UPLOAD_BUCKET, Key=s3_key, Body=data)
-        s3_keys.append({"key": s3_key, "filename": filename})
 
     # Create Unit immediately with status="processing"
     unit_item = {
@@ -1690,34 +2559,105 @@ def handle_create_unit_from_upload(event, course_id: str):
         "title": unit_name,
         "order": 0,
         "status": "processing",
+        "uploadedFileNames": file_names,
         "createdAt": now,
         "updatedAt": now,
     }
     dynamodb.Table(T["UNITS"]).put_item(Item=unit_item)
+
+    # Generate pre-signed PUT URLs (valid for 15 minutes).
+    # A dedicated client forces SigV4 + the regional endpoint so the
+    # pre-signed URL domain matches the bucket's region (us-west-1).
+    presign_client = boto3.client(
+        "s3",
+        region_name="us-west-1",
+        endpoint_url="https://s3.us-west-1.amazonaws.com",
+        config=Config(signature_version="s3v4"),
+    )
+    upload_urls: dict[str, str] = {}
+    for filename in file_names:
+        s3_key = f"uploads/{unit_id}/{filename}"
+        url = presign_client.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": UPLOAD_BUCKET, "Key": s3_key},
+            ExpiresIn=900,
+        )
+        upload_urls[filename] = url
+
+    return resp(201, {"unitId": unit_id, "uploadUrls": upload_urls})
+
+
+def handle_process_unit(event, unit_id: str):
+    """
+    POST /units/{unitId}/process
+    Triggers the async pipeline worker after the browser has finished
+    uploading files to S3.
+
+    Reads the Unit record, lists staged files in S3, then invokes
+    this Lambda asynchronously to run the curriculum pipeline.
+
+    Returns 202 { unitId, status: "processing" }
+    """
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+    if not unit:
+        return resp_not_found("Unit")
+
+    course_id = unit["courseId"]
+
+    # List uploaded files in S3 under uploads/{unitId}/
+    prefix = f"uploads/{unit_id}/"
+    response = s3.list_objects_v2(Bucket=UPLOAD_BUCKET, Prefix=prefix)
+    contents = response.get("Contents", [])
+    if not contents:
+        return resp(400, {"error": "No files found in S3 staging area"})
+
+    s3_keys = [
+        {"key": obj["Key"], "filename": obj["Key"].split("/")[-1]}
+        for obj in contents
+    ]
+
+    # Clean up existing objectives/questions (safe now — files are in S3)
+    _cleanup_unit_objectives(unit_id)
+
+    # Persist file names and set status to processing
+    file_names = [entry["filename"] for entry in s3_keys]
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET #s = :s, uploadedFileNames = :f, updatedAt = :u REMOVE identifiedKnowledge, statusError",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": "processing", ":f": file_names, ":u": iso_now()},
+    )
 
     # Invoke self async to run the pipeline in the background
     async_payload = {
         "_internal": "process-upload",
         "unitId": unit_id,
         "courseId": course_id,
-        "unitName": unit_name,
-        "grade": grade,
+        "unitName": unit.get("title", "Untitled Unit"),
+        "grade": "Unknown Grade",
         "s3Keys": s3_keys,
     }
     lambda_client.invoke(
         FunctionName=SELF_FUNCTION_NAME,
-        InvocationType="Event",  # async — returns 202 immediately
+        InvocationType="Event",
         Payload=json.dumps(async_payload).encode(),
     )
 
-    return resp(202, {"unit": unit_item, "objectives": []})
+    return resp(202, {"unitId": unit_id, "status": "processing"})
 
 
-def _handle_process_upload_async(payload: dict):
+def _handle_identify_async(payload: dict):
     """
-    Internal async handler — invoked by handle_create_unit_from_upload.
-    Downloads files from S3, runs the curriculum pipeline, persists results,
-    and updates the Unit status to 'ready' (or 'error').
+    Phase 1 async handler — identifies knowledge from uploaded documents.
+
+    Downloads files from S3, converts to PDF, runs identify_knowledge() only
+    (no question generation), stores results on the Unit record, and sets
+    status to "review" so the teacher can select which objectives to keep.
     """
     unit_id = payload["unitId"]
     course_id = payload["courseId"]
@@ -1726,13 +2666,17 @@ def _handle_process_upload_async(payload: dict):
 
     courses_tbl = dynamodb.Table(T["COURSES"])
     course = courses_tbl.get_item(Key={"id": course_id}).get("Item") or {}
-    subject = course.get("title", "Unknown Subject")
+    subject = course.get("subject") or course.get("title", "Unknown Subject")
+    grade = course.get("gradeLevel") or grade
 
     units_tbl = dynamodb.Table(T["UNITS"])
 
-    # Download files from S3 to /tmp
     tmp_paths: list[str] = []
+    pdf_paths: list[str] = []
     try:
+        from file_converter import convert_to_pdf
+        from gen_curriculum_pipeline import Gen_Curriculum_Pipeline
+
         for entry in s3_keys:
             s3_key = entry["key"]
             filename = entry["filename"]
@@ -1745,17 +2689,25 @@ def _handle_process_upload_async(payload: dict):
                 os.close(fd)
             tmp_paths.append(tmp_path)
 
-        # Run the curriculum pipeline
-        from gen_curriculum_pipeline import Gen_Curriculum_Pipeline
-        pipeline = Gen_Curriculum_Pipeline()
+            pdf_path = convert_to_pdf(tmp_path)
+            pdf_paths.append(pdf_path)
+            if pdf_path != tmp_path:
+                tmp_paths.append(pdf_path)
 
-        all_knowledge: list[dict] = []
-        for tmp_path in tmp_paths:
-            knowledge = pipeline.run(tmp_path, subject=subject, grade=grade)
-            all_knowledge.extend(knowledge)
+        # Run identify_knowledge only (no question generation)
+        pipeline = Gen_Curriculum_Pipeline()
+        all_identified: list[dict] = []
+        for pdf_path in pdf_paths:
+            uploaded_file = pipeline.upload_pdf(pdf_path, wait=True)
+            print(f"\t> Uploaded PDF to Gemini")
+            identified = pipeline.identify_knowledge(uploaded_file)
+            print(f"\t> Identified {len(identified)} knowledge items")
+            all_identified.extend(identified)
 
     except Exception as e:
-        print(f"[async-upload] Pipeline failed for unit {unit_id}: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[async-identify] Pipeline failed for unit {unit_id}: {e}\n{tb}")
         units_tbl.update_item(
             Key={"id": unit_id},
             UpdateExpression="SET #s = :s, statusError = :e, updatedAt = :u",
@@ -1769,14 +2721,9 @@ def _handle_process_upload_async(payload: dict):
                 os.unlink(p)
             except Exception:
                 pass
-        # Clean up S3 staging files
-        for entry in s3_keys:
-            try:
-                s3.delete_object(Bucket=UPLOAD_BUCKET, Key=entry["key"])
-            except Exception:
-                pass
+        # Keep S3 files so they appear on the re-upload page
 
-    if not all_knowledge:
+    if not all_identified:
         units_tbl.update_item(
             Key={"id": unit_id},
             UpdateExpression="SET #s = :s, statusError = :e, updatedAt = :u",
@@ -1789,79 +2736,492 @@ def _handle_process_upload_async(payload: dict):
         )
         return
 
+    # Store identified knowledge on the Unit record and set status to "review"
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET #s = :s, identifiedKnowledge = :k, updatedAt = :u",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={
+            ":s": "review",
+            ":k": json.dumps(all_identified),
+            ":u": iso_now(),
+        },
+    )
+    print(
+        f"[async-identify] Unit {unit_id} identification complete: "
+        f"{len(all_identified)} items ready for teacher review"
+    )
+
+
+def handle_get_identified_knowledge(unit_id: str):
+    """GET /units/{unitId}/identified-knowledge — return identified objectives for review."""
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    item = got.get("Item")
+    if not item:
+        return resp_not_found("Unit")
+    raw = item.get("identifiedKnowledge", "[]")
+    knowledge = json.loads(raw) if isinstance(raw, str) else raw
+    return resp(200, {"unitId": unit_id, "identifiedKnowledge": knowledge})
+
+
+def handle_generate_objectives(event, unit_id: str):
+    """
+    POST /units/{unitId}/generate
+
+    Teacher has reviewed identified knowledge and selected which objectives to
+    keep. Triggers async question generation for the selected items only.
+
+    Body: { selectedObjectives: [{ type, description }, ...] }
+    """
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    body = json.loads(event.get("body") or "{}")
+    selected = body.get("selectedObjectives", [])
+    if not selected:
+        return resp(400, {"error": "No objectives selected"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    unit = got.get("Item")
+    if not unit:
+        return resp_not_found("Unit")
+
+    course_id = unit["courseId"]
+
+    # Set status back to processing while we generate questions
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET #s = :s, updatedAt = :u",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": "processing", ":u": iso_now()},
+    )
+
+    # Invoke self async for question generation
+    async_payload = {
+        "_internal": "generate-objectives",
+        "unitId": unit_id,
+        "courseId": course_id,
+        "selectedObjectives": selected,
+    }
+    lambda_client.invoke(
+        FunctionName=SELF_FUNCTION_NAME,
+        InvocationType="Event",
+        Payload=json.dumps(async_payload).encode(),
+    )
+
+    return resp(202, {"unitId": unit_id, "status": "processing"})
+
+
+def _handle_generate_objectives_async(payload: dict):
+    """
+    Phase 2 async handler — generates questions for teacher-selected objectives
+    and persists all DynamoDB records.
+    """
+    import asyncio
+
+    unit_id = payload["unitId"]
+    course_id = payload["courseId"]
+    selected = payload["selectedObjectives"]
+
+    courses_tbl = dynamodb.Table(T["COURSES"])
+    course = courses_tbl.get_item(Key={"id": course_id}).get("Item") or {}
+    subject = course.get("subject") or course.get("title", "Unknown Subject")
+    grade = course.get("gradeLevel", "Unknown Grade")
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+
+    try:
+        from gen_curriculum_pipeline import Gen_Curriculum_Pipeline
+
+        pipeline = Gen_Curriculum_Pipeline()
+
+        # Build identified_knowledge list in the format _run_questions_async expects
+        identified_knowledge = [
+            {"type": obj["type"], "description": obj["description"]}
+            for obj in selected
+        ]
+
+        # Generate questions for selected objectives only
+        all_knowledge = asyncio.run(
+            pipeline._run_questions_async(identified_knowledge, subject, grade)
+        )
+        print(f"[async-generate] Generated {len(all_knowledge)} questions for unit {unit_id}")
+
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[async-generate] Question generation failed for unit {unit_id}: {e}\n{tb}")
+        units_tbl.update_item(
+            Key={"id": unit_id},
+            UpdateExpression="SET #s = :s, statusError = :e, updatedAt = :u",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":s": "error", ":e": str(e), ":u": iso_now()},
+        )
+        return
+
+    # Persist DynamoDB records
     now = iso_now()
 
-    # Persist objectives, stages, questions, and knowledge topics
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
     stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
     questions_tbl = dynamodb.Table(T["QUESTIONS"])
+    threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
     knowledge_topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    knowledge_queue_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    enrollments_tbl = dynamodb.Table(T["ENROLLMENTS"])
 
     STAGE_TYPES = ["begin", "walkthrough", "challenge"]
 
-    for order_idx, k in enumerate(all_knowledge):
+    enrolled_student_ids: list[str] = []
+    try:
+        enrollment_items = query_all(
+            enrollments_tbl,
+            index_name=IDX["COURSE_ENROLLMENTS"],
+            key_condition=Key("courseId").eq(course_id),
+        )
+        enrolled_student_ids = [e["studentId"] for e in enrollment_items]
+    except Exception as e:
+        print(f"[async-generate] Warning: could not query enrollments for course {course_id}: {e}")
+
+    knowledge_order = 0
+    skill_order = 0
+
+    for k in all_knowledge:
         knowledge_type = k.get("knowledge_type", "information")
         description = k.get("knowledge_description", "")
         question_text = k.get("question", "")
 
-        obj_kind = "skill" if knowledge_type == "skill" else "knowledge"
-
-        obj_id = str(uuid.uuid4())
-        obj_item = {
-            "id": obj_id,
-            "unitId": unit_id,
-            "title": description,
-            "kind": obj_kind,
-            "order": order_idx,
-            "enabled": True,
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        objectives_tbl.put_item(Item=obj_item)
-
-        for stage_order, stage_type in enumerate(STAGE_TYPES):
-            stage_id = str(uuid.uuid4())
-            stage_item = {
-                "id": stage_id,
-                "itemId": obj_id,
-                "stageType": stage_type,
-                "order": stage_order,
-                "prompt": description,
+        if knowledge_type == "skill":
+            # Skills become Objectives with stages, questions, and threads
+            obj_id = str(uuid.uuid4())
+            obj_item = {
+                "id": obj_id,
+                "unitId": unit_id,
+                "title": description,
+                "description": description,
+                "kind": "skill",
+                "order": skill_order,
+                "enabled": True,
                 "createdAt": now,
+                "updatedAt": now,
             }
-            stages_tbl.put_item(Item=stage_item)
+            objectives_tbl.put_item(Item=obj_item)
 
-        if question_text:
-            q_id = str(uuid.uuid4())
-            q_item = {
-                "id": q_id,
+            for stage_order, stage_type in enumerate(STAGE_TYPES):
+                stage_id = str(uuid.uuid4())
+                stage_item = {
+                    "id": stage_id,
+                    "itemId": obj_id,
+                    "stageType": stage_type,
+                    "order": stage_order,
+                    "prompt": question_text or description,
+                    "createdAt": now,
+                }
+                stages_tbl.put_item(Item=stage_item)
+
+            if question_text:
+                q_id = str(uuid.uuid4())
+                q_item = {
+                    "id": q_id,
+                    "objectiveId": obj_id,
+                    "text": question_text,
+                    "kind": "skill",
+                    "difficultyStars": 1,
+                    "createdAt": now,
+                }
+                questions_tbl.put_item(Item=q_item)
+
+            thread_id = f"thread-{obj_id}"
+            thread_item = {
+                "id": thread_id,
+                "courseId": course_id,
+                "unitId": unit_id,
                 "objectiveId": obj_id,
-                "text": question_text,
-                "kind": obj_kind,
-                "difficultyStars": 1,
+                "title": description,
+                "kind": "skill",
+                "lastMessageAt": now,
+            }
+            threads_tbl.put_item(Item=thread_item)
+
+            skill_order += 1
+
+        else:
+            # Information items become KnowledgeTopics with queue items only
+            topic_id = str(uuid.uuid4())
+            topic_item = {
+                "id": topic_id,
+                "unitId": unit_id,
+                "knowledgeTopic": description,
+                "order": knowledge_order,
                 "createdAt": now,
             }
-            questions_tbl.put_item(Item=q_item)
+            knowledge_topics_tbl.put_item(Item=topic_item)
 
-        topic_id = str(uuid.uuid4())
-        topic_item = {
-            "id": topic_id,
-            "unitId": unit_id,
-            "objectiveId": obj_id,
-            "knowledgeTopic": description,
-            "order": order_idx,
-            "createdAt": now,
-        }
-        knowledge_topics_tbl.put_item(Item=topic_item)
+            if enrolled_student_ids:
+                for student_id in enrolled_student_ids:
+                    queue_item_id = str(uuid.uuid4())
+                    status = "active" if knowledge_order == 0 else "pending"
+                    queue_item = {
+                        "id": queue_item_id,
+                        "unitId": unit_id,
+                        "studentId": student_id,
+                        "knowledgeTopicId": topic_id,
+                        "labelIndex": knowledge_order + 1,
+                        "order": knowledge_order,
+                        "status": status,
+                        "questionPrompt": question_text or description,
+                        "createdAt": now,
+                    }
+                    knowledge_queue_tbl.put_item(Item=queue_item)
 
-    # Mark unit as ready
+                    # Generate clarifying questions for the first active item
+                    if status == "active" and (question_text or description):
+                        try:
+                            subject_ctx, grade_ctx = _get_unit_context(unit_id, student_id)
+                            from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+                            cqs = gen_clarifying_questions(subject_ctx, grade_ctx, question_text or description)
+                            knowledge_queue_tbl.update_item(
+                                Key={"studentId": student_id, "id": queue_item_id},
+                                UpdateExpression="SET suggestedQuestions = :sq",
+                                ExpressionAttributeValues={":sq": cqs},
+                            )
+                        except Exception as e:
+                            print(f"[clarifying-questions] generate-flow failed for {queue_item_id}: {e}")
+
+            knowledge_order += 1
+
+    # Mark unit as ready (keep identifiedKnowledge so teacher can edit later)
     units_tbl.update_item(
         Key={"id": unit_id},
         UpdateExpression="SET #s = :s, updatedAt = :u",
         ExpressionAttributeNames={"#s": "status"},
         ExpressionAttributeValues={":s": "ready", ":u": iso_now()},
     )
-    print(f"[async-upload] Unit {unit_id} processing complete: {len(all_knowledge)} objectives created")
+    print(
+        f"[async-generate] Unit {unit_id} complete: "
+        f"{len(all_knowledge)} objectives, "
+        f"{knowledge_order} knowledge topics with queue items for "
+        f"{len(enrolled_student_ids)} students"
+    )
+
+
+def _cleanup_unit_objectives(unit_id: str):
+    """Delete all objectives, questions, stages, threads, knowledge topics,
+    and knowledge queue items associated with a unit.  Used when a teacher
+    re-selects objectives or re-uploads documents."""
+
+    objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
+    questions_tbl = dynamodb.Table(T["QUESTIONS"])
+    stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
+    threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
+    knowledge_topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    knowledge_queue_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+
+    # 1) Get all objectives for this unit
+    objs = query_all(
+        objectives_tbl,
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+
+    for obj in objs:
+        oid = obj["id"]
+
+        # Delete questions for this objective
+        qs = query_all(
+            questions_tbl,
+            index_name=IDX["OBJECTIVE_QUESTIONS"],
+            key_condition=Key("objectiveId").eq(oid),
+        )
+        for q in qs:
+            questions_tbl.delete_item(Key={"id": q["id"]})
+
+        # Delete stages for this objective (itemId = objectiveId)
+        ss = query_all(
+            stages_tbl,
+            index_name=IDX["ITEM_STAGES_BY_ITEM"],
+            key_condition=Key("itemId").eq(oid),
+        )
+        for s in ss:
+            stages_tbl.delete_item(Key={"id": s["id"]})
+
+        # Delete the objective itself
+        objectives_tbl.delete_item(Key={"id": oid})
+
+    # 2) Delete threads for this unit
+    ts = query_all(
+        threads_tbl,
+        index_name=IDX["UNIT_THREADS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for t in ts:
+        threads_tbl.delete_item(Key={"id": t["id"]})
+
+    # 3) Delete knowledge topics for this unit
+    kt = query_all(
+        knowledge_topics_tbl,
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for topic in kt:
+        knowledge_topics_tbl.delete_item(Key={"id": topic["id"]})
+
+    # 4) Delete knowledge queue items for this unit (single query, not per-topic)
+    qi = query_all(
+        knowledge_queue_tbl,
+        index_name=IDX["UNIT_QUEUE"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    for item in qi:
+        knowledge_queue_tbl.delete_item(Key={"studentId": item["studentId"], "id": item["id"]})
+
+    print(f"[cleanup] Deleted {len(objs)} objectives + related data for unit {unit_id}")
+
+
+def handle_edit_objectives(event, unit_id: str):
+    """POST /units/{unitId}/edit-objectives
+
+    Resets a unit back to 'review' status so the teacher can re-select
+    objectives.  Deletes existing objectives and related records.
+    """
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    item = got.get("Item")
+    if not item:
+        return resp_not_found("Unit")
+
+    # If identifiedKnowledge is missing (older units), reconstruct it from
+    # the existing objectives so the teacher can still edit.
+    if not item.get("identifiedKnowledge"):
+        objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
+        objs = query_all(
+            objectives_tbl,
+            index_name=IDX["UNIT_OBJECTIVES"],
+            key_condition=Key("unitId").eq(unit_id),
+        )
+        if not objs:
+            return resp(400, {"error": "No objectives to edit"})
+        reconstructed = [
+            {"type": obj.get("kind", "skill"), "description": obj.get("description", "")}
+            for obj in objs
+        ]
+        # Store reconstructed knowledge on the unit
+        units_tbl.update_item(
+            Key={"id": unit_id},
+            UpdateExpression="SET identifiedKnowledge = :k",
+            ExpressionAttributeValues={":k": json.dumps(reconstructed)},
+        )
+
+    # Clean up existing generated data
+    _cleanup_unit_objectives(unit_id)
+
+    # Set status back to "review"
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET #s = :s, updatedAt = :u",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": "review", ":u": iso_now()},
+    )
+
+    return resp(200, {"unitId": unit_id, "status": "review"})
+
+
+def handle_reupload(event, unit_id: str):
+    """POST /units/{unitId}/reupload
+
+    Re-upload documents for an existing unit.  Generates fresh pre-signed
+    S3 PUT URLs, cleans up old objectives, and sets status to 'processing'.
+    The caller must upload files to S3, then call POST /units/{unitId}/process.
+    """
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+    file_names = (body.get("fileNames") or []) if isinstance(body, dict) else []
+    if not file_names:
+        return resp(400, {"error": "fileNames is required"})
+
+    units_tbl = dynamodb.Table(T["UNITS"])
+    got = units_tbl.get_item(Key={"id": unit_id})
+    item = got.get("Item")
+    if not item:
+        return resp_not_found("Unit")
+
+    # Persist file names on the unit record so the re-upload page can
+    # show them even after S3 files are cleaned up.
+    units_tbl.update_item(
+        Key={"id": unit_id},
+        UpdateExpression="SET uploadedFileNames = :f, updatedAt = :u",
+        ExpressionAttributeValues={":f": file_names, ":u": iso_now()},
+    )
+
+    # Generate pre-signed PUT URLs (use regional client for SigV4)
+    # NOTE: We do NOT clean up objectives or change status here.
+    # Cleanup and status change happen in handle_process_unit after
+    # files are successfully uploaded to S3.
+    presign_client = boto3.client(
+        "s3",
+        region_name="us-west-1",
+        endpoint_url="https://s3.us-west-1.amazonaws.com",
+        config=Config(signature_version="s3v4"),
+    )
+    upload_urls: dict[str, str] = {}
+    for filename in file_names:
+        s3_key = f"uploads/{unit_id}/{filename}"
+        url = presign_client.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": UPLOAD_BUCKET, "Key": s3_key},
+            ExpiresIn=900,
+        )
+        upload_urls[filename] = url
+
+    return resp(200, {"unitId": unit_id, "uploadUrls": upload_urls})
+
+
+def handle_list_unit_files(unit_id: str):
+    """GET /units/{unitId}/files — list uploaded files for a unit.
+
+    Tries S3 first; falls back to the uploadedFileNames stored on the
+    Unit record (file names are persisted at upload time so they survive
+    even if S3 objects are cleaned up after processing).
+    """
+    # Try S3 first
+    files = []
+    try:
+        prefix = f"uploads/{unit_id}/"
+        response = s3.list_objects_v2(Bucket=UPLOAD_BUCKET, Prefix=prefix)
+        contents = response.get("Contents", [])
+        for obj in contents:
+            filename = obj["Key"].split("/")[-1]
+            if filename:
+                files.append({
+                    "name": filename,
+                    "size": obj.get("Size", 0),
+                    "lastModified": obj.get("LastModified", "").isoformat() if hasattr(obj.get("LastModified", ""), "isoformat") else str(obj.get("LastModified", "")),
+                })
+    except Exception:
+        pass
+
+    # Fall back to stored file names on the Unit record
+    if not files:
+        units_tbl = dynamodb.Table(T["UNITS"])
+        got = units_tbl.get_item(Key={"id": unit_id})
+        item = got.get("Item")
+        if item:
+            stored_names = item.get("uploadedFileNames", [])
+            files = [{"name": n, "size": 0} for n in stored_names]
+
+    return resp(200, {"files": files})
 
 
 def handle_get_upload_status(unit_id: str):
@@ -1884,8 +3244,11 @@ def handle_get_upload_status(unit_id: str):
 def handler(event, context):
     # Handle internal async events (not from API Gateway)
     if isinstance(event, dict) and event.get("_internal") == "process-upload":
-        _handle_process_upload_async(event)
+        _handle_identify_async(event)
         return  # async invocation, no HTTP response needed
+    if isinstance(event, dict) and event.get("_internal") == "generate-objectives":
+        _handle_generate_objectives_async(event)
+        return
 
     try:
         method, path = method_and_path(event)
@@ -1942,11 +3305,23 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_get_knowledge_progress(event, unit_id)
 
+        if method == "POST" and path.endswith("/clarify") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_clarify_knowledge_question(event, item_id)
+
         if method == "POST" and path.endswith("/complete") and path.startswith("/knowledge-queue/"):
             item_id = params.get("itemId")
             if not item_id:
                 return resp(400, {"error": "Missing itemId"})
             return handle_complete_knowledge_queue_item(event, item_id)
+
+        if method == "GET" and path.endswith("/files") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_list_unit_files(unit_id)
 
         if method == "GET" and path.endswith("/upload-status") and path.startswith("/units/"):
             unit_id = params.get("unitId")
@@ -1954,7 +3329,45 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_get_upload_status(unit_id)
 
-        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path and "/upload-status" not in path:
+        if method == "GET" and path.endswith("/identified-knowledge") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_identified_knowledge(unit_id)
+
+        if method == "POST" and path.endswith("/generate") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_generate_objectives(event, unit_id)
+
+        if method == "POST" and path.endswith("/edit-objectives") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_edit_objectives(event, unit_id)
+
+        if method == "POST" and path.endswith("/reupload") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_reupload(event, unit_id)
+
+        # ---- Student grading/feedback routes ----
+
+        if method == "GET" and path.endswith("/my-grading-report") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_my_grading_report(event, unit_id)
+
+        if method == "GET" and path.endswith("/my-feedback") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_my_feedback(event, unit_id)
+
+        if method == "GET" and path.startswith("/units/") and "/objectives" not in path and "/progress" not in path and "/threads" not in path and "/knowledge" not in path and "/upload-status" not in path and "/identified-knowledge" not in path and "/files" not in path and "/grading-report" not in path and "/feedback" not in path and "/my-grading-report" not in path and "/my-feedback" not in path:
             unit_id = params.get("unitId")
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
@@ -2032,6 +3445,36 @@ def handler(event, context):
                 return resp(400, {"error": "Missing courseId"})
             return handle_list_feedback(event, course_id=course_id)
 
+        # ---- Teacher grading/feedback routes ----
+
+        if method == "GET" and path.endswith("/grading-report") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_unit_grading_report(event, unit_id)
+
+        if method == "GET" and path.endswith("/feedback") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_get_unit_feedback_for_student(event, unit_id)
+
+        if method == "POST" and path.endswith("/feedback") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_create_unit_feedback(event, unit_id)
+
+        if method == "PATCH" and path.startswith("/feedback/"):
+            feedback_id = params.get("feedbackId")
+            if not feedback_id:
+                # Extract from path manually if pathParameters doesn't have it
+                parts = path.strip("/").split("/")
+                feedback_id = parts[1] if len(parts) >= 2 else None
+            if not feedback_id:
+                return resp(400, {"error": "Missing feedbackId"})
+            return handle_update_feedback(event, feedback_id)
+
         if method == "GET" and path.endswith("/threads") and path.startswith("/units/"):
             unit_id = params.get("unitId")
             if not unit_id:
@@ -2108,6 +3551,60 @@ def handler(event, context):
             if not course_id:
                 return resp(400, {"error": "Missing courseId"})
             return handle_create_unit_from_upload(event, course_id)
+
+        if method == "POST" and path.endswith("/process") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_process_unit(event, unit_id)
+
+        if method == "PATCH" and path.endswith("/deadline") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_update_unit_deadline(event, unit_id)
+
+        if method == "PATCH" and path.endswith("/title") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_update_course_title(event, course_id)
+
+        if method == "DELETE" and path.endswith("/permanent") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_hard_delete_unit(event, unit_id)
+
+        if method == "DELETE" and path.endswith("/permanent") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_hard_delete_course(event, course_id)
+
+        if method == "DELETE" and path.startswith("/units/") and "/permanent" not in path:
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_soft_delete_unit(event, unit_id)
+
+        if method == "DELETE" and path.startswith("/courses/") and "/permanent" not in path and "/roster" not in path:
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_soft_delete_course(event, course_id)
+
+        if method == "PATCH" and path.endswith("/restore") and path.startswith("/units/"):
+            unit_id = params.get("unitId")
+            if not unit_id:
+                return resp(400, {"error": "Missing unitId"})
+            return handle_restore_unit(event, unit_id)
+
+        if method == "PATCH" and path.endswith("/restore") and path.startswith("/courses/"):
+            course_id = params.get("courseId")
+            if not course_id:
+                return resp(400, {"error": "Missing courseId"})
+            return handle_restore_course(event, course_id)
 
         return resp(404, {"error": "Route not found", "method": method, "path": path})
     except Exception as e:

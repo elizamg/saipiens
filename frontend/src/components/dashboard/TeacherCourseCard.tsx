@@ -17,6 +17,8 @@ interface TeacherCourseCardProps {
   title: string;
   studentCount: number;
   icon: string;
+  /** Override the default "View Course" navigation. */
+  onNavigate?: () => void;
 }
 
 export default function TeacherCourseCard({
@@ -24,6 +26,7 @@ export default function TeacherCourseCard({
   title,
   studentCount,
   icon,
+  onNavigate,
 }: TeacherCourseCardProps) {
   const navigate = useNavigate();
 
@@ -116,7 +119,7 @@ export default function TeacherCourseCard({
       </div>
       <Button
         variant="primary"
-        onClick={() => navigate(`/teacher/course/${id}`)}
+        onClick={onNavigate ?? (() => navigate(`/teacher/course/${id}`))}
         style={{ padding: "10px 20px", fontSize: 14 }}
       >
         View Course

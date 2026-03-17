@@ -14,16 +14,11 @@ import {
   listAwardsForCourse,
   listFeedbackForCourse,
   getUnitProgress,
+  getKnowledgeProgress,
 } from "../services/api";
-import { GRAY_900, GRAY_500, SUCCESS_GREEN, PRIMARY } from "../theme/colors";
+import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
+import { courseIconMap } from "../theme/courseIcons";
 import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress } from "../types/domain";
-import historyLogo from "../assets/history-logo.png";
-import scienceLogo from "../assets/science-logo.png";
-
-const courseIconMap: Record<string, string> = {
-  history: historyLogo,
-  science: scienceLogo,
-};
 
 export default function CoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -57,19 +52,34 @@ export default function CoursePage() {
         setFeedback(feedbackData);
 
         if (courseData) {
-          const instructorsData = await listInstructors(courseData.instructorIds);
-          setInstructors(instructorsData);
+          const ids = (courseData.instructorIds ?? []).filter(Boolean);
+          if (ids.length > 0) {
+            const instructorsData = await listInstructors(ids);
+            setInstructors(instructorsData);
+          }
         }
 
-        // Load progress for each unit
-        const progressPromises = unitsData.map((unit) =>
-          getUnitProgress(studentData.id, unit.id)
-        );
-        const progressResults = await Promise.all(progressPromises);
+        // Load progress for each unit sequentially to avoid 503 throttling
+        // Combine skill progress + knowledge progress into one UnitProgress
         const pMap: Record<string, UnitProgress> = {};
-        progressResults.forEach((p) => {
-          pMap[p.unitId] = p;
-        });
+        for (const unit of unitsData) {
+          try {
+            const [skillProg, knowledgeProg] = await Promise.all([
+              getUnitProgress(studentData.id, unit.id),
+              getKnowledgeProgress(unit.id, studentData.id).catch(() => null),
+            ]);
+            const totalObjectives = skillProg.totalObjectives + (knowledgeProg?.totalTopics ?? 0);
+            const completedObjectives = skillProg.completedObjectives + (knowledgeProg?.correctCount ?? 0);
+            pMap[unit.id] = {
+              unitId: unit.id,
+              totalObjectives,
+              completedObjectives,
+              progressPercent: totalObjectives > 0 ? Math.round((completedObjectives / totalObjectives) * 100) : 0,
+            };
+          } catch {
+            // Skip units whose progress fails to load
+          }
+        }
         setProgressMap(pMap);
       } catch (error) {
         console.error("Error loading course data:", error);
@@ -98,12 +108,14 @@ export default function CoursePage() {
     objectFit: "contain",
   };
 
-  const emojiIconStyles: React.CSSProperties = {
-    fontSize: 40,
-  };
+  const bookIcon = (
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={iconStyles}>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
 
   const courseIconSrc = course?.icon ? courseIconMap[course.icon] : null;
-  const courseIconIsEmoji = course?.icon && !courseIconSrc;
 
   const titleStyles: React.CSSProperties = {
     margin: 0,
@@ -137,18 +149,11 @@ export default function CoursePage() {
         <>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              {course.icon &&
-                (courseIconSrc ? (
-                  <TintedImage
-                    src={courseIconSrc}
-                    color={course.icon === "science" || course.icon === "history" ? PRIMARY : SUCCESS_GREEN}
-                    width={40}
-                    height={40}
-                    style={iconStyles}
-                  />
-                ) : courseIconIsEmoji ? (
-                  <span style={emojiIconStyles}>{course.icon}</span>
-                ) : null)}
+              {courseIconSrc ? (
+                <TintedImage src={courseIconSrc} color={PRIMARY} width={48} height={48} style={iconStyles} />
+              ) : (
+                bookIcon
+              )}
               <h1 style={titleStyles}>{course.title}</h1>
             </div>
             <div style={instructorRowStyles}>

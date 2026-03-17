@@ -26,15 +26,23 @@ export interface Course {
   enrolledStudentIds: string[];
   /** Populated by GET /instructor/courses — number of enrolled students. */
   studentCount?: number;
+  deletedAt?: string;
 }
 
-export type UnitStatus = "active" | "completed" | "locked";
+export type UnitStatus = "active" | "completed" | "locked" | "ready" | "processing" | "review" | "error";
+
+export interface IdentifiedKnowledge {
+  type: string;
+  description: string;
+}
 
 export interface Unit {
   id: string;
   courseId: string;
   title: string;
   status: UnitStatus;
+  deadline?: string;
+  deletedAt?: string;
 }
 
 export type AwardIconKey = "early" | "medium" | "owl";
@@ -61,6 +69,25 @@ export interface FeedbackItem {
   sourceType: FeedbackSourceType;
   /** Set when sourceType is "teacher". */
   instructorId?: string;
+  /** Instructor display name, set when sourceType is "teacher". */
+  instructorName?: string;
+  createdAt?: string;
+}
+
+/** Sam's AI-generated grading report for a student's unit performance */
+export interface GradingReport {
+  id: string;
+  unitId: string;
+  studentId: string;
+  /** Content shown to the caller — teacher gets detailed view, student gets encouraging view */
+  summary: string;
+  createdAt: string;
+  skillCompleted?: number;
+  skillTotal?: number;
+  knowledgeCorrect?: number;
+  knowledgeTotal?: number;
+  deadline?: string;
+  completedBeforeDeadline?: boolean | null;
 }
 
 // ============ Objective (Sidebar Item) & Stage Types ============

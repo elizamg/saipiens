@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import Card from "../ui/Card";
 import Button from "../ui/Button";
 import ProgressBar from "../ui/ProgressBar";
-import { GRAY_900, GRAY_500, SUCCESS_GREEN, GRAY_300 } from "../../theme/colors";
+import { GRAY_900, GRAY_500, SUCCESS_GREEN, GRAY_300, PRIMARY } from "../../theme/colors";
 import type { Unit, UnitProgress } from "../../types/domain";
 
 interface UnitCardProps {
@@ -10,13 +10,19 @@ interface UnitCardProps {
   courseId: string;
   progress?: UnitProgress;
   routePrefix?: string;
+  /** Override the default View/Review navigation. */
+  onView?: () => void;
 }
 
-export default function UnitCard({ unit, courseId, progress, routePrefix }: UnitCardProps) {
+export default function UnitCard({ unit, courseId, progress, routePrefix, onView }: UnitCardProps) {
   const navigate = useNavigate();
-  const isActive = unit.status === "active";
+  const isActive = unit.status === "active" || unit.status === "ready" || !unit.status;
   const isCompleted = unit.status === "completed";
   const isLocked = unit.status === "locked";
+  const isReady = unit.status === "ready";
+  const isProcessing = unit.status === "processing";
+  const isReview = unit.status === "review";
+  const isError = unit.status === "error";
 
   const contentStyles: React.CSSProperties = {
     display: "flex",
@@ -71,9 +77,16 @@ export default function UnitCard({ unit, courseId, progress, routePrefix }: Unit
     }
   };
 
+  const handleReview = () => {
+    navigate(`/teacher/course/${courseId}/upload?unitId=${unit.id}&mode=review`);
+  };
+
+  const handleRetry = () => {
+    navigate(`/teacher/course/${courseId}/upload?unitId=${unit.id}`);
+  };
+
   const renderIcon = () => {
     if (isCompleted) {
-      // Trophy icon for completed units
       return (
         <svg
           width="24"
@@ -87,7 +100,6 @@ export default function UnitCard({ unit, courseId, progress, routePrefix }: Unit
       );
     }
     if (isLocked) {
-      // Lock icon for locked units
       return (
         <svg
           width="20"
@@ -102,7 +114,44 @@ export default function UnitCard({ unit, courseId, progress, routePrefix }: Unit
         </svg>
       );
     }
-    // Active status dot
+    if (isProcessing) {
+      return (
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            backgroundColor: PRIMARY,
+            animation: "pulse 1.5s ease-in-out infinite",
+          }}
+        />
+      );
+    }
+    if (isReview) {
+      return (
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            backgroundColor: "#f59e0b",
+          }}
+        />
+      );
+    }
+    if (isError) {
+      return (
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            backgroundColor: "#dc2626",
+          }}
+        />
+      );
+    }
+    // Active / ready — green dot
     return (
       <div
         style={{
@@ -115,13 +164,76 @@ export default function UnitCard({ unit, courseId, progress, routePrefix }: Unit
     );
   };
 
+  const renderAction = () => {
+    if (routePrefix !== "/teacher") {
+      // Student view — only active/completed get View
+      if (isActive || isCompleted) {
+        return (
+          <Button variant="primary" onClick={onView ?? handleView} style={{ padding: "8px 16px", fontSize: 14 }}>
+            View
+          </Button>
+        );
+      }
+      return null;
+    }
+
+    // Teacher view
+    if (isActive || isCompleted || isReady) {
+      return (
+        <Button variant="primary" onClick={onView ?? handleView} style={{ padding: "8px 16px", fontSize: 14 }}>
+          View
+        </Button>
+      );
+    }
+    if (isProcessing) {
+      return (
+        <span style={{ fontSize: 13, color: GRAY_500, fontStyle: "italic" }}>
+          Processing…
+        </span>
+      );
+    }
+    if (isReview) {
+      return (
+        <Button variant="primary" onClick={handleReview} style={{ padding: "8px 16px", fontSize: 14 }}>
+          Review
+        </Button>
+      );
+    }
+    if (isError) {
+      return (
+        <Button variant="secondary" onClick={handleRetry} style={{ padding: "8px 16px", fontSize: 14 }}>
+          Retry
+        </Button>
+      );
+    }
+    return null;
+  };
+
   return (
     <Card padding={16}>
+      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
       <div style={contentStyles}>
         <div style={leftStyles}>
           <div style={iconContainerStyles}>{renderIcon()}</div>
           <div style={textContainerStyles}>
             <h4 style={titleStyles}>{unit.title}</h4>
+            {unit.deadline && (() => {
+              const dl = new Date(unit.deadline);
+              const isPast = dl < new Date();
+              return (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: isPast ? "#dc2626" : GRAY_500,
+                    fontWeight: isPast ? 600 : 400,
+                  }}
+                >
+                  Due: {dl.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  {" at "}
+                  {dl.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                </span>
+              );
+            })()}
             {progress && !isLocked && (
               <div style={progressContainerStyles}>
                 <div style={{ flex: 1, maxWidth: 120 }}>
@@ -134,15 +246,7 @@ export default function UnitCard({ unit, courseId, progress, routePrefix }: Unit
             )}
           </div>
         </div>
-        {(isActive || isCompleted) && (
-          <Button
-            variant="primary"
-            onClick={handleView}
-            style={{ padding: "8px 16px", fontSize: 14 }}
-          >
-            View
-          </Button>
-        )}
+        {renderAction()}
       </div>
     </Card>
   );

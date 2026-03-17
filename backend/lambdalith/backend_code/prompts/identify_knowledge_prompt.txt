@@ -45,20 +45,20 @@ This is an example output:
 {
   "knowledge_list": [
     {
-      "type": "information"
+      "type": "information",
       "description": "The definition of a mineral: a solid inorganic substance of natural occurrence."
     },
     {
-      "type": "information"
+      "type": "information",
       "description": "The definition of igneous rock: rocks formed from the cooling and solidification of hot, molten rock."
     },
     {
-      "type": "skill"
+      "type": "skill",
       "description": "Converting between pounds and kilograms."
     },
     {
-      "type": "information"
+      "type": "information",
       "description": "How old the Earth is: 4.54 billion years old."
-    },
+    }
   ]
 }

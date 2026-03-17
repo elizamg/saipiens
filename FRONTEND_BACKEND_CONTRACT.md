@@ -49,7 +49,8 @@ All IDs are strings. Timestamps are ISO 8601 strings (e.g. `"2024-01-15T10:30:00
 | Type | Fields | Notes |
 |------|--------|--------|
 | **Award** | `id`, `courseId`, `title`, `subtitle`, `iconKey` | `iconKey`: `"early"` \| `"medium"` \| `"owl"`. |
-| **FeedbackItem** | `id`, `courseId`, `unitId`, `title`, `body`, `ctaLabel?`, `sourceType`, `instructorId?` | `sourceType`: `"teacher"` \| `"sam"`. `instructorId` set when `sourceType === "teacher"`. |
+| **FeedbackItem** | `id`, `courseId`, `unitId`, `title`, `body`, `ctaLabel?`, `sourceType`, `instructorId?` | `sourceType`: `"teacher"` \| `"sam"`. `instructorId` set when `sourceType === "teacher"`. Used for legacy feedback list on the student home page. For unit-specific teacher feedback see §3.18. |
+| **GradingReport** | `id`, `unitId`, `studentId`, `summary`, `createdAt` | Sam's AI-generated grading report for a student's unit performance. `summary` is role-aware: the **teacher** endpoint returns a detailed/analytical summary; the **student** endpoint returns an encouraging/actionable summary. Same underlying data, different tone. |
 
 ### 2.5 Chat
 
@@ -129,7 +130,9 @@ Note: **knowledge** items are no longer part of `Objectives`. They use the separ
 | `listAwards(studentId)` | All awards earned by the student. Response: **Award[]**. |
 | `listAwardsForCourse(studentId, courseId)` | Awards for that student in that course. Response: **Award[]**. |
 
-### 3.9 Feedback
+### 3.9 Feedback (Legacy List)
+
+These are used on the student home/dashboard page to show a summary feed of past feedback.
 
 | Frontend call | Expected backend behavior |
 |---------------|---------------------------|
@@ -195,6 +198,50 @@ Note: **knowledge** items are no longer part of `Objectives`. They use the separ
 | `completeKnowledgeAttempt(unitId, studentId, queueItemId, is_correct)` | Grade a queue item. Sets `status` to `completed_correct` or `completed_incorrect` and `is_correct`. If `is_correct: false`, creates a new `pending` retry item appended to the queue with a new `labelIndex`. Advances the next `pending` item to `active`. Response: `{ updatedItem: KnowledgeQueueItem, newQueueItem?: KnowledgeQueueItem }`. The `is_correct` field name mirrors the `grade_info()` backend function output. |
 | `getKnowledgeProgress(unitId, studentId)` | Knowledge progress summary. Response: **KnowledgeProgress**. Counts unique topics (not retries); a topic with a correct retry is removed from `incorrectCount`. |
 
+### 3.18 Grading Reports & Per-Unit Feedback (Feedback Tab)
+
+These endpoints power the new **Feedback tab** — a dedicated section where teachers can review Sam's grading reports and write per-student feedback, and students can read both.
+
+#### Key behaviors
+
+1. **Null-not-404**: All four GET endpoints below return **HTTP 200 with `null`** as the body when the resource doesn't exist yet (report not generated, feedback not written). Do **not** return 404 — the frontend uses `null` to show a "Waiting" placeholder.
+2. **Role-aware report summary**: `GET /units/{unitId}/grading-report` (teacher) and `GET /units/{unitId}/my-grading-report` (student) can point to the same underlying record, but the `summary` text should differ in tone:
+   - **Teacher**: detailed, analytical (e.g. "The student showed strong understanding of X but struggled with Y...")
+   - **Student**: encouraging and actionable (e.g. "Great effort! You've shown real understanding of X. To keep growing, try reviewing Y...")
+   - Simplest implementation: store both summaries on the same record (`teacherSummary`, `studentSummary`) and return the appropriate one based on JWT role.
+3. **Create vs Update flow**: The frontend calls `POST /units/{unitId}/feedback` the first time a teacher writes feedback, and `PATCH /feedback/{feedbackId}` on edits. The frontend tracks whether feedback exists and picks the right call automatically.
+
+#### Teacher endpoints
+
+| Frontend call | Method + Path | Auth | Request body | Response |
+|---|---|---|---|---|
+| `getUnitGradingReport(unitId, studentId)` | `GET /units/{unitId}/grading-report?studentId={studentId}` | instructor | — | **GradingReport** or `null` |
+| `getUnitFeedbackForStudent(unitId, studentId)` | `GET /units/{unitId}/feedback?studentId={studentId}` | instructor | — | **FeedbackItem** or `null` |
+| `createUnitFeedback(unitId, studentId, body)` | `POST /units/{unitId}/feedback` | instructor | `{ studentId: string, body: string }` | **FeedbackItem** (created) |
+| `updateFeedback(feedbackId, body)` | `PATCH /feedback/{feedbackId}` | instructor | `{ body: string }` | **FeedbackItem** (updated) |
+
+#### Student endpoints
+
+| Frontend call | Method + Path | Auth | Request body | Response |
+|---|---|---|---|---|
+| `getMyUnitGradingReport(unitId)` | `GET /units/{unitId}/my-grading-report` | student | — | **GradingReport** or `null` |
+| `getMyUnitFeedback(unitId)` | `GET /units/{unitId}/my-feedback` | student | — | **FeedbackItem** or `null` |
+
+#### FeedbackItem fields for unit-specific teacher feedback
+
+When created via `POST /units/{unitId}/feedback`, the returned **FeedbackItem** should include:
+
+| Field | Value |
+|-------|-------|
+| `id` | Generated UUID |
+| `courseId` | Resolved from the unit's `courseId` |
+| `unitId` | From URL param |
+| `title` | Unit title (or empty string — not displayed in the new Feedback tab UI) |
+| `body` | From request `body` field |
+| `sourceType` | `"teacher"` |
+| `instructorId` | From JWT (the authenticated instructor's id) |
+| `ctaLabel` | Optional; not used by the Feedback tab |
+
 ---
 
 ## 4. Conventions and Behaviors
@@ -248,5 +295,7 @@ Note: **knowledge** items are no longer part of `Objectives`. They use the separ
 - [ ] **Teacher Roster**: List all students, get/update course roster, create new student (email required and validated).
 - [ ] **Knowledge Topics**: Store and retrieve **KnowledgeTopic** records per unit (teacher-visible descriptive names).
 - [ ] **Knowledge Queue**: Store **KnowledgeQueueItem** records per student per unit. Support `getKnowledgeQueue` (visible items only), `completeKnowledgeAttempt` (grade + retry logic + advance next item), and `getKnowledgeProgress` (unique-topic aggregation). `is_correct` field name must match `grade_info()` backend output.
+- [ ] **Grading Reports**: Generate and store **GradingReport** records per student per unit. Expose teacher-view (`GET /units/{id}/grading-report?studentId=`) and student-view (`GET /units/{id}/my-grading-report`) endpoints. Both return `null` (HTTP 200) when no report exists yet. Store or generate role-appropriate `summary` text (detailed for teacher, encouraging for student). See §3.18.
+- [ ] **Per-unit teacher feedback**: CRUD for teacher-written feedback on a per-student, per-unit basis. `GET` endpoints return `null` (HTTP 200) when no feedback exists — not 404. `POST` creates, `PATCH` updates by `feedbackId`. See §3.18 for exact paths, request/response shapes, and FeedbackItem field values.
 
 Once these are implemented and responses match (or are mapped to) the types in `frontend/src/types/domain.ts`, the frontend can switch from `mock/db` to the real backend with minimal changes to UI code.
