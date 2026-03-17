@@ -12,6 +12,7 @@ import CourseCreationPage from "../pages/CourseCreationPage";
 import EditRosterPage from "../pages/EditRosterPage";
 import ChatPage from "../pages/ChatPage";
 import SettingsPage from "../pages/SettingsPage";
+import TeacherSettingsPage from "../pages/TeacherSettingsPage";
 import FeedbackPage from "../pages/FeedbackPage";
 import FeedbackCoursePage from "../pages/FeedbackCoursePage";
 import FeedbackUnitPage from "../pages/FeedbackUnitPage";
@@ -50,7 +51,7 @@ export default function AppRoutes() {
       <Route path="/teacher/feedback/course/:courseId" element={<RequireRole role="instructor"><TeacherFeedbackCoursePage /></RequireRole>} />
       <Route path="/teacher/feedback/course/:courseId/student/:studentId" element={<RequireRole role="instructor"><TeacherFeedbackStudentPage /></RequireRole>} />
       <Route path="/teacher/feedback/course/:courseId/student/:studentId/unit/:unitId" element={<RequireRole role="instructor"><TeacherFeedbackUnitPage /></RequireRole>} />
-      <Route path="/teacher/settings" element={<RequireRole role="instructor"><SettingsPage /></RequireRole>} />
+      <Route path="/teacher/settings" element={<RequireRole role="instructor"><TeacherSettingsPage /></RequireRole>} />
 
       {/* Fallback redirect */}
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -12,7 +12,6 @@ interface TeacherFeedbackPanelProps {
   /** Map instructorId -> Instructor for teacher name and avatar */
   instructorsMap?: Record<string, Instructor>;
   title?: string;
-  showSeeAllLink?: boolean;
 }
 
 export default function TeacherFeedbackPanel({
@@ -20,35 +19,16 @@ export default function TeacherFeedbackPanel({
   unitMap = {},
   instructorsMap = {},
   title = "Feedback",
-  showSeeAllLink = true,
 }: TeacherFeedbackPanelProps) {
   const sectionStyles: React.CSSProperties = {
     marginBottom: 32,
   };
 
-  const headingRowStyles: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  };
-
   const headingStyles: React.CSSProperties = {
-    margin: 0,
+    margin: "0 0 16px 0",
     fontSize: 20,
     fontWeight: 600,
     color: GRAY_900,
-  };
-
-  const seeAllStyles: React.CSSProperties = {
-    fontSize: 14,
-    fontWeight: 500,
-    color: PRIMARY,
-    textDecoration: "none",
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    padding: 0,
   };
 
   const listStyles: React.CSSProperties = {
@@ -63,14 +43,7 @@ export default function TeacherFeedbackPanel({
 
   return (
     <section style={sectionStyles}>
-      <div style={headingRowStyles}>
-        <h2 style={headingStyles}>{title}</h2>
-        {showSeeAllLink && (
-          <button type="button" style={seeAllStyles}>
-            See all
-          </button>
-        )}
-      </div>
+      <h2 style={headingStyles}>{title}</h2>
       <div style={listStyles}>
         {feedbackItems.map((item) => (
           <FeedbackCard

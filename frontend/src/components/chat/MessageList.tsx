@@ -46,6 +46,7 @@ function TypingIndicator({ agent }: { agent?: Agent }) {
             name={agent.name}
             size={32}
             imageScale={0.8}
+            tintColor={agent.tintColor}
             style={{ marginTop: 4 }}
           />
         )}
