@@ -18,17 +18,6 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const forgotLinkStyles: React.CSSProperties = {
-    background: "none",
-    border: "none",
-    color: PRIMARY,
-    fontSize: 13,
-    cursor: "pointer",
-    padding: 0,
-    alignSelf: "flex-end",
-    marginTop: -8,
-  };
-
   const footerStyles: React.CSSProperties = {
     marginTop: 24,
     fontSize: 14,
@@ -97,9 +86,6 @@ export default function LoginPage() {
           rightIcon={showPassword ? <EyeOffIcon /> : <EyeIcon />}
           onRightIconClick={() => setShowPassword(!showPassword)}
         />
-        <button type="button" style={forgotLinkStyles}>
-          Forgot password?
-        </button>
         {error && (
           <p style={{ color: "red", fontSize: 13, margin: 0 }}>{error}</p>
         )}

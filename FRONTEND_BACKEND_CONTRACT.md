@@ -70,11 +70,18 @@ The frontend currently calls the following. The backend should provide equivalen
 
 ### 3.1 Auth / Current User
 
-| Frontend call | Expected backend behavior |
-|---------------|---------------------------|
-| `getCurrentStudent()` | Return the **current student** (from session/JWT). Response: **Student**. |
+| Frontend call | Method | Path | Auth | Body | Response | Description |
+|---------------|--------|------|------|------|----------|-------------|
+| `getCurrentStudent()` | GET | `/current-student` | student | — | **Student** | Return the current student from session/JWT. |
+| `getCurrentInstructor()` | GET | `/current-instructor` | instructor | — | **Instructor** | Return the current instructor from session/JWT. |
+| `updateProfile(data)` | PATCH | `/me` | student or instructor | `{ name?: string, avatarUrl?: string }` | **Student** or **Instructor** | Update display name and/or avatar URL for the current user. |
+| `getAvatarUploadUrl(filename, contentType)` | POST | `/me/avatar-upload-url` | student or instructor | `{ filename: string, contentType: string }` | `{ uploadUrl: string, publicUrl: string }` | Get a pre-signed S3 URL for avatar image upload. Client PUTs file directly to `uploadUrl`, then sends `publicUrl` in `PATCH /me`. |
 
-If you support teachers, a similar `getCurrentTeacher()` (or role-aware "current user") may be needed later.
+#### Implementation notes
+
+- **`PATCH /me`**: Detect the user's role from the JWT `cognito:groups` claim. If `"instructors"` is present, update the `INSTRUCTORS` table; otherwise update `STUDENTS`. Only update fields that are present in the request body (`name`, `avatarUrl`). Return the full updated record.
+- **`POST /me/avatar-upload-url`**: Store avatars at a predictable S3 key (e.g. `avatars/{userId}/{filename}`). Return both a presigned PUT URL (`uploadUrl`, ~15 min expiry) and a publicly accessible URL (`publicUrl`). For production, `publicUrl` should be a CloudFront URL; for staging, a presigned GET URL is acceptable.
+- **⚠️ Do not overwrite `name` from JWT on `GET /current-student` or `GET /current-instructor`**: The current backend syncs the Cognito JWT name back to the DB on every read, which overwrites any name the user saved via `PATCH /me`. The JWT-to-DB name sync should only run on **first record creation**, not on subsequent reads.
 
 ### 3.2 Student
 

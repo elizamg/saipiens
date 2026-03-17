@@ -16,6 +16,7 @@ export interface Agent {
   id: string;
   name: string;
   avatarUrl: string;
+  tintColor?: string;
 }
 
 export interface Course {

@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
-import TeacherCourseCard from "../components/dashboard/TeacherCourseCard";
+import TintedImage from "../components/ui/TintedImage";
 import { getCurrentInstructor, listTeacherCourses } from "../services/api";
 import type { Course, Instructor } from "../types/domain";
-import {
-  GREEN_GRADIENT_VERTICAL,
-  WHITE,
-  GRAY_900,
-  GRAY_500,
-} from "../theme/colors";
+import { GRAY_600, GRAY_900, GRAY_200, WHITE, PRIMARY } from "../theme/colors";
+import { courseIconMap } from "../theme/courseIcons";
+
+const bookIcon = (
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+  </svg>
+);
 
 export default function TeacherFeedbackPage() {
   const navigate = useNavigate();
@@ -27,8 +30,6 @@ export default function TeacherFeedbackPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const firstName = instructor?.name?.split(" ")[0] ?? "there";
-
   return (
     <AppShell
       student={instructor ? { ...instructor, yearLabel: "" } : null}
@@ -36,51 +37,50 @@ export default function TeacherFeedbackPage() {
       sidebarCourses={loading ? [] : courses}
       routePrefix="/teacher"
     >
-      <div
-        style={{
-          background: GREEN_GRADIENT_VERTICAL,
-          borderRadius: 16,
-          padding: "32px 40px",
-          marginBottom: 32,
-        }}
-      >
-        <h1 style={{ margin: "0 0 8px 0", fontSize: 32, fontWeight: 700, color: WHITE, textShadow: "0 1px 2px rgba(0,0,0,0.1)" }}>
+      <div>
+        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, fontWeight: 600, color: GRAY_900 }}>
           Feedback
         </h1>
-        <p style={{ margin: 0, fontSize: 16, color: "rgba(255, 255, 255, 0.9)" }}>
-          {loading
-            ? "Loading…"
-            : `Review Sam's reports and send feedback to your students, ${firstName}.`}
+        <p style={{ margin: "0 0 24px 0", fontSize: 14, color: GRAY_600 }}>
+          Select a course to review student feedback.
         </p>
-      </div>
-
-      <section>
-        <h2 style={{ margin: "0 0 16px 0", fontSize: 20, fontWeight: 600, color: GRAY_900 }}>
-          Your Courses
-        </h2>
         {loading ? (
-          <p style={{ fontSize: 14, color: GRAY_500 }}>Loading courses…</p>
+          <p style={{ fontSize: 14, color: GRAY_600 }}>Loading courses…</p>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-              gap: 20,
-            }}
-          >
-            {courses.map((course) => (
-              <TeacherCourseCard
-                key={course.id}
-                id={course.id}
-                title={course.title}
-                studentCount={course.studentCount ?? 0}
-                icon={course.icon ?? ""}
-                onNavigate={() => navigate(`/teacher/feedback/course/${course.id}`)}
-              />
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {courses.map((course) => {
+              const iconSrc = courseIconMap[course.icon ?? ""];
+              return (
+                <button
+                  key={course.id}
+                  onClick={() => navigate(`/teacher/feedback/course/${course.id}`)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 16,
+                    padding: "16px 20px",
+                    background: WHITE,
+                    border: `1px solid ${GRAY_200}`,
+                    borderRadius: 12,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    fontSize: 15,
+                    fontWeight: 500,
+                    color: GRAY_900,
+                  }}
+                >
+                  {iconSrc ? (
+                    <TintedImage src={iconSrc} color={PRIMARY} width={28} height={28} />
+                  ) : (
+                    bookIcon
+                  )}
+                  {course.title}
+                </button>
+              );
+            })}
           </div>
         )}
-      </section>
+      </div>
     </AppShell>
   );
 }
