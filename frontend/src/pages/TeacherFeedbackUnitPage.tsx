@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Avatar from "../components/ui/Avatar";
 import { useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
@@ -194,11 +195,7 @@ export default function TeacherFeedbackUnitPage() {
             {/* Sam's Report */}
             <div style={cardStyles}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                {agent?.avatarUrl ? (
-                  <img src={agent.avatarUrl} alt="Sam" style={avatarStyles} />
-                ) : (
-                  <div style={{ ...avatarStyles, background: GRAY_200, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: GRAY_600 }}>S</div>
-                )}
+                <Avatar src={agent?.avatarUrl} name={agent?.name ?? "Sam"} size={36} imageScale={0.8} tintColor={agent?.tintColor} />
                 <span style={{ fontWeight: 600, fontSize: 15, color: GRAY_900 }}>Sam</span>
               </div>
               {report ? (

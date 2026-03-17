@@ -5,10 +5,10 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import Avatar from "../components/ui/Avatar";
-import { getCurrentStudent, updateProfile, getAvatarUploadUrl } from "../services/api";
+import { getCurrentInstructor, updateProfile, getAvatarUploadUrl } from "../services/api";
 import { getCurrentUserEmail, changePassword } from "../services/cognitoAuth";
 import { useAuth } from "../contexts/AuthContext";
-import type { Student } from "../types/domain";
+import type { Instructor } from "../types/domain";
 import {
   GRAY_500,
   GRAY_600,
@@ -18,11 +18,11 @@ import {
   WHITE,
 } from "../theme/colors";
 
-export default function SettingsPage() {
+export default function TeacherSettingsPage() {
   const navigate = useNavigate();
   const { signOut } = useAuth();
 
-  const [student, setStudent] = useState<Student | null>(null);
+  const [instructor, setInstructor] = useState<Instructor | null>(null);
   const [name, setName] = useState("");
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | undefined>(undefined);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -40,11 +40,11 @@ export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    getCurrentStudent()
-      .then((s) => {
-        setStudent(s);
-        setName(s.name);
-        setAvatarPreviewUrl(s.avatarUrl);
+    getCurrentInstructor()
+      .then((i) => {
+        setInstructor(i);
+        setName(i.name);
+        setAvatarPreviewUrl(i.avatarUrl);
       })
       .catch(console.error);
     getCurrentUserEmail().then(setEmail).catch(console.error);
@@ -61,7 +61,7 @@ export default function SettingsPage() {
           await fetch(uploadUrl, { method: "PUT", body: avatarFile });
           avatarUrl = publicUrl;
         } else {
-          avatarUrl = avatarPreviewUrl; // already an object URL from file selection
+          avatarUrl = avatarPreviewUrl;
         }
       }
       await updateProfile({ name, ...(avatarUrl ? { avatarUrl } : {}) });
@@ -100,8 +100,12 @@ export default function SettingsPage() {
     navigate("/login");
   }
 
+  const shellStudent = instructor
+    ? { ...instructor, yearLabel: "" }
+    : { id: "", name: "", yearLabel: "" };
+
   return (
-    <AppShell student={student} activePath="/settings">
+    <AppShell student={shellStudent} activePath="/teacher/settings" routePrefix="/teacher">
       <div style={{ maxWidth: 600 }}>
         <h1 style={{ margin: "0 0 24px 0", fontSize: 24, fontWeight: 600 }}>Settings</h1>
 
@@ -152,7 +156,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <div style={fieldLabelStyle}>Role</div>
-              <RoleBadge label="Student" />
+              <RoleBadge label="Instructor" />
             </div>
           </div>
         </Card>

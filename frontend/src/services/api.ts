@@ -6,6 +6,7 @@
  */
 
 import { getAuthToken } from "../contexts/AuthContext";
+import whiteTreeLogo from "../assets/white-tree.png";
 import type {
   Student,
   Instructor,
@@ -79,7 +80,7 @@ function patch<T>(path: string, body?: unknown): Promise<T> {
 // ---------------------------------------------------------------------------
 
 export async function getAgent(): Promise<Agent> {
-  return { id: "sam", name: "Sam", avatarUrl: "/sam-avatar.png" };
+  return { id: "sam", name: "Sam", avatarUrl: whiteTreeLogo, tintColor: "#ffffff" };
 }
 
 // ---------------------------------------------------------------------------
@@ -572,4 +573,22 @@ export async function createNewStudent(
   _email: string
 ): Promise<Student> {
   return post<Student>("/students", { name: `${firstName.trim()} ${lastName.trim()}` });
+}
+
+// ---------------------------------------------------------------------------
+// Current User Profile
+// ---------------------------------------------------------------------------
+
+export function updateProfile(data: { name?: string; avatarUrl?: string }): Promise<Student | Instructor> {
+  return patch<Student | Instructor>("/me", data);
+}
+
+export function getAvatarUploadUrl(
+  filename: string,
+  contentType: string
+): Promise<{ uploadUrl: string; publicUrl: string }> {
+  return post<{ uploadUrl: string; publicUrl: string }>("/me/avatar-upload-url", {
+    filename,
+    contentType,
+  });
 }

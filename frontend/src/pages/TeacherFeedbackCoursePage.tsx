@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
+import Avatar from "../components/ui/Avatar";
 import {
   getCurrentInstructor,
   getCourse,
@@ -9,7 +10,7 @@ import {
   listTeacherStudents,
 } from "../services/api";
 import type { Course, Instructor, Student } from "../types/domain";
-import { GRAY_600, GRAY_900, GRAY_200, GRAY_400, WHITE } from "../theme/colors";
+import { GRAY_400, GRAY_600, GRAY_900, GRAY_200, WHITE } from "../theme/colors";
 
 export default function TeacherFeedbackCoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -34,7 +35,6 @@ export default function TeacherFeedbackCoursePage() {
         setInstructor(instr);
         setCourse(c);
         setCourses(allCourses);
-
         const rosterSet = new Set(rosterIds);
         setStudents(allStudents.filter((s) => rosterSet.has(s.id)));
       } catch (e) {
@@ -64,7 +64,7 @@ export default function TeacherFeedbackCoursePage() {
           {course?.title ?? "Course"}
         </h1>
         <p style={{ margin: "0 0 24px 0", fontSize: 14, color: GRAY_600 }}>
-          Select a student to review their unit feedback.
+          Select a student to view their feedback.
         </p>
         {loading ? (
           <p style={{ fontSize: 14, color: GRAY_600 }}>Loading students…</p>
@@ -79,8 +79,8 @@ export default function TeacherFeedbackCoursePage() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 12,
-                  padding: "14px 20px",
+                  gap: 16,
+                  padding: "16px 20px",
                   background: WHITE,
                   border: `1px solid ${GRAY_200}`,
                   borderRadius: 12,
@@ -91,24 +91,8 @@ export default function TeacherFeedbackCoursePage() {
                   color: GRAY_900,
                 }}
               >
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: "50%",
-                    background: GRAY_200,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: GRAY_600,
-                    flexShrink: 0,
-                  }}
-                >
-                  {student.name.charAt(0).toUpperCase()}
-                </div>
-                <span>{student.name}</span>
+                <Avatar src={student.avatarUrl} name={student.name} size={28} />
+                {student.name}
               </button>
             ))}
           </div>

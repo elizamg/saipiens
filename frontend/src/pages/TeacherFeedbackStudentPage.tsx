@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
-import UnitCard from "../components/course/UnitCard";
 import {
   getCurrentInstructor,
   listTeacherCourses,
@@ -11,7 +10,7 @@ import {
   getUnitFeedbackForStudent,
 } from "../services/api";
 import type { Course, Instructor, Student, Unit } from "../types/domain";
-import { GRAY_500, GRAY_600, GRAY_900, SUCCESS_GREEN } from "../theme/colors";
+import { GRAY_600, GRAY_900, GRAY_200, WHITE, SUCCESS_GREEN } from "../theme/colors";
 
 interface UnitRow {
   unit: Unit;
@@ -46,7 +45,6 @@ export default function TeacherFeedbackStudentPage() {
           Promise.all(units.map((u) => getUnitGradingReport(u.id, studentId!).catch(() => null))),
           Promise.all(units.map((u) => getUnitFeedbackForStudent(u.id, studentId!).catch(() => null))),
         ]);
-
         setUnitRows(
           units.map((unit, i) => ({
             unit,
@@ -73,90 +71,67 @@ export default function TeacherFeedbackStudentPage() {
       <div>
         <button
           onClick={() => navigate(`/teacher/feedback/course/${courseId}`)}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: GRAY_600,
-            fontSize: 14,
-            padding: "0 0 16px 0",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-          }}
+          style={{ background: "none", border: "none", cursor: "pointer", color: GRAY_600, fontSize: 14, padding: "0 0 16px 0", display: "flex", alignItems: "center", gap: 4 }}
         >
           ← Back
         </button>
-        <h1 style={{ margin: "0 0 4px 0", fontSize: 28, fontWeight: 700, color: GRAY_900 }}>
+        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, fontWeight: 600, color: GRAY_900 }}>
           {student?.name ?? "Student"}
         </h1>
-        <p style={{ margin: "0 0 28px 0", fontSize: 14, color: GRAY_500 }}>
-          Select a unit to view Sam's report and add feedback.
+        <p style={{ margin: "0 0 24px 0", fontSize: 14, color: GRAY_600 }}>
+          Select a unit to view feedback.
         </p>
-
         {loading ? (
-          <p style={{ fontSize: 14, color: GRAY_500 }}>Loading units…</p>
+          <p style={{ fontSize: 14, color: GRAY_600 }}>Loading units…</p>
         ) : (
-          <section>
-            <h2 style={{ margin: "0 0 16px 0", fontSize: 20, fontWeight: 600, color: GRAY_900 }}>
-              Units
-            </h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {unitRows.map(({ unit, reportReady, feedbackSent }) => (
-                <div key={unit.id}>
-                  <UnitCard
-                    unit={unit}
-                    courseId={courseId!}
-                    routePrefix="/teacher"
-                    onView={() =>
-                      navigate(
-                        `/teacher/feedback/course/${courseId}/student/${studentId}/unit/${unit.id}`
-                      )
-                    }
-                  />
-                  {/* Status badges shown below each card */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      padding: "6px 16px 0",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <span
-                        style={{
-                          width: 7,
-                          height: 7,
-                          borderRadius: "50%",
-                          background: reportReady ? SUCCESS_GREEN : GRAY_500,
-                          flexShrink: 0,
-                          display: "inline-block",
-                        }}
-                      />
-                      <span style={{ fontSize: 12, color: GRAY_500 }}>
-                        {reportReady ? "Report ready" : "Awaiting report"}
-                      </span>
-                    </div>
-                    {feedbackSent && (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 500,
-                          color: SUCCESS_GREEN,
-                          background: "rgba(92, 143, 106, 0.12)",
-                          padding: "2px 8px",
-                          borderRadius: 99,
-                        }}
-                      >
-                        Feedback sent
-                      </span>
-                    )}
-                  </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {unitRows.map(({ unit, reportReady, feedbackSent }) => (
+              <button
+                key={unit.id}
+                onClick={() =>
+                  navigate(`/teacher/feedback/course/${courseId}/student/${studentId}/unit/${unit.id}`)
+                }
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "16px 20px",
+                  background: WHITE,
+                  border: `1px solid ${GRAY_200}`,
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: 15,
+                  fontWeight: 500,
+                  color: GRAY_900,
+                }}
+              >
+                <span>{unit.title}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {feedbackSent && (
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: SUCCESS_GREEN,
+                      background: "rgba(92, 143, 106, 0.12)",
+                      padding: "2px 7px",
+                      borderRadius: 99,
+                    }}>
+                      Feedback sent
+                    </span>
+                  )}
+                  <span style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: reportReady ? SUCCESS_GREEN : GRAY_200,
+                    flexShrink: 0,
+                    display: "inline-block",
+                  }} />
                 </div>
-              ))}
-            </div>
-          </section>
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </AppShell>

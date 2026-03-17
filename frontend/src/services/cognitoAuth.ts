@@ -178,3 +178,23 @@ export async function getCurrentRole(): Promise<UserRole | null> {
   const session = await getCurrentSession();
   return session ? roleFromSession(session) : null;
 }
+
+/** Change the current user's password via Cognito. */
+export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+  const user = userPool.getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+  await new Promise<void>((resolve, reject) => {
+    user.getSession((err: Error | null, session: CognitoUserSession | null) => {
+      if (err || !session) return reject(err ?? new Error("No session"));
+      user.changePassword(oldPassword, newPassword, (e) => (e ? reject(e) : resolve()));
+    });
+  });
+}
+
+/** Decode email from the current user's ID token JWT claims. */
+export async function getCurrentUserEmail(): Promise<string | null> {
+  const token = await getIdToken();
+  if (!token) return null;
+  const payload = JSON.parse(atob(token.split(".")[1]));
+  return (payload.email as string) ?? null;
+}
