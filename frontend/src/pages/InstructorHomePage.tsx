@@ -3,7 +3,7 @@ import AppShell from "../components/layout/AppShell";
 import TeacherCourseCard from "../components/dashboard/TeacherCourseCard";
 import NewCourseCard from "../components/dashboard/NewCourseCard";
 import {
-  GREEN_GRADIENT_VERTICAL,
+  PRIMARY,
   WHITE,
   GRAY_900,
   GRAY_500,
@@ -27,25 +27,31 @@ export default function InstructorHomePage() {
   }, []);
 
   const bannerStyles: React.CSSProperties = {
-    background: GREEN_GRADIENT_VERTICAL,
-    borderRadius: 16,
-    padding: "32px 40px",
+    background: PRIMARY,
+    borderRadius: 12,
+    padding: "14px 24px",
     marginBottom: 32,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
   };
 
   const greetingStyles: React.CSSProperties = {
     margin: 0,
-    fontSize: 32,
-    fontWeight: 700,
+    fontSize: 18,
+    fontWeight: 600,
     color: WHITE,
-    marginBottom: 8,
-    textShadow: "0 1px 2px rgba(0,0,0,0.1)",
+  };
+
+  const dividerStyles: React.CSSProperties = {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 14,
   };
 
   const subtitleStyles: React.CSSProperties = {
     margin: 0,
-    fontSize: 16,
-    color: "rgba(255, 255, 255, 0.9)",
+    fontSize: 13,
+    color: "rgba(255,255,255,0.75)",
   };
 
   const headingStyles: React.CSSProperties = {
@@ -73,9 +79,12 @@ export default function InstructorHomePage() {
     >
       <div style={bannerStyles}>
         <h1 style={greetingStyles}>Welcome back, {firstName}!</h1>
-        <p style={subtitleStyles}>
-          {loading ? "Loading…" : `${courses.length} course${courses.length !== 1 ? "s" : ""} • Ready to inspire!`}
-        </p>
+        {!loading && (
+          <>
+            <span style={dividerStyles}>·</span>
+            <p style={subtitleStyles}>{courses.length} course{courses.length !== 1 ? "s" : ""}</p>
+          </>
+        )}
       </div>
 
       <section style={{ marginBottom: 32 }}>
