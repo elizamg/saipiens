@@ -5,6 +5,7 @@ import ActiveUnits from "../components/course/ActiveUnits";
 import NewUnitCard from "../components/course/NewUnitCard";
 import Button from "../components/ui/Button";
 import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
+import { CourseIcon } from "../theme/courseIcons";
 import {
   getCourse,
   listUnits,
@@ -61,12 +62,6 @@ export default function TeacherCoursePage() {
     marginBottom: 12,
   };
 
-  const iconStyles: React.CSSProperties = {
-    width: 48,
-    height: 48,
-    objectFit: "contain",
-  };
-
   const titleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 32,
@@ -84,23 +79,6 @@ export default function TeacherCoursePage() {
     fontSize: 14,
     color: GRAY_500,
   };
-
-  const bookIcon = (
-    <svg
-      width="40"
-      height="40"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={PRIMARY}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={iconStyles}
-    >
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-    </svg>
-  );
 
   if (loading) {
     return (
@@ -128,7 +106,7 @@ export default function TeacherCoursePage() {
         <>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              {bookIcon}
+              <CourseIcon icon={course.icon ?? "general"} size={48} color={PRIMARY} />
               {editingTitle ? (
                 <input
                   autoFocus
