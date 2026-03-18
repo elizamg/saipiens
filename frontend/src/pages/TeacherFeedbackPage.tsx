@@ -1,18 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
-import TintedImage from "../components/ui/TintedImage";
+import { CourseIcon } from "../theme/courseIcons";
 import { getCurrentInstructor, listTeacherCourses } from "../services/api";
 import type { Course, Instructor } from "../types/domain";
 import { GRAY_600, GRAY_900, GRAY_200, WHITE, PRIMARY } from "../theme/colors";
-import { courseIconMap } from "../theme/courseIcons";
-
-const bookIcon = (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-  </svg>
-);
 
 export default function TeacherFeedbackPage() {
   const navigate = useNavigate();
@@ -48,36 +40,29 @@ export default function TeacherFeedbackPage() {
           <p style={{ fontSize: 14, color: GRAY_600 }}>Loading courses…</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {courses.map((course) => {
-              const iconSrc = courseIconMap[course.icon ?? ""];
-              return (
-                <button
-                  key={course.id}
-                  onClick={() => navigate(`/teacher/feedback/course/${course.id}`)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 16,
-                    padding: "16px 20px",
-                    background: WHITE,
-                    border: `1px solid ${GRAY_200}`,
-                    borderRadius: 12,
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    color: GRAY_900,
-                  }}
-                >
-                  {iconSrc ? (
-                    <TintedImage src={iconSrc} color={PRIMARY} width={28} height={28} />
-                  ) : (
-                    bookIcon
-                  )}
-                  {course.title}
-                </button>
-              );
-            })}
+            {courses.map((course) => (
+              <button
+                key={course.id}
+                onClick={() => navigate(`/teacher/feedback/course/${course.id}`)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  padding: "16px 20px",
+                  background: WHITE,
+                  border: `1px solid ${GRAY_200}`,
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: 15,
+                  fontWeight: 500,
+                  color: GRAY_900,
+                }}
+              >
+                <CourseIcon icon={course.icon ?? "general"} size={28} color={PRIMARY} />
+                {course.title}
+              </button>
+            ))}
           </div>
         )}
       </div>

@@ -1,45 +1,22 @@
 import React from "react";
-import TintedImage from "../ui/TintedImage";
+import { COURSE_ICON_OPTIONS, CourseIcon } from "../../theme/courseIcons";
 import { PRIMARY, GRAY_300 } from "../../theme/colors";
-import historyLogo from "../../assets/history-logo.png";
-import scienceLogo from "../../assets/science-logo.png";
 
 interface IconChooserProps {
   selected: string;
   onChange: (icon: string) => void;
 }
 
-const BookIcon = () => (
-  <svg
-    width="32"
-    height="32"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={PRIMARY}
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-  </svg>
-);
-
-const options = [
-  { key: "history", label: "History", image: historyLogo },
-  { key: "science", label: "Science", image: scienceLogo },
-  { key: "general", label: "General", image: null },
-];
-
 export default function IconChooser({ selected, onChange }: IconChooserProps) {
   const containerStyles: React.CSSProperties = {
     display: "flex",
+    flexWrap: "wrap",
     gap: 16,
   };
 
   return (
     <div style={containerStyles}>
-      {options.map((opt) => {
+      {COURSE_ICON_OPTIONS.map((opt) => {
         const isSelected = selected === opt.key;
         const cardStyles: React.CSSProperties = {
           display: "flex",
@@ -50,17 +27,13 @@ export default function IconChooser({ selected, onChange }: IconChooserProps) {
           borderRadius: 12,
           border: `2px solid ${isSelected ? PRIMARY : GRAY_300}`,
           cursor: "pointer",
-          minWidth: 80,
+          width: 88,
         };
 
         return (
           <div key={opt.key} style={cardStyles} onClick={() => onChange(opt.key)}>
-            {opt.image ? (
-              <TintedImage src={opt.image} color={PRIMARY} width={32} height={32} />
-            ) : (
-              <BookIcon />
-            )}
-            <span style={{ fontSize: 13, fontWeight: 500, color: PRIMARY }}>
+            <CourseIcon icon={opt.key} size={32} color={PRIMARY} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: PRIMARY, textAlign: "center", lineHeight: 1.3 }}>
               {opt.label}
             </span>
           </div>

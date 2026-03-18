@@ -5,7 +5,6 @@ import ActiveUnits from "../components/course/ActiveUnits";
 import AwardsGrid from "../components/dashboard/AwardsGrid";
 import TeacherFeedbackPanel from "../components/dashboard/TeacherFeedbackPanel";
 import Avatar from "../components/ui/Avatar";
-import TintedImage from "../components/ui/TintedImage";
 import {
   getCurrentStudent,
   getCourse,
@@ -17,7 +16,7 @@ import {
   getKnowledgeProgress,
 } from "../services/api";
 import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
-import { courseIconMap } from "../theme/courseIcons";
+import { CourseIcon } from "../theme/courseIcons";
 import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress } from "../types/domain";
 
 export default function CoursePage() {
@@ -102,21 +101,6 @@ export default function CoursePage() {
     marginBottom: 12,
   };
 
-  const iconStyles: React.CSSProperties = {
-    width: 48,
-    height: 48,
-    objectFit: "contain",
-  };
-
-  const bookIcon = (
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={iconStyles}>
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-    </svg>
-  );
-
-  const courseIconSrc = course?.icon ? courseIconMap[course.icon] : null;
-
   const titleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 32,
@@ -149,11 +133,7 @@ export default function CoursePage() {
         <>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              {courseIconSrc ? (
-                <TintedImage src={courseIconSrc} color={PRIMARY} width={48} height={48} style={iconStyles} />
-              ) : (
-                bookIcon
-              )}
+              <CourseIcon icon={course.icon ?? "general"} size={48} color={PRIMARY} />
               <h1 style={titleStyles}>{course.title}</h1>
             </div>
             <div style={instructorRowStyles}>
