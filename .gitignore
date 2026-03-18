@@ -50,5 +50,44 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Lambda vendored dependencies — pip-installed packages bundled into the zip
+# Only our own source files (lambda_handler.py, backend_code/, etc.) are tracked
+backend/lambdalith/*.dist-info/
+backend/lambdalith/*.so
+backend/lambdalith/bin/
+backend/lambdalith/share/
+backend/lambdalith/pillow.libs/
+backend/lambdalith/PIL/
+backend/lambdalith/annotated_types/
+backend/lambdalith/anyio/
+backend/lambdalith/certifi/
+backend/lambdalith/cffi/
+backend/lambdalith/charset_normalizer/
+backend/lambdalith/cryptography/
+backend/lambdalith/defusedxml/
+backend/lambdalith/distro/
+backend/lambdalith/fontTools/
+backend/lambdalith/fpdf/
+backend/lambdalith/google/
+backend/lambdalith/h11/
+backend/lambdalith/httpcore/
+backend/lambdalith/httpx/
+backend/lambdalith/idna/
+backend/lambdalith/pycparser/
+backend/lambdalith/pydantic/
+backend/lambdalith/pydantic_core/
+backend/lambdalith/pyasn1/
+backend/lambdalith/pyasn1_modules/
+backend/lambdalith/requests/
+backend/lambdalith/sniffio/
+backend/lambdalith/tenacity/
+backend/lambdalith/typing_inspection/
+backend/lambdalith/urllib3/
+backend/lambdalith/websockets/
+
 # Test Files
 chapter_3.pdf
+dev_cred.txt
+ai_notes.md
+deploy.zip
+lambda.zip

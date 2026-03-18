@@ -77,6 +77,10 @@ export default function ProgressCircle({ state, size = 16 }: ProgressCircleProps
     "Z",
   ].join(" ");
 
+  // walkthrough_started uses grey fill (student just began, no progress yet)
+  const fillColor = state === "walkthrough_started" ? GRAY_300 : SUCCESS_GREEN;
+  const strokeColor = state === "walkthrough_started" ? GRAY_300 : SUCCESS_GREEN;
+
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <circle
@@ -84,10 +88,10 @@ export default function ProgressCircle({ state, size = 16 }: ProgressCircleProps
         cy={cy}
         r={innerR}
         fill="none"
-        stroke={SUCCESS_GREEN}
+        stroke={strokeColor}
         strokeWidth={strokeWidth}
       />
-      <path d={pathData} fill={SUCCESS_GREEN} />
+      <path d={pathData} fill={fillColor} />
     </svg>
   );
 }

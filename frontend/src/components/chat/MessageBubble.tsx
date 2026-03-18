@@ -1,5 +1,25 @@
 import React from "react";
 import { PRIMARY, GRAY_900, GRAY_600, GRAY_200, WHITE } from "../../theme/colors";
+
+const NEW_ATTEMPT_BUTTON_STYLES: React.CSSProperties = {
+  padding: "8px 20px",
+  borderRadius: 12,
+  border: "none",
+  backgroundColor: PRIMARY,
+  color: WHITE,
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
+  textTransform: "uppercase",
+  letterSpacing: "0.5px",
+};
+
+const GRADING_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  "correct": { label: "Correct", bg: "#d1fae5", color: "#065f46" },
+  "slight clarification": { label: "Almost — small clarification needed", bg: "#fef9c3", color: "#713f12" },
+  "small mistake": { label: "Small mistake", bg: "#ffedd5", color: "#7c2d12" },
+  "incorrect": { label: "Incorrect", bg: "#fee2e2", color: "#7f1d1d" },
+};
 import ProgressCircle from "../ui/ProgressCircle";
 import Avatar from "../ui/Avatar";
 import type { ChatMessage, ProgressState, Agent } from "../../types/domain";
@@ -13,9 +33,21 @@ const PROGRESS_LABELS: Record<string, string> = {
 interface MessageBubbleProps {
   message: ChatMessage;
   agent?: Agent;
+  onNewAttempt?: () => void;
 }
 
-export default function MessageBubble({ message, agent }: MessageBubbleProps) {
+export default function MessageBubble({ message, agent, onNewAttempt }: MessageBubbleProps) {
+  // Synthetic action button — renders a centered "NEW ATTEMPT" button in the message list
+  if (message.metadata?.isNewAttemptButton) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+        <button type="button" style={NEW_ATTEMPT_BUTTON_STYLES} onClick={onNewAttempt}>
+          NEW ATTEMPT
+        </button>
+      </div>
+    );
+  }
+
   const isStudent = message.role === "student";
   const progressState = message.metadata?.progressState;
   const isProgressFeedback = progressState != null && (message.metadata?.isSystemMessage === true || message.role === "tutor");
@@ -78,6 +110,8 @@ export default function MessageBubble({ message, agent }: MessageBubbleProps) {
 
   const showAgentAvatar = !isStudent && !isSystem && agent;
   const showCircle = isProgressFeedback && progressState === "walkthrough_started";
+  const gradingCategory = !isStudent && !isSystem ? message.metadata?.gradingCategory : undefined;
+  const gradingBadge = gradingCategory ? GRADING_BADGE[gradingCategory] : undefined;
 
   const bubble = (
     <div style={bubbleStyles}>
@@ -88,6 +122,20 @@ export default function MessageBubble({ message, agent }: MessageBubbleProps) {
         </div>
       ) : (
         <div style={contentStyles}>{message.content}</div>
+      )}
+      {gradingBadge && (
+        <div style={{
+          display: "inline-block",
+          marginTop: 8,
+          padding: "3px 10px",
+          borderRadius: 12,
+          fontSize: 12,
+          fontWeight: 600,
+          backgroundColor: gradingBadge.bg,
+          color: gradingBadge.color,
+        }}>
+          {gradingBadge.label}
+        </div>
       )}
       {message.attachments && message.attachments.length > 0 && (
         <div style={attachmentContainerStyles}>
