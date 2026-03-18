@@ -111,6 +111,36 @@ Note: `VITE_DEV_STUDENT_ID` and `VITE_DEV_TOKEN` are no longer used by the front
 
 ---
 
+## M) ~~Delete & Restore~~ ✅ DONE
+All soft-delete, hard-delete, and restore routes are implemented:
+- `DELETE /units/{unitId}` — soft delete (sets `deletedAt`)
+- `DELETE /courses/{courseId}` — soft delete (sets `deletedAt`)
+- `DELETE /units/{unitId}/permanent` — hard delete (cascades to objectives, questions, stages, threads, messages, progress, knowledge topics/queue, S3 uploads)
+- `DELETE /courses/{courseId}/permanent` — hard delete (cascades to units and enrollments)
+- `PATCH /units/{unitId}/restore` — removes `deletedAt`
+- `PATCH /courses/{courseId}/restore` — removes `deletedAt`
+
+## N) ~~Grading Reports & Per-Unit Feedback~~ ✅ DONE
+- `GET /units/{unitId}/grading-report?studentId=X` — on-demand AI report generation (teacher view)
+- `GET /units/{unitId}/my-grading-report` — student view of AI report
+- `POST /units/{unitId}/feedback` — teacher creates feedback
+- `PATCH /feedback/{feedbackId}` — teacher updates feedback
+- `GET /units/{unitId}/feedback?studentId=X` — teacher reads feedback
+- `GET /units/{unitId}/my-feedback` — student reads feedback
+
+⚠ Known issue: Grading report generation can timeout (503) on first request for units with no cached report. Lambda timeout is 60s for regular requests; Gemini AI call may exceed this.
+
+## O) ~~Upload Review Flow (identify → review → generate)~~ ✅ DONE
+Multi-step upload pipeline with teacher review:
+1. `POST /courses/{courseId}/units/upload` → stages files, invokes pipeline async → identifies knowledge items
+2. `GET /units/{unitId}/identified-knowledge` → teacher reviews AI-identified items
+3. `POST /units/{unitId}/generate` → teacher selects items → triggers async question generation
+4. `POST /units/{unitId}/edit-objectives` → resets to review step if teacher wants to re-select
+5. `POST /units/{unitId}/reupload` → generates pre-signed S3 URLs for re-uploading documents
+6. `POST /units/{unitId}/process` → triggers pipeline after S3 upload completes
+
+---
+
 ## "Ready for frontend integration" checklist ✅ DONE
 - [x] JWT auth works end-to-end (API Gateway authorizer + Lambda fallback)
 - [x] CORS includes Authorization, PATCH method, x-dev-instructor-id header
@@ -119,3 +149,9 @@ Note: `VITE_DEV_STUDENT_ID` and `VITE_DEV_TOKEN` are no longer used by the front
 - [x] All frontend pages (student + teacher) call real API — no mock data
 - [x] Signup collects first/last name; names display correctly on dashboards
 - [ ] Seeded content is complete for demo course(s) — only needed if demo accounts need pre-populated courses
+
+---
+
+## Comprehensive Test Results (2026-03-16)
+94/98 tests passed (95.9%) across API + UI testing. See `TEST_RESULTS.md` and `TEST_PLAN.md` in repo root.
+Automated API test script: `run_tests.sh` (47 endpoint tests with Cognito JWT auth).

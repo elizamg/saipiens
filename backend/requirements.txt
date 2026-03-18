@@ -1,0 +1,4 @@
+google-genai
+tenacity
+fpdf2
+requests

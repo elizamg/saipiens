@@ -448,7 +448,9 @@ function ThreadItem({
         if (!isThreadSelected) e.currentTarget.style.backgroundColor = "transparent";
       }}
     >
-      <span style={threadTitleStyles}>{thread.title}</span>
+      <span style={threadTitleStyles}>
+        {thread.kind === "skill" ? `Skill ${thread.order + 1}` : thread.title}
+      </span>
       <ProgressCircle state={thread.progressState} size={21} />
     </div>
   );

@@ -1,0 +1,21 @@
+Here is a description of how the homework page (where students work on knowledge questions and skill questions) should look.
+
+First, there is a sidebar with two drop down sections, "KNOWLEDGE" and "SKILLS". Each drop down section has a green progress bar representing how far along the student is for that section. Then, each section has a list of items.
+
+Each item is labeled either "Knowledge [Knowledge Number]" or "Skill [Skill Number]" (for the respective section). Then, right justified, there is a circle that can either be white with a grey outline, grey, green (as a circular progress bar).
+
+For knowledge, the circle is white if the student didn't attempt the problem. If they attempted the problem, the circle is grey. If they get the problem right, the circle is green.
+
+The progress bar for knowledge represents the number of the knowledge questions the student has completed by getting them correct.
+
+The progress bar for knowledge should contain two progress bars:
+There should be a main green progress bar in front representing the percent of the questions the student has gotten correct up until this point. Then, there should also be a second progress bar behind the green progress bar that's a slightly darker grey than the background of the progress bar that represents the percentage of the total knowledge questions the student has "attempted". So if the student attempted 7/10 of the knowledge, and got 3/10 correct, there should be a green progress bar 30% filled shown on top of a slightly darker grey progress bar that's 70% filled, then behind that a lighter grey background.
+
+For the skill section, the progress bar should be somewhat similar. The green should represent the number of skills that were completed. The grey progress bar should show the percentage of skill questions the student has attempted (submitted an answer for).
+
+For the skill items, the circle should be fully green if the student gets the problem fully correct. If the student completes a walkthrough question, the circle should become half full green (with the left side full). If the student attempts the skill, the background should become the darker grey. (If the student has attempted the skill (i.e. submitted any answers or walkthrough messages) AND completed a walkthrough, the circle should be half green on the left side, then half darker grey on the right side.)
+
+
+To the right of the sidebar, there should be the main chat area. At the top of the chat area is the header for the currently selected question. This consists of a small label saying the "[Course Name] / [Homework Name]". Under this should be the title of the selected objective (e.g. "Knowledge 1" or "Skill 5" in larger black title text). Under this should be the question box, which is a box with a question title ("CURRENT QUESTION" for knowledge questions and either "CHALLENGE [Skill Number].[Attempt Number]" or "WALKTHROUGH [Skill Number].[Attempt Number]" for skill questions, depending on the type of attempt/chat (skill questions can have multiple chats per question)) and the question text.
+
+For knowledge questions, the student should be able to have multiple attempts/chats, that they can nagivate through using arrows next to the problem title (with a little list of dots below indicating which attempt the user is looking at, where there is a dot for each attempt and the dor for the open attempt is colored purple to indicate).

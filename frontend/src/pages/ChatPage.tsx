@@ -13,6 +13,7 @@ import {
   getStage,
   listMessages,
   sendMessage,
+  createNewAttempt,
   advanceStage,
   getAgent,
   getKnowledgeQueue,
@@ -22,7 +23,7 @@ import {
   sendKnowledgeMessage,
   clarifyKnowledgeQuestion,
 } from "../services/api";
-import { isStageCompleted, stageLabel } from "../utils/progress";
+import { isStageCompleted, stageLabel, stageTypeToProgressState } from "../utils/progress";
 import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, SUCCESS_GREEN } from "../theme/colors";
 import type {
   Student,
@@ -62,6 +63,19 @@ function makeCompletionMessage(
   };
 }
 
+/** Synthetic "NEW ATTEMPT" action message rendered centered in the chat list. */
+function makeNewAttemptMessage(stageId: string, threadId: string): ChatMessage {
+  return {
+    id: `new_attempt_${stageId}`,
+    threadId,
+    stageId,
+    role: "tutor",
+    content: "",
+    createdAt: new Date().toISOString(),
+    metadata: { isNewAttemptButton: true },
+  };
+}
+
 /** Navigable stages are walkthrough and challenge (skip begin). */
 const NAVIGABLE_STAGES: StageType[] = ["walkthrough", "challenge"];
 
@@ -90,8 +104,15 @@ export default function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [pendingClarify, setPendingClarify] = useState(false);
   const [usedClarifyQuestions, setUsedClarifyQuestions] = useState<Set<string>>(new Set());
+  const [usedSkillClarifyQuestions, setUsedSkillClarifyQuestions] = useState<Set<string>>(new Set());
   // Track which item IDs we've already loaded messages for (avoid double-load)
   const loadedMessageItemIds = useRef<Set<string>>(new Set());
+  // Track skill threads we've already auto-advanced past begin (avoid double-fire)
+  const autoAdvancedBeginThreadIds = useRef<Set<string>>(new Set());
+  // For skill threads: tracks encountered navigable stage IDs in encounter order
+  const [encounteredStageIds, setEncounteredStageIds] = useState<string[]>([]);
+  // Tracks which thread's history has already been loaded (prevents duplicate fetches)
+  const initializedHistoryForThread = useRef<string | null>(null);
 
   const selectedThreadId = searchParams.get("thread") || undefined;
   const selectedStageId = searchParams.get("stage") || undefined;
@@ -115,27 +136,41 @@ export default function ChatPage() {
     ? nextStageTypeMap[currentStage.stageType] !== null
     : false;
 
-  // Navigation between walkthrough <-> challenge
+  // isSkillThread must be computed early — used in navigation logic below
+  const isSkillThread = selectedKnowledgeItemId == null && selectedThread?.kind === "skill";
+
+  // All navigable stages for the selected thread in DB order
   const navigableStages = useMemo(() => {
     if (!selectedThreadId) return [];
     const allStages = stagesByThread[selectedThreadId] ?? [];
     return allStages.filter((s) => NAVIGABLE_STAGES.includes(s.stageType));
   }, [selectedThreadId, stagesByThread]);
 
+  // For skill threads: stages shown in encounter order (challenge first, then whatever the student tries).
+  // For other threads: DB order.
+  const displayedNavStages = useMemo(() => {
+    if (!isSkillThread) return navigableStages;
+    return encounteredStageIds
+      .map((id) => navigableStages.find((s) => s.id === id))
+      .filter((s): s is ItemStage => s != null);
+  }, [isSkillThread, encounteredStageIds, navigableStages]);
+
   const currentNavIndex = useMemo(() => {
     if (!currentStage) return -1;
-    return navigableStages.findIndex((s) => s.id === currentStage.id);
-  }, [currentStage, navigableStages]);
+    return displayedNavStages.findIndex((s) => s.id === currentStage.id);
+  }, [currentStage, displayedNavStages]);
+
+  const visibleAttemptCount = displayedNavStages.length;
 
   const canGoPrev = currentNavIndex > 0;
+  // Skills: free navigation among encountered stages; others: gate forward on completion.
   const canGoNext = currentNavIndex >= 0
-    && currentNavIndex < navigableStages.length - 1
-    && currentStage != null
-    && isStageCompleted(currentStage.stageType, currentProgressState);
+    && currentNavIndex < visibleAttemptCount - 1
+    && (isSkillThread || (currentStage != null && isStageCompleted(currentStage.stageType, currentProgressState)));
 
   const showStageArrows = currentStage != null
     && NAVIGABLE_STAGES.includes(currentStage.stageType)
-    && navigableStages.length > 1;
+    && visibleAttemptCount > 1;
 
   // Knowledge item derived state
   const currentKnowledgeMessages = selectedKnowledgeItemId
@@ -267,6 +302,84 @@ export default function ChatPage() {
     }
   }, [selectedThreadId, stagesByThread, threads]);
 
+  // For skill threads stuck on begin stage, auto-advance to walkthrough silently
+  useEffect(() => {
+    if (!selectedThreadId || !student || !courseId || !unitId) return;
+    const thread = threads.find((t) => t.id === selectedThreadId);
+    if (!thread || thread.kind !== "skill" || thread.currentStageType !== "begin") return;
+    if (autoAdvancedBeginThreadIds.current.has(selectedThreadId)) return;
+
+    const threadStages = stagesByThread[selectedThreadId] ?? [];
+    if (threadStages.length === 0) return; // stages not loaded yet
+
+    const challengeStage = threadStages.find((s) => s.stageType === "challenge");
+    if (!challengeStage) return;
+
+    autoAdvancedBeginThreadIds.current.add(selectedThreadId);
+
+    advanceStage(student.id, thread.objectiveId)
+      .then(async () => {
+        const [updatedThreads, updatedProgress] = await Promise.all([
+          listChatThreadsForUnit({ courseId, unitId, studentId: student.id }),
+          getUnitProgress(student.id, unitId),
+        ]);
+        setThreads(updatedThreads);
+        setUnitProgress(updatedProgress);
+        setSearchParams({ thread: selectedThreadId, stage: challengeStage.id }, { replace: true });
+      })
+      .catch((err) => console.error("Error auto-advancing begin stage:", err));
+  }, [selectedThreadId, stagesByThread, threads, student, courseId, unitId]);
+
+  // Reset encounter history and clarify state when the selected thread changes
+  useEffect(() => {
+    setEncounteredStageIds([]);
+    initializedHistoryForThread.current = null;
+  }, [selectedThreadId]);
+
+  // Reset clarify state when the active stage changes
+  useEffect(() => {
+    setPendingClarify(false);
+    setUsedSkillClarifyQuestions(new Set());
+  }, [selectedStageId]);
+
+  // Restore encounter history from backend when stages are available for a skill thread
+  useEffect(() => {
+    if (!isSkillThread || !selectedThreadId || navigableStages.length === 0) return;
+    if (initializedHistoryForThread.current === selectedThreadId) return;
+    initializedHistoryForThread.current = selectedThreadId;
+
+    listMessages(selectedThreadId).then((allMessages) => {
+      // Group messages by stageId, find which navigable stages have history
+      const byStage = new Map<string, string>(); // stageId → earliest createdAt
+      for (const msg of allMessages) {
+        if (!msg.stageId) continue;
+        const existing = byStage.get(msg.stageId);
+        if (!existing || msg.createdAt < existing) {
+          byStage.set(msg.stageId, msg.createdAt);
+        }
+      }
+      const navigableIds = new Set(navigableStages.map((s) => s.id));
+      const stagesWithHistory = [...byStage.entries()]
+        .filter(([stageId]) => navigableIds.has(stageId))
+        .sort((a, b) => a[1].localeCompare(b[1])) // sort by earliest message time
+        .map(([stageId]) => stageId);
+
+      if (stagesWithHistory.length > 0) {
+        setEncounteredStageIds(stagesWithHistory);
+      }
+    }).catch(console.error);
+  }, [isSkillThread, selectedThreadId, navigableStages]);
+
+  // Add the current stage to encounter history when the student navigates to it
+  useEffect(() => {
+    if (!isSkillThread || !currentStage) return;
+    if (!NAVIGABLE_STAGES.includes(currentStage.stageType)) return;
+    setEncounteredStageIds((prev) => {
+      if (prev.includes(currentStage.id)) return prev;
+      return [...prev, currentStage.id];
+    });
+  }, [currentStage?.id, isSkillThread]);
+
   // Load messages and current stage when thread + stage change
   useEffect(() => {
     async function loadThreadData() {
@@ -316,23 +429,59 @@ export default function ChatPage() {
     [setSearchParams]
   );
 
+  // Compute last graded category from raw messages (not displayMessages) to avoid circular dep
+  const lastGradedCategory = useMemo(() => {
+    if (!isSkillThread || currentStage?.stageType !== "challenge") return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "tutor" && !m.metadata?.isSystemMessage && m.metadata?.gradingCategory) {
+        return m.metadata.gradingCategory;
+      }
+    }
+    return null;
+  }, [messages, isSkillThread, currentStage?.stageType]);
+
+  // After an incorrect grade and before a new attempt, block graded submissions
+  const showNewAttemptButton = lastGradedCategory === "incorrect" && !currentStageCompleted;
+
   const handleSendMessage = useCallback(
     async (content: string) => {
       if (!selectedThreadId || !selectedStageId || !student || !selectedThread || !currentStage) return;
 
+      // Clarify mode: forced when last grade was "incorrect", or when user clicked "Ask a question"
+      const isClarifying = pendingClarify || showNewAttemptButton;
+      setPendingClarify(false);
+
+      // Show student message immediately, then typing indicator while waiting for Sam
+      const tempId = `optimistic_${Date.now()}`;
+      const optimisticMsg: ChatMessage = {
+        id: tempId,
+        threadId: selectedThreadId,
+        stageId: selectedStageId,
+        role: "student",
+        content,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimisticMsg]);
       setIsSending(true);
       try {
         const { studentMessage, tutorMessage } = await sendMessage(
           selectedThreadId,
           content,
           selectedStageId,
-          currentStage.stageType
+          currentStage.stageType,
+          isClarifying || undefined,
         );
         setMessages((prev) => {
-          const next = [...prev, studentMessage];
+          const filtered = prev.filter((m) => m.id !== tempId);
+          const next = [...filtered, studentMessage];
           if (tutorMessage) next.push(tutorMessage);
           return next;
         });
+        if (isClarifying) {
+          setUsedSkillClarifyQuestions((prev) => new Set([...prev, content]));
+          return;
+        }
 
         if (currentStage.stageType === "begin" && !isStageCompleted("begin", currentProgressState)) {
           await advanceStage(student.id, selectedThread.objectiveId);
@@ -348,14 +497,23 @@ export default function ChatPage() {
             setThreads(updatedThreads);
             setUnitProgress(updatedUnitProgress);
           }
+        } else if (tutorMessage?.metadata?.isCompletionMessage && courseId && unitId) {
+          // Backend auto-advanced progress — re-fetch threads to pick up new progressState
+          const [updatedThreads, updatedUnitProgress] = await Promise.all([
+            listChatThreadsForUnit({ courseId, unitId, studentId: student.id }),
+            getUnitProgress(student.id, unitId),
+          ]);
+          setThreads(updatedThreads);
+          setUnitProgress(updatedUnitProgress);
         }
       } catch (error) {
         console.error("Error sending message:", error);
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
       } finally {
         setIsSending(false);
       }
     },
-    [selectedThreadId, selectedStageId, student, selectedThread, currentStage, currentProgressState, courseId, unitId]
+    [selectedThreadId, selectedStageId, student, selectedThread, currentStage, currentProgressState, courseId, unitId, pendingClarify, showNewAttemptButton]
   );
 
   const handleSendKnowledgeMessage = useCallback(
@@ -456,15 +614,39 @@ export default function ChatPage() {
 
   const handlePrevStage = useCallback(() => {
     if (!canGoPrev || !selectedThreadId) return;
-    const prevStage = navigableStages[currentNavIndex - 1];
+    const prevStage = displayedNavStages[currentNavIndex - 1];
     setSearchParams({ thread: selectedThreadId, stage: prevStage.id }, { replace: true });
-  }, [canGoPrev, currentNavIndex, navigableStages, selectedThreadId, setSearchParams]);
+  }, [canGoPrev, currentNavIndex, displayedNavStages, selectedThreadId, setSearchParams]);
 
   const handleNextStage = useCallback(() => {
     if (!canGoNext || !selectedThreadId) return;
-    const nextStage = navigableStages[currentNavIndex + 1];
+    const nextStage = displayedNavStages[currentNavIndex + 1];
     setSearchParams({ thread: selectedThreadId, stage: nextStage.id }, { replace: true });
-  }, [canGoNext, currentNavIndex, navigableStages, selectedThreadId, setSearchParams]);
+  }, [canGoNext, currentNavIndex, displayedNavStages, selectedThreadId, setSearchParams]);
+
+  const handleNewAttempt = useCallback(async () => {
+    if (!selectedThreadId || !selectedThread) return;
+    try {
+      const newStage = await createNewAttempt(selectedThreadId, "challenge");
+      setStagesByThread((prev) => ({
+        ...prev,
+        [selectedThreadId]: [...(prev[selectedThreadId] ?? []), newStage],
+      }));
+      setEncounteredStageIds((prev) => [...prev, newStage.id]);
+      setSearchParams({ thread: selectedThreadId, stage: newStage.id }, { replace: true });
+    } catch (err) {
+      console.error("Error creating new attempt:", err);
+    }
+  }, [selectedThreadId, selectedThread, setSearchParams]);
+
+  const handleTryWalkthrough = useCallback(() => {
+    if (!selectedThread) return;
+    const threadStages = stagesByThread[selectedThread.id] ?? [];
+    const walkthroughStage = threadStages.find((s) => s.stageType === "walkthrough");
+    if (walkthroughStage) {
+      setSearchParams({ thread: selectedThread.id, stage: walkthroughStage.id }, { replace: true });
+    }
+  }, [selectedThread, stagesByThread, setSearchParams]);
 
   const [pillText, setPillText] = useState("");
 
@@ -475,18 +657,39 @@ export default function ChatPage() {
 
   const displayMessages = useMemo(() => {
     if (!currentStage || !selectedThreadId) return messages;
-    if (!currentStageCompleted) return messages;
-    if (currentStage.stageType !== "challenge") return messages;
-    const hasCompletion = messages.some((m) => m.metadata?.isCompletionMessage === true);
-    if (hasCompletion) return messages;
-    return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, "challenge", "challenge_complete")];
-  }, [messages, currentStage, currentStageCompleted, selectedThreadId]);
+    if (currentStageCompleted) {
+      // begin stage handles its own completion message inside handleSendMessage
+      if (currentStage.stageType === "begin") return messages;
+      const hasSystemCompletion = messages.some(
+        (m) => m.metadata?.isSystemMessage === true && m.metadata?.isCompletionMessage === true
+      );
+      if (hasSystemCompletion) return messages;
+      const progressState = stageTypeToProgressState(currentStage.stageType);
+      return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, currentStage.stageType, progressState)];
+    }
+    if (showNewAttemptButton) {
+      return [...messages, makeNewAttemptMessage(currentStage.id, selectedThreadId)];
+    }
+    return messages;
+  }, [messages, currentStage, currentStageCompleted, selectedThreadId, showNewAttemptButton]);
 
-  const showCurrentQuestion = currentStage?.stageType === "challenge";
+  const skillNumber = isSkillThread && selectedThread ? selectedThread.order + 1 : 0;
+  const attemptNumber = currentNavIndex >= 0 ? currentNavIndex + 1 : 0;
 
-  const suggestedQuestions = currentStage?.stageType === "walkthrough" && !currentStageCompleted
-    ? currentStage.suggestedQuestions ?? []
-    : [];
+  const showCurrentQuestion = currentStage?.stageType === "challenge"
+    || (isSkillThread && currentStage?.stageType === "walkthrough");
+
+  // Pills for walkthrough AND challenge stages (challenge always shows "Ask a question")
+  const suggestedQuestions =
+    (currentStage?.stageType === "walkthrough" || currentStage?.stageType === "challenge")
+    && !currentStageCompleted
+      ? (currentStage.suggestedQuestions ?? []).filter((q) => !usedSkillClarifyQuestions.has(q))
+      : [];
+
+  // Show clarify pills for active challenge stages (whether or not there are specific suggestions)
+  const showChallengePills = isSkillThread
+    && currentStage?.stageType === "challenge"
+    && !currentStageCompleted;
 
   // ============ Styles ============
 
@@ -634,6 +837,19 @@ export default function ChatPage() {
     fontWeight: 500,
   };
 
+  const tryWalkthroughButtonStyles: React.CSSProperties = {
+    padding: "4px 10px",
+    borderRadius: 12,
+    border: "none",
+    backgroundColor: PRIMARY,
+    color: WHITE,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+  };
+
   const pillContainerStyles: React.CSSProperties = {
     padding: "8px 24px",
     display: "flex",
@@ -702,25 +918,46 @@ export default function ChatPage() {
                   style={navButtonStyles(!canGoPrev)}
                   onClick={handlePrevStage}
                   disabled={!canGoPrev}
-                  aria-label="Previous stage"
+                  aria-label="Previous attempt"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="15 18 9 12 15 6" />
                   </svg>
                 </button>
               )}
-              <h1 style={titleStyles}>
-                {isKnowledgeMode
-                  ? `Knowledge ${selectedKnowledgeItem.labelIndex}`
-                  : (selectedThread ? selectedThread.title : "Select an item")}
-              </h1>
+              {isSkillThread ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <h1 style={titleStyles}>Skill {skillNumber}</h1>
+                  {visibleAttemptCount > 0 && (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {displayedNavStages.map((s, i) => (
+                        <div
+                          key={s.id}
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            backgroundColor: i === currentNavIndex ? PRIMARY : "rgba(139, 122, 158, 0.25)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <h1 style={titleStyles}>
+                  {isKnowledgeMode
+                    ? `Knowledge ${selectedKnowledgeItem.labelIndex}`
+                    : (selectedThread ? selectedThread.title : "Select an item")}
+                </h1>
+              )}
               {!isKnowledgeMode && showStageArrows && (
                 <button
                   type="button"
                   style={navButtonStyles(!canGoNext)}
                   onClick={handleNextStage}
                   disabled={!canGoNext}
-                  aria-label="Next stage"
+                  aria-label="Next attempt"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="9 18 15 12 9 6" />
@@ -729,14 +966,30 @@ export default function ChatPage() {
               )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {!isKnowledgeMode && showStageArrows && (
+              {!isKnowledgeMode && !isSkillThread && showStageArrows && (
                 <span style={stageIndicatorStyles}>
                   {currentNavIndex + 1} / {navigableStages.length}
                 </span>
               )}
-              <span style={stageBadgeStyles}>
-                {isKnowledgeMode ? "Knowledge" : (currentStage ? stageLabel(currentStage.stageType) : "")}
-              </span>
+              {isSkillThread && currentStage ? (
+                currentStage.stageType === "challenge" ? (
+                  <button
+                    type="button"
+                    style={tryWalkthroughButtonStyles}
+                    onClick={handleTryWalkthrough}
+                  >
+                    TRY WALKTHROUGH
+                  </button>
+                ) : currentStage.stageType === "walkthrough" ? (
+                  <span style={stageBadgeStyles}>WALKTHROUGH</span>
+                ) : (
+                  <span style={stageBadgeStyles}>{stageLabel(currentStage.stageType)}</span>
+                )
+              ) : (
+                <span style={stageBadgeStyles}>
+                  {isKnowledgeMode ? "Knowledge" : (currentStage ? stageLabel(currentStage.stageType) : "")}
+                </span>
+              )}
             </div>
           </div>
           {isKnowledgeMode ? (
@@ -749,7 +1002,11 @@ export default function ChatPage() {
           ) : showCurrentQuestion && currentStage ? (
             <div style={questionPromptStyles}>
               <div style={promptHeaderStyles}>
-                <span style={promptLabelStyles}>Current Question</span>
+                <span style={promptLabelStyles}>
+                  {isSkillThread && attemptNumber > 0
+                    ? `${currentStage.stageType.toUpperCase()} ${skillNumber}.${attemptNumber}`
+                    : "Current Question"}
+                </span>
               </div>
               <p style={promptTextStyles}>{currentStage.prompt}</p>
             </div>
@@ -825,7 +1082,7 @@ export default function ChatPage() {
         ) : (
           // ── Thread (skill/capstone) chat area ──
           <div style={chatAreaStyles}>
-            <MessageList messages={displayMessages} agent={agentData ?? undefined} isSending={isSending} />
+            <MessageList messages={displayMessages} agent={agentData ?? undefined} isSending={isSending} onNewAttempt={handleNewAttempt} />
             {currentStageCompleted && (
               <div style={ctaBarStyles}>
                 {hasNextStage ? (
@@ -843,8 +1100,26 @@ export default function ChatPage() {
                 )}
               </div>
             )}
-            {suggestedQuestions.length > 0 && (
+            {/* Clarify pills: walkthrough has topic-specific suggestions; challenge always shows "Ask a question" */}
+            {(showChallengePills || suggestedQuestions.length > 0) && (
               <div style={pillContainerStyles}>
+                {showChallengePills && (
+                  <button
+                    type="button"
+                    style={{ ...pillButtonStyles, fontStyle: "italic" }}
+                    onClick={() => setPendingClarify(true)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "rgba(139, 122, 158, 0.1)";
+                      e.currentTarget.style.borderColor = PRIMARY;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "#f9fafb";
+                      e.currentTarget.style.borderColor = GRAY_300;
+                    }}
+                  >
+                    Ask a question
+                  </button>
+                )}
                 {suggestedQuestions.map((q, i) => (
                   <button
                     key={i}
@@ -868,7 +1143,11 @@ export default function ChatPage() {
             <ChatComposer
               onSend={handleSendMessage}
               disabled={!selectedThreadId || !selectedStageId || currentStageCompleted || isSending}
-              placeholder={currentStageCompleted ? "Stage completed" : undefined}
+              placeholder={
+                currentStageCompleted ? "Stage completed"
+                : (pendingClarify || showNewAttemptButton) ? "Type your question..."
+                : undefined
+              }
               externalValue={pillText}
               onExternalValueConsumed={() => setPillText("")}
             />

@@ -295,15 +295,20 @@ export function listMessages(threadId: string, stageId?: string): Promise<ChatMe
   return get<ChatMessage[]>(`/threads/${threadId}/messages${qs}`);
 }
 
+export function createNewAttempt(threadId: string, stageType: string): Promise<ItemStage> {
+  return post<ItemStage>(`/threads/${threadId}/new-attempt`, { stageType });
+}
+
 export function sendMessage(
   threadId: string,
   content: string,
   stageId?: string,
-  stageType?: string
+  stageType?: string,
+  clarify?: boolean
 ): Promise<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }> {
   return post<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }>(
     `/threads/${threadId}/messages`,
-    { content, stageId, stageType }
+    { content, stageId, stageType, ...(clarify ? { clarify: true } : {}) }
   );
 }
 

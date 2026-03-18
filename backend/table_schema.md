@@ -34,25 +34,39 @@ Access patterns:
 ---
 
 ## 3) Courses
-**Table:** `Courses`  
+**Table:** `Courses`
 **PK:** `id` (String)
 
+**GSI:** `InstructorCoursesIndex`
+- PK: `instructorId` (String)
+- SK: `id` (String)
+
 Typical attributes:
-- `id`, `title`, `icon?`
-- `instructorIds: string[]`
+- `id`, `title`, `icon?` (`"general"|"history"|"science"`)
+- `instructorId` (String) — owner instructor
+- `instructorIds: string[]` — legacy/multi-instructor field
+- `studentCount?` (Number) — cached enrollment count
+- `deletedAt?` (String, ISO 8601) — set by soft delete
+- `createdAt`, `updatedAt`
 
 Access patterns:
 - Get by id
+- List courses for instructorId (GSI)
 
 ---
 
 ## 4) Enrollments
-**Table:** `Enrollments`  
-**PK:** `studentId` (String)  
+**Table:** `Enrollments`
+**PK:** `studentId` (String)
 **SK:** `courseId` (String)
+
+**GSI:** `CourseEnrollmentsIndex`
+- PK: `courseId` (String)
+- SK: `studentId` (String)
 
 Access patterns:
 - List courses for studentId (query by PK)
+- List students for courseId (GSI) — used for roster management
 
 ---
 
@@ -65,16 +79,22 @@ Access patterns:
 - SK: `id` (String)
 
 Typical attributes:
-- `id`, `courseId`, `title`, `status` (`active|completed|locked|processing|ready|error`)
+- `id`, `courseId`, `title`, `status` (`active|completed|locked|processing|review|ready|error`)
 - `statusError?` (String) — error message when `status === "error"` (set by async upload pipeline)
+- `deadline?` (String, ISO 8601) — due date set by teacher
+- `identifiedKnowledge?` (String, JSON array) — AI-identified items for teacher review, stored as `[{ type, description }]`
+- `uploadedFileNames?` (String[]) — original file names from upload (persists after S3 cleanup)
+- `deletedAt?` (String, ISO 8601) — set by soft delete; units with this field are excluded from listings
+- `createdAt`, `updatedAt`
 
 Access patterns:
 - Get unit by id
 - List units for courseId (GSI)
 
 Notes:
-- During async curriculum upload, `status` transitions: `"processing"` → `"ready"` | `"error"`.
+- During async curriculum upload, `status` transitions: `"processing"` → `"review"` → `"ready"` | `"error"`.
 - Pre-existing units without `status` default to `"active"` on read.
+- Soft-deleted units have `deletedAt` set; restored units have it removed.
 
 ---
 
@@ -89,6 +109,9 @@ Notes:
 Typical attributes:
 - `id`, `unitId`, `kind` (`knowledge|skill|capstone`), `title`
 - `order` (Number) — required by frontend for sorting
+- `enabled` (Boolean, default `true`) — toggleable by instructor; disabled objectives hidden from students
+- `description?` (String) — AI-generated description of the objective
+- `createdAt`, `updatedAt`
 
 Access patterns:
 - Get objective by id
@@ -231,6 +254,7 @@ Access patterns:
 
 Typical attributes:
 - `id`, `unitId`, `knowledgeTopic` (descriptive teacher-visible name)
+- `objectiveId` (String) — FK → Objectives; links topic to its corresponding objective
 - `order` (Number) — sort order within unit
 
 Access patterns:
