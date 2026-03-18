@@ -180,6 +180,8 @@ export interface ChatMessageMetadata {
   isCompletionMessage?: boolean;
   /** Grading result for challenge stage messages: "correct" | "slight clarification" | "small mistake" | "incorrect" */
   gradingCategory?: string;
+  /** Synthetic in-list "NEW ATTEMPT" action button (not persisted to DB). */
+  isNewAttemptButton?: boolean;
 }
 
 export interface ChatMessage {

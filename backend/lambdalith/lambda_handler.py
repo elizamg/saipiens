@@ -1395,6 +1395,28 @@ def _advance_progress_for_student(student_id: str, objective_id: str, required_s
     prog_tbl.put_item(Item=item)
 
 
+def _complete_challenge_for_student(student_id: str, objective_id: str) -> None:
+    """Unconditionally advance progress to challenge_complete (earnedStars=3).
+    Handles students who went directly to challenge without doing walkthrough first
+    (earnedStars=1) as well as the normal path (earnedStars=2). Idempotent if already complete.
+    """
+    prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
+    item = prog_tbl.get_item(Key={"studentId": student_id, "objectiveId": objective_id}).get("Item")
+    now = iso_now()
+    if not item:
+        item = {
+            "studentId": student_id,
+            "objectiveId": objective_id,
+        }
+    if int(item.get("earnedStars") or 0) >= 3:
+        return  # Already complete
+    item["earnedStars"] = 3
+    item["currentStageType"] = "challenge"
+    item["completedAt"] = now
+    item["updatedAt"] = now
+    prog_tbl.put_item(Item=item)
+
+
 def _call_tutor_pipeline(
     stage_type: str,
     objective: dict,
@@ -1462,6 +1484,47 @@ def _call_tutor_pipeline(
     return {"text": None, "is_finished": False, "grading_category": None}
 
 
+def handle_new_attempt(event, thread_id: str):
+    """Create a new ItemStage of the same type for a new attempt on this thread's objective."""
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+    stage_type = (body.get("stageType") if isinstance(body, dict) else None) or "challenge"
+
+    threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
+    thread = threads_tbl.get_item(Key={"id": thread_id}).get("Item")
+    if not thread:
+        return resp(404, {"error": "Thread not found"})
+
+    objective_id = thread.get("objectiveId")
+    if not objective_id:
+        return resp(500, {"error": "Thread missing objectiveId"})
+
+    stages = _load_stages_by_objective(objective_id)
+    template = next((s for s in stages if s.get("stageType") == stage_type), None)
+    if not template:
+        return resp(404, {"error": f"No {stage_type} stage found for this objective"})
+
+    max_order = max((int(s.get("order") or 0) for s in stages), default=0)
+    new_stage = {
+        "id": str(uuid.uuid4()),
+        "itemId": objective_id,
+        "stageType": stage_type,
+        "order": max_order + 1,
+        "prompt": template.get("prompt", ""),
+        "createdAt": iso_now(),
+    }
+    if template.get("suggestedQuestions"):
+        new_stage["suggestedQuestions"] = template["suggestedQuestions"]
+
+    dynamodb.Table(T["ITEM_STAGES"]).put_item(Item=new_stage)
+    return resp(200, new_stage)
+
+
 def handle_send_message(event, thread_id: str):
     student_id = effective_student_id(event)
     if not student_id:
@@ -1477,6 +1540,7 @@ def handle_send_message(event, thread_id: str):
     content = body.get("content")
     stage_id = body.get("stageId")
     stage_type = body.get("stageType")  # client sends this to avoid extra DB lookup
+    is_clarify = body.get("clarify") is True
     if not isinstance(content, str) or not content.strip():
         return resp(400, {"error": "Missing content"})
 
@@ -1516,49 +1580,74 @@ def handle_send_message(event, thread_id: str):
                 if stage_item:
                     stage_prompt = stage_item.get("prompt", "")
 
-            conversation = _load_conversation_history(thread_id, stage_id)
-            pipeline_result = _call_tutor_pipeline(
-                stage_type=stage_type,
-                objective=ctx["objective"],
-                course=ctx["course"],
-                student=ctx["student"],
-                conversation=conversation,
-                student_message=content,
-                stage_prompt=stage_prompt,
-            )
-            tutor_text = pipeline_result.get("text")
-            is_finished = pipeline_result.get("is_finished", False)
-            grading_category = pipeline_result.get("grading_category")
+            if is_clarify:
+                # Clarifying question — answer the student's question without grading
+                try:
+                    from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_question_answer
+                    objective_title = ctx["objective"].get("title", "")
+                    answer = gen_clarifying_question_answer(
+                        subject=ctx["course"].get("title", "Unknown Subject"),
+                        grade=ctx["student"].get("yearLabel", "Unknown Grade"),
+                        skill_description=objective_title,
+                        question=stage_prompt or objective_title,
+                        clarifying_question=content,
+                    )
+                    tutor_now = iso_now()
+                    tutor_msg = {
+                        "id": str(uuid.uuid4()),
+                        "threadId": thread_id,
+                        "stageId": stage_id,
+                        "role": "tutor",
+                        "content": answer,
+                        "createdAt": tutor_now,
+                    }
+                    msgs_tbl.put_item(Item=tutor_msg)
+                except Exception as e:
+                    print(f"[clarify error] stage_type={stage_type}: {e}")
+            else:
+                conversation = _load_conversation_history(thread_id, stage_id)
+                pipeline_result = _call_tutor_pipeline(
+                    stage_type=stage_type,
+                    objective=ctx["objective"],
+                    course=ctx["course"],
+                    student=ctx["student"],
+                    conversation=conversation,
+                    student_message=content,
+                    stage_prompt=stage_prompt,
+                )
+                tutor_text = pipeline_result.get("text")
+                is_finished = pipeline_result.get("is_finished", False)
+                grading_category = pipeline_result.get("grading_category")
 
-            if tutor_text:
-                metadata: dict = {}
-                if grading_category:
-                    metadata["gradingCategory"] = grading_category
-                    if grading_category in ("correct", "slight clarification"):
+                if tutor_text:
+                    metadata: dict = {}
+                    if grading_category:
+                        metadata["gradingCategory"] = grading_category
+                        if grading_category in ("correct", "slight clarification"):
+                            metadata["isCompletionMessage"] = True
+                    elif is_finished:
                         metadata["isCompletionMessage"] = True
-                elif is_finished:
-                    metadata["isCompletionMessage"] = True
 
-                tutor_now = iso_now()
-                tutor_msg = {
-                    "id": str(uuid.uuid4()),
-                    "threadId": thread_id,
-                    "stageId": stage_id,
-                    "role": "tutor",
-                    "content": tutor_text,
-                    "createdAt": tutor_now,
-                }
-                if metadata:
-                    tutor_msg["metadata"] = metadata
-                msgs_tbl.put_item(Item=tutor_msg)
+                    tutor_now = iso_now()
+                    tutor_msg = {
+                        "id": str(uuid.uuid4()),
+                        "threadId": thread_id,
+                        "stageId": stage_id,
+                        "role": "tutor",
+                        "content": tutor_text,
+                        "createdAt": tutor_now,
+                    }
+                    if metadata:
+                        tutor_msg["metadata"] = metadata
+                    msgs_tbl.put_item(Item=tutor_msg)
 
-                # Auto-advance objective progress
-                objective_id = ctx["objective"].get("id")
-                if objective_id:
-                    if is_finished and stage_type == "walkthrough":
-                        _advance_progress_for_student(student_id, objective_id, required_stars=1)
-                    elif grading_category in ("correct", "slight clarification") and stage_type == "challenge":
-                        _advance_progress_for_student(student_id, objective_id, required_stars=2)
+                    # Auto-advance objective progress
+                    objective_id = ctx["objective"].get("id")
+                    if objective_id:
+                        if is_finished and stage_type == "walkthrough":
+                            _advance_progress_for_student(student_id, objective_id, required_stars=1)
+                        elif grading_category in ("correct", "slight clarification") and stage_type == "challenge":
+                            _complete_challenge_for_student(student_id, objective_id)
 
     return resp(200, {"studentMessage": student_msg, "tutorMessage": tutor_msg})
 
@@ -3492,6 +3581,12 @@ def handler(event, context):
             if not thread_id:
                 return resp(400, {"error": "Missing threadId"})
             return handle_list_messages(event, thread_id)
+
+        if method == "POST" and path.startswith("/threads/") and path.endswith("/new-attempt"):
+            thread_id = params.get("threadId")
+            if not thread_id:
+                return resp(400, {"error": "Missing threadId"})
+            return handle_new_attempt(event, thread_id)
 
         if method == "POST" and path.startswith("/threads/") and path.endswith("/messages"):
             thread_id = params.get("threadId")

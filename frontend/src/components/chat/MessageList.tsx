@@ -8,6 +8,7 @@ interface MessageListProps {
   messages: ChatMessage[];
   agent?: Agent;
   isSending?: boolean;
+  onNewAttempt?: () => void;
 }
 
 function TypingIndicator({ agent }: { agent?: Agent }) {
@@ -67,7 +68,7 @@ function TypingIndicator({ agent }: { agent?: Agent }) {
   );
 }
 
-export default function MessageList({ messages, agent, isSending }: MessageListProps) {
+export default function MessageList({ messages, agent, isSending, onNewAttempt }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wasNearBottomRef = useRef(true);
 
@@ -103,7 +104,7 @@ export default function MessageList({ messages, agent, isSending }: MessageListP
       onScroll={handleScroll}
     >
       {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} agent={agent} />
+        <MessageBubble key={message.id} message={message} agent={agent} onNewAttempt={onNewAttempt} />
       ))}
       {isSending && <TypingIndicator agent={agent} />}
     </div>
