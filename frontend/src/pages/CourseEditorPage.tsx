@@ -558,7 +558,7 @@ export default function CourseEditorPage() {
               {reviewGrouped.skills.length > 0 && (
                 <section style={sectionStyles}>
                   <h2 style={sectionHeadingStyles}>
-                    Skills ({reviewGrouped.skills.length})
+                    Skills ({reviewGrouped.skills.filter((k) => selectedReviewIndices.has(k._idx)).length}/{reviewGrouped.skills.length})
                   </h2>
                   {reviewGrouped.skills.map((k) =>
                     renderObjectiveRow(
@@ -573,7 +573,7 @@ export default function CourseEditorPage() {
               {reviewGrouped.knowledge.length > 0 && (
                 <section style={sectionStyles}>
                   <h2 style={sectionHeadingStyles}>
-                    Knowledge ({reviewGrouped.knowledge.length})
+                    Knowledge ({reviewGrouped.knowledge.filter((k) => selectedReviewIndices.has(k._idx)).length}/{reviewGrouped.knowledge.length})
                   </h2>
                   {reviewGrouped.knowledge.map((k) =>
                     renderObjectiveRow(
