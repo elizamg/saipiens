@@ -743,6 +743,8 @@ def handle_get_unit_progress(event, unit_id: str):
         key_condition=Key("unitId").eq(unit_id),
         scan_forward=True,
     )
+    # Exclude disabled objectives from progress counting
+    objectives = [o for o in objectives if o.get("enabled") is not False]
 
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     all_prog = query_all(
@@ -1331,6 +1333,8 @@ def handle_list_threads_for_unit(event, unit_id: str):
     )
     # contract: objective order drives thread ordering
     objectives.sort(key=lambda o: int(o.get("order") or 0))
+    # Filter out disabled objectives so students don't see them
+    objectives = [o for o in objectives if o.get("enabled") is not False]
     obj_by_id = {o.get("id"): o for o in objectives if o.get("id")}
 
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
@@ -1342,6 +1346,8 @@ def handle_list_threads_for_unit(event, unit_id: str):
     )
 
     threads = _ensure_threads_for_unit(unit, objectives, threads)
+    # Only include threads whose objective is enabled
+    threads = [t for t in threads if t.get("objectiveId") in obj_by_id]
 
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     all_prog = query_all(
@@ -2365,6 +2371,33 @@ def handle_list_knowledge_topics(unit_id: str):
     return resp(200, items)
 
 
+def handle_update_knowledge_topic_enabled(event, topic_id: str):
+    """PATCH /knowledge-topics/{topicId}/enabled → updated KnowledgeTopic."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        return resp(400, {"error": "Missing or invalid 'enabled' boolean"})
+
+    tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    existing = tbl.get_item(Key={"id": topic_id}).get("Item")
+    if not existing:
+        return resp_not_found("KnowledgeTopic")
+
+    tbl.update_item(
+        Key={"id": topic_id},
+        UpdateExpression="SET enabled = :e",
+        ExpressionAttributeValues={":e": enabled},
+    )
+    existing["enabled"] = enabled
+    return resp(200, existing)
+
+
 # ---- Knowledge Queue helpers ----
 
 def _get_unit_context(unit_id: str, student_id: str) -> tuple:
@@ -2396,6 +2429,8 @@ def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
         index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
         key_condition=Key("unitId").eq(unit_id),
     )
+    # Filter out disabled knowledge topics
+    topics = [t for t in topics if t.get("enabled") is not False]
     if not topics:
         return []
 
@@ -2421,6 +2456,10 @@ def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
             )
             if q_items:
                 question_text = q_items[0].get("text", "")
+
+        # Fallback: use topic description if question text is empty
+        if not question_text:
+            question_text = topic.get("knowledgeTopic", "") or topic.get("description", "")
 
         item_id = str(uuid.uuid4())
         item = {
@@ -2491,6 +2530,61 @@ def handle_list_knowledge_queue(event, unit_id: str):
                 print(f"[clarifying-questions] backfill failed for {item['id']}: {e}")
 
     return resp(200, visible)
+
+
+def handle_list_knowledge_messages(event, queue_item_id: str):
+    """GET /knowledge-queue/{queueItemId}/messages → ChatMessage[]
+    Returns persisted messages for this knowledge queue item, sorted by createdAt asc.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+    # Knowledge messages use threadId = "kq-{queueItemId}" to namespace them
+    thread_id = f"kq-{queue_item_id}"
+    items = query_all(
+        msgs_tbl,
+        key_condition=Key("threadId").eq(thread_id),
+        scan_forward=True,
+    )
+    return resp(200, items)
+
+
+def handle_save_knowledge_message(event, queue_item_id: str):
+    """POST /knowledge-queue/{queueItemId}/messages
+    Body: { "role": "student"|"tutor", "content": string, "metadata"?: object }
+    Persists a knowledge chat message and returns it.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    role = body.get("role")
+    content = body.get("content")
+    if role not in ("student", "tutor") or not isinstance(content, str):
+        return resp(400, {"error": "Missing role or content"})
+
+    now = iso_now()
+    thread_id = f"kq-{queue_item_id}"
+    msg = {
+        "id": str(uuid.uuid4()),
+        "threadId": thread_id,
+        "role": role,
+        "content": content,
+        "createdAt": now,
+    }
+    metadata = body.get("metadata")
+    if metadata and isinstance(metadata, dict):
+        msg["metadata"] = metadata
+
+    msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+    msgs_tbl.put_item(Item=msg)
+    return resp(200, msg)
 
 
 def handle_clarify_knowledge_question(event, queue_item_id: str):
@@ -2672,25 +2766,27 @@ def handle_get_knowledge_progress(event, unit_id: str):
     if not _check_enrollment_for_unit(student_id, unit_id):
         return resp(403, {"error": "Not enrolled in this course"})
 
-    # Get total topics for this unit
+    # Get total topics for this unit (exclude disabled)
     topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
     topics = query_all(
         topics_tbl,
         index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
         key_condition=Key("unitId").eq(unit_id),
     )
+    topics = [t for t in topics if t.get("enabled") is not False]
     total_topics = len(topics)
+    enabled_topic_ids = {t["id"] for t in topics if t.get("id")}
 
     # Get all queue items for this student in this unit
     queue_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
     all_items = query_all(queue_tbl, key_condition=Key("studentId").eq(student_id))
     unit_items = [i for i in all_items if i.get("unitId") == unit_id]
 
-    # Track per-topic best result
+    # Track per-topic best result (only for enabled topics)
     topic_results: dict[str, bool] = {}
     for item in unit_items:
         tid = item.get("knowledgeTopicId")
-        if not tid:
+        if not tid or tid not in enabled_topic_ids:
             continue
         status = item.get("status", "")
         if status == "completed_correct":
@@ -3638,6 +3734,16 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_list_knowledge_topics(unit_id)
 
+        if method == "PATCH" and path.endswith("/enabled") and path.startswith("/knowledge-topics/"):
+            topic_id = params.get("topicId")
+            if not topic_id:
+                # Extract from path manually
+                parts = path.strip("/").split("/")
+                topic_id = parts[1] if len(parts) >= 2 else None
+            if not topic_id:
+                return resp(400, {"error": "Missing topicId"})
+            return handle_update_knowledge_topic_enabled(event, topic_id)
+
         if method == "GET" and path.endswith("/knowledge-queue") and path.startswith("/units/"):
             unit_id = params.get("unitId")
             if not unit_id:
@@ -3649,6 +3755,18 @@ def handler(event, context):
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
             return handle_get_knowledge_progress(event, unit_id)
+
+        if method == "GET" and path.endswith("/messages") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_list_knowledge_messages(event, item_id)
+
+        if method == "POST" and path.endswith("/messages") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_save_knowledge_message(event, item_id)
 
         if method == "POST" and path.endswith("/clarify") and path.startswith("/knowledge-queue/"):
             item_id = params.get("itemId")

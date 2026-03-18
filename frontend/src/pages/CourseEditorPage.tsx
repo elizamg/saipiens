@@ -18,6 +18,7 @@ import {
   updateUnitDeadline,
   deleteUnit,
   listKnowledgeTopics,
+  updateKnowledgeTopicEnabled,
 } from "../services/api";
 
 const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
@@ -52,6 +53,7 @@ export default function CourseEditorPage() {
 
   // Knowledge topics (shown alongside objectives for "ready" units)
   const [knowledgeTopics, setKnowledgeTopics] = useState<KnowledgeTopic[]>([]);
+  const [enabledTopicIds, setEnabledTopicIds] = useState<Set<string>>(new Set());
 
   // For units in "review" status (no objectives yet, only identified knowledge)
   const [identifiedKnowledge, setIdentifiedKnowledge] = useState<
@@ -113,6 +115,7 @@ export default function CourseEditorPage() {
           try {
             const topics = await listKnowledgeTopics(unitId);
             setKnowledgeTopics(topics);
+            setEnabledTopicIds(new Set(topics.filter((t) => t.enabled !== false).map((t) => t.id)));
           } catch {
             // no knowledge topics available
           }
@@ -142,6 +145,7 @@ export default function CourseEditorPage() {
             try {
               const topics = await listKnowledgeTopics(unitId);
               setKnowledgeTopics(topics);
+              setEnabledTopicIds(new Set(topics.filter((t) => t.enabled !== false).map((t) => t.id)));
             } catch { /* ignore */ }
             return;
           }
@@ -156,6 +160,16 @@ export default function CourseEditorPage() {
 
   const toggleObjective = useCallback((id: string) => {
     setEnabledIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setDirty(true);
+  }, []);
+
+  const toggleKnowledgeTopic = useCallback((id: string) => {
+    setEnabledTopicIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -190,13 +204,20 @@ export default function CourseEditorPage() {
         }
       } else {
         // Edit mode: update enabled state for each changed objective
-        const updates = objectives
+        const objUpdates = objectives
           .filter((obj) => (obj.enabled !== false) !== enabledIds.has(obj.id))
           .map((obj) => updateObjectiveEnabled(obj.id, enabledIds.has(obj.id)));
-        await Promise.all(updates);
+        // Also update knowledge topic enabled state
+        const topicUpdates = knowledgeTopics
+          .filter((t) => (t.enabled !== false) !== enabledTopicIds.has(t.id))
+          .map((t) => updateKnowledgeTopicEnabled(t.id, enabledTopicIds.has(t.id)));
+        await Promise.all([...objUpdates, ...topicUpdates]);
         // Update local state to reflect saved enabled values
         setObjectives((prev) =>
           prev.map((obj) => ({ ...obj, enabled: enabledIds.has(obj.id) }))
+        );
+        setKnowledgeTopics((prev) =>
+          prev.map((t) => ({ ...t, enabled: enabledTopicIds.has(t.id) }))
         );
       }
       setDirty(false);
@@ -357,7 +378,7 @@ export default function CourseEditorPage() {
   const isReviewMode = identifiedKnowledge.length > 0 && objectives.length === 0;
   const enabledCount = isReviewMode
     ? selectedReviewIndices.size
-    : enabledIds.size + knowledgeTopics.length;
+    : enabledIds.size + enabledTopicIds.size;
   const totalCount = isReviewMode ? identifiedKnowledge.length : objectives.length + knowledgeTopics.length;
 
   const renderObjectiveRow = (
@@ -485,9 +506,11 @@ export default function CourseEditorPage() {
             </div>
           )}
 
-          <p style={{ fontSize: 14, color: GRAY_500, marginBottom: 24 }}>
-            {enabledCount} of {totalCount} objective{totalCount !== 1 ? "s" : ""} selected
-          </p>
+          {!generating && totalCount > 0 && (
+            <p style={{ fontSize: 14, color: GRAY_500, marginBottom: 24 }}>
+              {enabledCount} of {totalCount} objective{totalCount !== 1 ? "s" : ""} selected
+            </p>
+          )}
 
           <div style={actionBarStyles}>
             <Button
@@ -568,10 +591,11 @@ export default function CourseEditorPage() {
               {SECTION_ORDER.filter((k) => k !== "knowledge").map((kind) => {
                 const items = grouped[kind];
                 if (items.length === 0) return null;
+                const enabledInSection = items.filter((o) => enabledIds.has(o.id)).length;
                 return (
                   <section key={kind} style={sectionStyles}>
                     <h2 style={sectionHeadingStyles}>
-                      {SECTION_LABELS[kind]} ({items.length})
+                      {SECTION_LABELS[kind]} ({enabledInSection}/{items.length})
                     </h2>
                     {items.map((obj) =>
                       renderObjectiveRow(
@@ -587,29 +611,23 @@ export default function CourseEditorPage() {
               {knowledgeTopics.length > 0 && (
                 <section style={sectionStyles}>
                   <h2 style={sectionHeadingStyles}>
-                    Knowledge ({knowledgeTopics.length})
+                    Knowledge ({enabledTopicIds.size}/{knowledgeTopics.length})
                   </h2>
-                  {knowledgeTopics
-                    .sort((a, b) => a.order - b.order)
-                    .map((topic) => (
-                      <div
-                        key={topic.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: 10,
-                          padding: "10px 12px",
-                          borderRadius: 8,
-                          backgroundColor: "#f9fafb",
-                          marginBottom: 6,
-                          fontSize: 14,
-                          color: GRAY_900,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        <span>{topic.knowledgeTopic}</span>
-                      </div>
-                    ))}
+                  {[...knowledgeTopics]
+                    .sort((a, b) => {
+                      const aEnabled = enabledTopicIds.has(a.id) ? 0 : 1;
+                      const bEnabled = enabledTopicIds.has(b.id) ? 0 : 1;
+                      if (aEnabled !== bEnabled) return aEnabled - bEnabled;
+                      return a.order - b.order;
+                    })
+                    .map((topic) =>
+                      renderObjectiveRow(
+                        topic.id,
+                        topic.knowledgeTopic,
+                        enabledTopicIds.has(topic.id),
+                        () => toggleKnowledgeTopic(topic.id)
+                      )
+                    )}
                 </section>
               )}
             </>
