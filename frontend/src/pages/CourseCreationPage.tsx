@@ -6,7 +6,7 @@ import Button from "../components/ui/Button";
 import BackButton from "../components/ui/BackButton";
 import IconChooser from "../components/course/IconChooser";
 import StudentRosterEditor from "../components/course/StudentRosterEditor";
-import { GRAY_500, GRAY_900 } from "../theme/colors";
+import { GRAY_900 } from "../theme/colors";
 import type { Student } from "../types/domain";
 import { createCourse, listTeacherStudents, getCurrentInstructor, listTeacherCourses } from "../services/api";
 import type { Course } from "../types/domain";
@@ -50,15 +50,6 @@ export default function CourseCreationPage() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const backLinkStyles: React.CSSProperties = {
-    fontSize: 14,
-    color: GRAY_500,
-    textDecoration: "none",
-    cursor: "pointer",
-    marginBottom: 8,
-    display: "inline-block",
   };
 
   const titleStyles: React.CSSProperties = {

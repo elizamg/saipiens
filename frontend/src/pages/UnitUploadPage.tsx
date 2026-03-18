@@ -227,17 +227,6 @@ export default function UnitUploadPage() {
 
   // ---- Styles ----
 
-  const backLinkStyles: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    fontSize: 14,
-    color: GRAY_500,
-    textDecoration: "none",
-    marginBottom: 24,
-    cursor: "pointer",
-  };
-
   const titleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 28,
@@ -394,9 +383,6 @@ export default function UnitUploadPage() {
   const backTarget = existingUnitId
     ? `/teacher/course/${courseId}/unit/${existingUnitId}`
     : `/teacher/course/${courseId}`;
-  const backLabel = existingUnitId
-    ? `Back to ${unitName || "Unit"}`
-    : `Back to ${course?.title}`;
 
   const renderBackLink = () => (
     <BackButton onClick={() => navigate(backTarget)} style={{ marginBottom: 16 }} />

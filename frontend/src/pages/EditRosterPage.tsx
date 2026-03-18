@@ -67,15 +67,6 @@ export default function EditRosterPage() {
     }
   };
 
-  const backLinkStyles: React.CSSProperties = {
-    fontSize: 14,
-    color: GRAY_500,
-    textDecoration: "none",
-    cursor: "pointer",
-    marginBottom: 8,
-    display: "inline-block",
-  };
-
   const titleStyles: React.CSSProperties = {
     fontSize: 28,
     fontWeight: 700,

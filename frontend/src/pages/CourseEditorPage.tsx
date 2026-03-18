@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
 import BackButton from "../components/ui/BackButton";
@@ -294,16 +294,6 @@ export default function CourseEditorPage() {
   }, [identifiedKnowledge, selectedReviewIndices]);
 
   // ---- Styles ----
-
-  const backLinkStyles: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    fontSize: 14,
-    color: GRAY_500,
-    textDecoration: "none",
-    marginBottom: 24,
-  };
 
   const titleStyles: React.CSSProperties = {
     margin: 0,
