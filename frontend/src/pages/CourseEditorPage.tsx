@@ -314,6 +314,7 @@ export default function CourseEditorPage() {
 
   // Ungenerated items: identified knowledge that wasn't selected for generation
   // Shown greyed out in edit mode with checkboxes so the instructor can generate them later
+  const isReviewMode = identifiedKnowledge.length > 0 && objectives.length === 0;
   const ungeneratedItems = useMemo(() => {
     if (isReviewMode || identifiedKnowledge.length === 0 || (objectives.length === 0 && knowledgeTopics.length === 0)) return [] as { type: string; description: string }[];
     const generatedDescriptions = new Set<string>();
@@ -421,7 +422,6 @@ export default function CourseEditorPage() {
     );
   }
 
-  const isReviewMode = identifiedKnowledge.length > 0 && objectives.length === 0;
   const enabledCount = isReviewMode
     ? selectedReviewIndices.size
     : enabledIds.size + enabledTopicIds.size;
