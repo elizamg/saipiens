@@ -6,6 +6,7 @@
  */
 
 import { getAuthToken } from "../contexts/AuthContext";
+import { getCurrentSession, signOut as cognitoSignOut } from "../services/cognitoAuth";
 import whiteTreeLogo from "../assets/white-tree.png";
 import type {
   Student,
@@ -48,6 +49,31 @@ async function apiFetch<T>(
   }
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    // Token may have expired — try refreshing the session once
+    try {
+      const session = await getCurrentSession();
+      if (session) {
+        const newToken = session.getIdToken().getJwtToken();
+        headers["Authorization"] = `Bearer ${newToken}`;
+        const retry = await fetch(`${BASE}${path}`, { ...options, headers });
+        if (!retry.ok) {
+          const body = await retry.text();
+          throw new Error(`API ${retry.status}: ${body}`);
+        }
+        if (retry.status === 204) return undefined as T;
+        return retry.json() as Promise<T>;
+      }
+    } catch {
+      // refresh failed — fall through to sign out
+    }
+    // Session unrecoverable — sign out and redirect to login
+    cognitoSignOut();
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
+
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`API ${res.status}: ${body}`);

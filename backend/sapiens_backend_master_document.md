@@ -88,28 +88,9 @@ Only IdToken is used for API Gateway validation.
 
 ## Development Authentication Mode
 
-Both student and instructor dev auth are controlled by a single flag:
+**Dev auth has been fully removed** (2026-03-18). The `DEV_AUTH_ENABLED` env var, `X-Dev-Student-Id`, `X-Dev-Instructor-Id`, and `X-Dev-Token` header support have all been deleted from the codebase and from the Lambda environment variables.
 
-    DEV_AUTH_ENABLED=true
-
-### Student dev auth
-
-Headers used:
-
-    X-Dev-Student-Id: <studentId>
-    X-Dev-Token: dev-secret
-
-### Instructor dev auth
-
-Headers used:
-
-    X-Dev-Instructor-Id: <instructorId>
-    X-Dev-Token: dev-secret
-
-Dev auth is currently enabled on the live Lambda alongside JWT auth.
-This enables browser-based testing using dev headers.
-
-⚠ Dev auth must be disabled before production deployment (`DEV_AUTH_ENABLED=false`).
+All authentication now requires a valid Cognito JWT. Test accounts (`dev-student@sapiens.dev`, `dev-instructor@sapiens.dev`) use real Cognito credentials and produce real JWTs.
 
 ## Production Instructor Authentication
 
