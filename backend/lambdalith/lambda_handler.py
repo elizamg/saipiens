@@ -531,14 +531,44 @@ def handle_list_courses_for_student(event, student_id_param: str | None):
 
 
 # ---- Stages ----
-def handle_list_stages_for_objective(objective_id: str):
-    stages = dynamodb.Table(T["ITEM_STAGES"])
+def handle_list_stages_for_objective(event, objective_id: str):
+    stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
     items = query_all(
-        stages,
+        stages_tbl,
         index_name=IDX["ITEM_STAGES_BY_ITEM"],
         key_condition=Key("itemId").eq(objective_id),
         scan_forward=True,  # order asc
     )
+
+    # Lazily generate suggestedQuestions for challenge stages that are missing them
+    challenge_needs_backfill = [
+        s for s in items
+        if s.get("stageType") == "challenge" and not s.get("suggestedQuestions") and s.get("prompt")
+    ]
+    if challenge_needs_backfill:
+        student_id = effective_student_id(event)
+        if student_id:
+            # Look up unitId from the objective
+            obj = dynamodb.Table(T["OBJECTIVES"]).get_item(Key={"id": objective_id}).get("Item")
+            unit_id = obj.get("unitId", "") if obj else ""
+            if unit_id:
+                try:
+                    from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+                    subject, grade = _get_unit_context(unit_id, student_id)
+                    for stage in challenge_needs_backfill:
+                        try:
+                            cqs = gen_clarifying_questions(subject, grade, stage["prompt"])
+                            stages_tbl.update_item(
+                                Key={"id": stage["id"]},
+                                UpdateExpression="SET suggestedQuestions = :sq",
+                                ExpressionAttributeValues={":sq": cqs},
+                            )
+                            stage["suggestedQuestions"] = cqs
+                        except Exception as e:
+                            print(f"[clarifying-questions] backfill failed for stage {stage['id']}: {e}")
+                except Exception as e:
+                    print(f"[clarifying-questions] stage backfill setup failed: {e}")
+
     return resp(200, items)
 
 
@@ -3472,7 +3502,7 @@ def handler(event, context):
             objective_id = params.get("objectiveId")
             if not objective_id:
                 return resp(400, {"error": "Missing objectiveId"})
-            return handle_list_stages_for_objective(objective_id)
+            return handle_list_stages_for_objective(event, objective_id)
 
         if method == "GET" and path.endswith("/progress") and path.startswith("/objectives/"):
             objective_id = params.get("objectiveId")

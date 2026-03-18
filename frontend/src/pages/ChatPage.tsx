@@ -429,6 +429,21 @@ export default function ChatPage() {
     [setSearchParams]
   );
 
+  // Compute last graded category from raw messages (not displayMessages) to avoid circular dep
+  const lastGradedCategory = useMemo(() => {
+    if (!isSkillThread || currentStage?.stageType !== "challenge") return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "tutor" && !m.metadata?.isSystemMessage && m.metadata?.gradingCategory) {
+        return m.metadata.gradingCategory;
+      }
+    }
+    return null;
+  }, [messages, isSkillThread, currentStage?.stageType]);
+
+  // After an incorrect grade and before a new attempt, block graded submissions
+  const showNewAttemptButton = lastGradedCategory === "incorrect" && !currentStageCompleted;
+
   const handleSendMessage = useCallback(
     async (content: string) => {
       if (!selectedThreadId || !selectedStageId || !student || !selectedThread || !currentStage) return;
@@ -639,21 +654,6 @@ export default function ChatPage() {
     setPillText(question);
     setPendingClarify(true);
   }, []);
-
-  // Compute last graded category from raw messages (not displayMessages) to avoid circular dep
-  const lastGradedCategory = useMemo(() => {
-    if (!isSkillThread || currentStage?.stageType !== "challenge") return null;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.role === "tutor" && !m.metadata?.isSystemMessage && m.metadata?.gradingCategory) {
-        return m.metadata.gradingCategory;
-      }
-    }
-    return null;
-  }, [messages, isSkillThread, currentStage?.stageType]);
-
-  // After an incorrect grade and before a new attempt, block graded submissions
-  const showNewAttemptButton = lastGradedCategory === "incorrect" && !currentStageCompleted;
 
   const displayMessages = useMemo(() => {
     if (!currentStage || !selectedThreadId) return messages;
