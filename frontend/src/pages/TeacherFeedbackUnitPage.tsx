@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Avatar from "../components/ui/Avatar";
 import { useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
+import BackButton from "../components/ui/BackButton";
 import Button from "../components/ui/Button";
 import {
   getCurrentInstructor,
@@ -109,13 +110,8 @@ export default function TeacherFeedbackUnitPage() {
       sidebarCourses={loading ? [] : courses}
       routePrefix="/teacher"
     >
-      <div style={{ maxWidth: 680 }}>
-        <button
-          onClick={() => navigate(`/teacher/feedback/course/${courseId}/student/${studentId}`)}
-          style={{ background: "none", border: "none", cursor: "pointer", color: GRAY_600, fontSize: 14, padding: "0 0 16px 0", display: "flex", alignItems: "center", gap: 4 }}
-        >
-          ← Back
-        </button>
+      <div>
+        <BackButton onClick={() => navigate(`/teacher/feedback/course/${courseId}/student/${studentId}`)} style={{ marginBottom: 16 }} />
         <p style={{ margin: "0 0 4px 0", fontSize: 13, color: GRAY_600 }}>{student?.name}</p>
         <h1 style={{ margin: "0 0 24px 0", fontSize: 24, fontWeight: 600, color: GRAY_900 }}>
           {unit?.title ?? "Unit"}

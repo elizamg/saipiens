@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
+import BackButton from "../components/ui/BackButton";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
 import type { ObjectiveKind, Course, Unit, Objective, Student, KnowledgeTopic } from "../types/domain";
 import {
@@ -294,16 +295,6 @@ export default function CourseEditorPage() {
 
   // ---- Styles ----
 
-  const backLinkStyles: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    fontSize: 14,
-    color: GRAY_500,
-    textDecoration: "none",
-    marginBottom: 24,
-  };
-
   const titleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 28,
@@ -413,24 +404,7 @@ export default function CourseEditorPage() {
         </div>
       ) : (
         <>
-          <Link
-            to={`/teacher/course/${courseId}`}
-            style={backLinkStyles}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back to {course.title}
-          </Link>
+          <BackButton onClick={() => navigate(`/teacher/course/${courseId}`)} style={{ marginBottom: 16 }} />
 
           <h1 style={titleStyles}>{unit.title}</h1>
 

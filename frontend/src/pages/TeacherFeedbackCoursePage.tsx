@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
+import BackButton from "../components/ui/BackButton";
 import Avatar from "../components/ui/Avatar";
 import {
   getCurrentInstructor,
@@ -54,12 +55,7 @@ export default function TeacherFeedbackCoursePage() {
       routePrefix="/teacher"
     >
       <div>
-        <button
-          onClick={() => navigate("/teacher/feedback")}
-          style={{ background: "none", border: "none", cursor: "pointer", color: GRAY_600, fontSize: 14, padding: "0 0 16px 0", display: "flex", alignItems: "center", gap: 4 }}
-        >
-          ← Back
-        </button>
+        <BackButton onClick={() => navigate("/teacher/feedback")} style={{ marginBottom: 16 }} />
         <h1 style={{ margin: "0 0 8px 0", fontSize: 24, fontWeight: 600, color: GRAY_900 }}>
           {course?.title ?? "Course"}
         </h1>

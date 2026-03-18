@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
+import BackButton from "../components/ui/BackButton";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
@@ -226,17 +227,6 @@ export default function UnitUploadPage() {
 
   // ---- Styles ----
 
-  const backLinkStyles: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    fontSize: 14,
-    color: GRAY_500,
-    textDecoration: "none",
-    marginBottom: 24,
-    cursor: "pointer",
-  };
-
   const titleStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 28,
@@ -393,26 +383,9 @@ export default function UnitUploadPage() {
   const backTarget = existingUnitId
     ? `/teacher/course/${courseId}/unit/${existingUnitId}`
     : `/teacher/course/${courseId}`;
-  const backLabel = existingUnitId
-    ? `Back to ${unitName || "Unit"}`
-    : `Back to ${course?.title}`;
 
   const renderBackLink = () => (
-    <a onClick={() => navigate(backTarget)} style={backLinkStyles}>
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <polyline points="15 18 9 12 15 6" />
-      </svg>
-      {backLabel}
-    </a>
+    <BackButton onClick={() => navigate(backTarget)} style={{ marginBottom: 16 }} />
   );
 
   if (step === "name") {

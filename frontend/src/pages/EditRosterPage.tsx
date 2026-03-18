@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
+import BackButton from "../components/ui/BackButton";
 import StudentRosterEditor from "../components/course/StudentRosterEditor";
 import { GRAY_500, GRAY_900 } from "../theme/colors";
 import type { Student } from "../types/domain";
@@ -66,15 +67,6 @@ export default function EditRosterPage() {
     }
   };
 
-  const backLinkStyles: React.CSSProperties = {
-    fontSize: 14,
-    color: GRAY_500,
-    textDecoration: "none",
-    cursor: "pointer",
-    marginBottom: 8,
-    display: "inline-block",
-  };
-
   const titleStyles: React.CSSProperties = {
     fontSize: 28,
     fontWeight: 700,
@@ -106,14 +98,7 @@ export default function EditRosterPage() {
       sidebarCourses={[]}
       routePrefix="/teacher"
     >
-      <div
-        style={backLinkStyles}
-        onClick={() => navigate(`/teacher/course/${courseId}`)}
-        role="link"
-        tabIndex={0}
-      >
-        &larr; Back
-      </div>
+      <BackButton onClick={() => navigate(`/teacher/course/${courseId}`)} style={{ marginBottom: 16 }} />
 
       <h1 style={titleStyles}>
         Edit Roster{courseTitle ? ` — ${courseTitle}` : ""}

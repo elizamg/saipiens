@@ -106,7 +106,7 @@ export default function TeacherSettingsPage() {
 
   return (
     <AppShell student={shellStudent} activePath="/teacher/settings" routePrefix="/teacher">
-      <div style={{ maxWidth: 600 }}>
+      <div>
         <h1 style={{ margin: "0 0 24px 0", fontSize: 24, fontWeight: 600 }}>Settings</h1>
 
         {/* Profile */}

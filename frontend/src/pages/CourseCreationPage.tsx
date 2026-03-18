@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
+import BackButton from "../components/ui/BackButton";
 import IconChooser from "../components/course/IconChooser";
 import StudentRosterEditor from "../components/course/StudentRosterEditor";
-import { GRAY_500, GRAY_900 } from "../theme/colors";
+import { GRAY_900 } from "../theme/colors";
 import type { Student } from "../types/domain";
 import { createCourse, listTeacherStudents, getCurrentInstructor, listTeacherCourses } from "../services/api";
 import type { Course } from "../types/domain";
@@ -51,15 +52,6 @@ export default function CourseCreationPage() {
     }
   };
 
-  const backLinkStyles: React.CSSProperties = {
-    fontSize: 14,
-    color: GRAY_500,
-    textDecoration: "none",
-    cursor: "pointer",
-    marginBottom: 8,
-    display: "inline-block",
-  };
-
   const titleStyles: React.CSSProperties = {
     fontSize: 28,
     fontWeight: 700,
@@ -86,14 +78,7 @@ export default function CourseCreationPage() {
       sidebarCourses={sidebarCourses}
       routePrefix="/teacher"
     >
-      <div
-        style={backLinkStyles}
-        onClick={() => navigate("/teacher")}
-        role="link"
-        tabIndex={0}
-      >
-        &larr; Back
-      </div>
+      <BackButton onClick={() => navigate("/teacher")} style={{ marginBottom: 16 }} />
 
       <h1 style={titleStyles}>Create New Course</h1>
 
