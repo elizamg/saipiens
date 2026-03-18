@@ -65,18 +65,14 @@ IDX = {
     "UNIT_QUEUE": os.environ["UNIT_QUEUE_INDEX"],
 }
 
-# ---- Dev auth ----
-# When DEV_AUTH_ENABLED=true, requests may use X-Dev-Student-Id or
-# X-Dev-Instructor-Id headers to identify the caller without a real JWT.
-DEV_AUTH_ENABLED = os.environ.get("DEV_AUTH_ENABLED", "false").lower() == "true"
-DEV_AUTH_HEADER = os.environ.get("DEV_AUTH_HEADER", "X-Dev-Student-Id")
-DEV_AUTH_TOKEN = os.environ.get("DEV_AUTH_TOKEN")  # optional shared secret
-
 # ---- CORS ----
-CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*")
+CORS_ALLOW_ORIGIN = os.environ.get(
+    "CORS_ALLOW_ORIGIN",
+    "https://sapiens-pp4l.vercel.app",
+)
 CORS_ALLOW_HEADERS = os.environ.get(
     "CORS_ALLOW_HEADERS",
-    "Content-Type,Authorization,X-Dev-Student-Id,X-Dev-Instructor-Id,X-Dev-Token",
+    "Content-Type,Authorization",
 )
 CORS_ALLOW_METHODS = os.environ.get(
     "CORS_ALLOW_METHODS",
@@ -216,29 +212,14 @@ def _cognito_groups(event) -> list[str]:
 def effective_instructor_id(event) -> str | None:
     """
     Resolve the caller as an instructor.
-
-    Production: JWT sub + must be in the 'instructors' Cognito group.
-    Dev mode:   X-Dev-Instructor-Id header (DEV_AUTH_ENABLED=true only).
+    Requires a valid JWT with sub + membership in the 'instructors' Cognito group.
     Returns None if the caller is not an authenticated instructor.
     """
     sub = authed_sub(event)
     if sub:
         groups = _cognito_groups(event)
         return sub if "instructors" in groups else None
-
-    if not DEV_AUTH_ENABLED:
-        return None
-
-    dev_id = header(event, "X-Dev-Instructor-Id")
-    if not dev_id:
-        return None
-
-    if DEV_AUTH_TOKEN:
-        tok = header(event, "X-Dev-Token")
-        if tok != DEV_AUTH_TOKEN:
-            return None
-
-    return dev_id
+    return None
 
 
 def query_all(table, *, index_name: str | None = None, key_condition=None, scan_forward: bool = True):
@@ -277,23 +258,8 @@ def header(event, name: str) -> str | None:
 
 
 def effective_student_id(event) -> str | None:
-    sub = authed_sub(event)
-    if sub:
-        return sub
-
-    if not DEV_AUTH_ENABLED:
-        return None
-
-    dev_id = header(event, DEV_AUTH_HEADER)
-    if not dev_id:
-        return None
-
-    if DEV_AUTH_TOKEN:
-        tok = header(event, "X-Dev-Token")
-        if tok != DEV_AUTH_TOKEN:
-            return None
-
-    return dev_id
+    """Resolve the caller as a student. Requires a valid JWT with sub claim."""
+    return authed_sub(event)
 
 
 def method_and_path(event):
@@ -302,6 +268,107 @@ def method_and_path(event):
     method = http.get("method", "UNKNOWN")
     raw_path = http.get("path", "/")
     return method, strip_stage(raw_path)
+
+
+# ---- Audit logging ----
+
+def _audit_log(event_type: str, *, sub: str | None = None, method: str = "", path: str = "", status: int = 0, detail: str = ""):
+    """Emit a structured JSON audit log line to stdout (→ CloudWatch)."""
+    entry = {
+        "audit": True,
+        "event": event_type,
+        "sub": sub,
+        "method": method,
+        "path": path,
+        "status": status,
+        "detail": detail,
+        "ts": iso_now(),
+    }
+    print(json.dumps(entry, default=str))
+
+
+# ---- Enrollment helpers ----
+
+def _is_enrolled(student_id: str, course_id: str) -> bool:
+    """Check if a student is enrolled in a course."""
+    tbl = dynamodb.Table(T["ENROLLMENTS"])
+    got = tbl.get_item(Key={"studentId": student_id, "courseId": course_id})
+    return "Item" in got
+
+
+def _check_enrollment_for_unit(student_id: str, unit_id: str) -> str | None:
+    """Look up unit's courseId and verify enrollment. Returns courseId if enrolled, else None."""
+    unit = dynamodb.Table(T["UNITS"]).get_item(Key={"id": unit_id}).get("Item")
+    if not unit:
+        return None
+    course_id = unit.get("courseId")
+    if not course_id or not _is_enrolled(student_id, course_id):
+        return None
+    return course_id
+
+
+def _check_enrollment_for_objective(student_id: str, objective_id: str) -> str | None:
+    """Resolve objective → unit → course and verify enrollment. Returns courseId if enrolled."""
+    obj = dynamodb.Table(T["OBJECTIVES"]).get_item(Key={"id": objective_id}).get("Item")
+    if not obj:
+        return None
+    unit_id = obj.get("unitId")
+    if not unit_id:
+        return None
+    return _check_enrollment_for_unit(student_id, unit_id)
+
+
+def _check_enrollment_for_thread(student_id: str, thread_id: str) -> str | None:
+    """Resolve thread → unit → course and verify enrollment. Returns courseId if enrolled."""
+    thread = dynamodb.Table(T["CHAT_THREADS"]).get_item(Key={"id": thread_id}).get("Item")
+    if not thread:
+        return None
+    unit_id = thread.get("unitId")
+    if not unit_id:
+        return None
+    return _check_enrollment_for_unit(student_id, unit_id)
+
+
+def _require_enrollment_for_course(event, course_id: str):
+    """For shared endpoints: if student, verify enrollment. Returns 403 resp or None."""
+    if effective_instructor_id(event):
+        return None  # instructors can access any course
+    student_id = effective_student_id(event)
+    if not student_id:
+        _audit_log("auth_failure", sub=None, status=401, detail="no valid JWT")
+        return resp(401, {"error": "Unauthorized"})
+    if not _is_enrolled(student_id, course_id):
+        _audit_log("enrollment_denied", sub=student_id, status=403, detail=f"course={course_id}")
+        return resp(403, {"error": "Not enrolled in this course"})
+    return None
+
+
+def _require_enrollment_for_unit(event, unit_id: str):
+    """For shared endpoints: if student, verify enrollment via unit→course. Returns error resp or None."""
+    if effective_instructor_id(event):
+        return None
+    student_id = effective_student_id(event)
+    if not student_id:
+        _audit_log("auth_failure", sub=None, status=401, detail="no valid JWT")
+        return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        _audit_log("enrollment_denied", sub=student_id, status=403, detail=f"unit={unit_id}")
+        return resp(403, {"error": "Not enrolled in this course"})
+    return None
+
+
+def _require_enrollment_for_objective(event, objective_id: str):
+    """For shared endpoints: if student, verify enrollment via objective→unit→course."""
+    if effective_instructor_id(event):
+        return None
+    student_id = effective_student_id(event)
+    if not student_id:
+        _audit_log("auth_failure", sub=None, status=401, detail="no valid JWT")
+        return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_objective(student_id, objective_id):
+        _audit_log("enrollment_denied", sub=student_id, status=403, detail=f"objective={objective_id}")
+        return resp(403, {"error": "Not enrolled in this course"})
+    return None
 
 
 # ---- Small domain helpers ----
@@ -372,11 +439,15 @@ def handle_health():
 def handle_current_student(event):
     sub = effective_student_id(event)
     if not sub:
+        _audit_log("auth_failure", sub=None, method="GET", path="/current-student", status=401)
         return resp(401, {"error": "Unauthorized"})
 
     students = dynamodb.Table(T["STUDENTS"])
     got = students.get_item(Key={"id": sub})
     item = got.get("Item")
+
+    if not item:
+        _audit_log("student_first_login", sub=sub, method="GET", path="/current-student", status=200)
 
     if item:
         # Update name from JWT if it changed
@@ -603,6 +674,8 @@ def handle_get_objective_progress(event, objective_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_objective(student_id, objective_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     prog = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     got = prog.get_item(Key={"studentId": student_id, "objectiveId": objective_id})
@@ -621,6 +694,8 @@ def handle_list_unit_progress_items(event, unit_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
     objectives = query_all(
@@ -657,6 +732,8 @@ def handle_get_unit_progress(event, unit_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     # --- Skill / Capstone objectives ---
     objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
@@ -696,6 +773,8 @@ def handle_advance_stage(event, objective_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_objective(student_id, objective_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     got = prog_tbl.get_item(Key={"studentId": student_id, "objectiveId": objective_id})
@@ -730,6 +809,8 @@ def handle_list_awards(event, course_id: str | None = None):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if course_id and not _is_enrolled(student_id, course_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     awards_tbl = dynamodb.Table(T["AWARDS"])
     items = query_all(
@@ -747,6 +828,8 @@ def handle_list_feedback(event, course_id: str | None = None):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if course_id and not _is_enrolled(student_id, course_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
     items = query_all(
@@ -1147,6 +1230,8 @@ def handle_get_my_grading_report(event, unit_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     gr_tbl = dynamodb.Table(T["GRADING_REPORTS"])
     got = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id})
@@ -1176,6 +1261,8 @@ def handle_get_my_feedback(event, unit_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     fb_tbl = dynamodb.Table(T["FEEDBACK_ITEMS"])
     items = query_all(
@@ -1227,6 +1314,8 @@ def handle_list_threads_for_unit(event, unit_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     units_tbl = dynamodb.Table(T["UNITS"])
     unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
@@ -1300,6 +1389,8 @@ def handle_get_thread_with_progress(event, thread_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_thread(student_id, thread_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
     thread = threads_tbl.get_item(Key={"id": thread_id}).get("Item")
@@ -1337,6 +1428,8 @@ def handle_list_messages(event, thread_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_thread(student_id, thread_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     qs = event.get("queryStringParameters") or {}
     stage_id_filter = qs.get("stageId")
@@ -1519,6 +1612,8 @@ def handle_new_attempt(event, thread_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_thread(student_id, thread_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     err, body = require_json(event)
     if err:
@@ -1559,6 +1654,8 @@ def handle_send_message(event, thread_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_thread(student_id, thread_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     err, body = require_json(event)
     if err:
@@ -1696,11 +1793,17 @@ def _name_from_claims(event) -> str:
 def handle_current_instructor(event):
     instructor_id = effective_instructor_id(event)
     if not instructor_id:
+        sub = authed_sub(event)
+        detail = "not in instructors group" if sub else "no valid JWT"
+        _audit_log("auth_failure", sub=sub, method="GET", path="/current-instructor", status=401, detail=detail)
         return resp(401, {"error": "Unauthorized"})
 
     instructors_tbl = dynamodb.Table(T["INSTRUCTORS"])
     got = instructors_tbl.get_item(Key={"id": instructor_id})
     item = got.get("Item")
+
+    if not item:
+        _audit_log("instructor_first_login", sub=instructor_id, method="GET", path="/current-instructor", status=200)
 
     if item:
         # Update name from JWT if it changed (e.g. user edited Cognito profile)
@@ -2345,6 +2448,8 @@ def handle_list_knowledge_queue(event, unit_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
 
@@ -2410,6 +2515,8 @@ def handle_clarify_knowledge_question(event, queue_item_id: str):
         return resp(400, {"error": "Item is not active"})
 
     unit_id = existing["unitId"]
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
     question = existing.get("questionPrompt", "") or existing.get("question", "")
 
     # Look up topic description (skill being tested)
@@ -2457,6 +2564,8 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
         return resp_not_found("KnowledgeQueueItem")
 
     unit_id = existing["unitId"]
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
     now = iso_now()
     tutor_feedback = None
 
@@ -2560,6 +2669,8 @@ def handle_get_knowledge_progress(event, unit_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
 
     # Get total topics for this unit
     topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
@@ -3359,6 +3470,100 @@ def handle_get_upload_status(unit_id: str):
     return resp(200, result)
 
 
+# ---- Profile (PATCH /me, POST /me/avatar-upload-url) ----
+
+def handle_update_profile(event):
+    """PATCH /me — update the current user's name and/or avatarUrl."""
+    err, body = require_json(event)
+    if err:
+        return err
+
+    # Determine if student or instructor
+    instructor_id = effective_instructor_id(event)
+    student_id = effective_student_id(event)
+
+    if instructor_id:
+        tbl = dynamodb.Table(T["INSTRUCTORS"])
+        user_id = instructor_id
+    elif student_id:
+        tbl = dynamodb.Table(T["STUDENTS"])
+        user_id = student_id
+    else:
+        return resp(401, {"error": "Unauthorized"})
+
+    got = tbl.get_item(Key={"id": user_id})
+    item = got.get("Item")
+    if not item:
+        return resp(404, {"error": "User not found"})
+
+    updates = {}
+    if "name" in body and isinstance(body["name"], str) and body["name"].strip():
+        updates["name"] = body["name"].strip()
+    if "avatarUrl" in body:
+        updates["avatarUrl"] = body["avatarUrl"]
+
+    if not updates:
+        return resp(200, item)
+
+    updates["updatedAt"] = iso_now()
+    expr_parts = []
+    attr_names = {}
+    attr_values = {}
+    for i, (k, v) in enumerate(updates.items()):
+        alias = f"#k{i}"
+        val_alias = f":v{i}"
+        expr_parts.append(f"{alias} = {val_alias}")
+        attr_names[alias] = k
+        attr_values[val_alias] = v
+
+    tbl.update_item(
+        Key={"id": user_id},
+        UpdateExpression="SET " + ", ".join(expr_parts),
+        ExpressionAttributeNames=attr_names,
+        ExpressionAttributeValues=attr_values,
+    )
+    item.update(updates)
+    return resp(200, item)
+
+
+def handle_avatar_upload_url(event):
+    """POST /me/avatar-upload-url — return a pre-signed S3 PUT URL for avatar upload."""
+    err, body = require_json(event)
+    if err:
+        return err
+
+    instructor_id = effective_instructor_id(event)
+    student_id = effective_student_id(event)
+    user_id = instructor_id or student_id
+    if not user_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    filename = body.get("filename")
+    if not filename or not isinstance(filename, str):
+        return resp(400, {"error": "Missing filename"})
+
+    s3_key = f"avatars/{user_id}/{filename}"
+
+    presign_client = boto3.client(
+        "s3",
+        region_name="us-west-1",
+        endpoint_url="https://s3.us-west-1.amazonaws.com",
+        config=Config(signature_version="s3v4"),
+    )
+    upload_url = presign_client.generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": UPLOAD_BUCKET,
+            "Key": s3_key,
+            "ContentType": body.get("contentType", "image/png"),
+        },
+        ExpiresIn=900,
+    )
+    public_url = f"https://{UPLOAD_BUCKET}.s3.us-west-1.amazonaws.com/{s3_key}"
+
+    return resp(200, {"uploadUrl": upload_url, "publicUrl": public_url})
+
+
 # ---- Main router ----
 def handler(event, context):
     # Handle internal async events (not from API Gateway)
@@ -3373,6 +3578,12 @@ def handler(event, context):
         method, path = method_and_path(event)
         params = event.get("pathParameters") or {}
 
+        # Audit: log every non-OPTIONS, non-health request with resolved identity
+        if method != "OPTIONS" and path != "/health":
+            sub = authed_sub(event)
+            _audit_log("request", sub=sub, method=method, path=path,
+                       detail="authenticated" if sub else "unauthenticated")
+
         if method == "OPTIONS":
             return resp_options()
 
@@ -3381,6 +3592,12 @@ def handler(event, context):
 
         if method == "GET" and path == "/current-student":
             return handle_current_student(event)
+
+        if method == "PATCH" and path == "/me":
+            return handle_update_profile(event)
+
+        if method == "POST" and path == "/me/avatar-upload-url":
+            return handle_avatar_upload_url(event)
 
         if method == "GET" and path.endswith("/courses") and path.startswith("/students/"):
             return handle_list_courses_for_student(event, params.get("studentId"))
@@ -3392,18 +3609,27 @@ def handler(event, context):
             course_id = params.get("courseId")
             if not course_id:
                 return resp(400, {"error": "Missing courseId"})
+            err = _require_enrollment_for_course(event, course_id)
+            if err:
+                return err
             return handle_list_units(course_id)
 
         if method == "GET" and path.startswith("/courses/") and "/units" not in path and "/awards" not in path and "/feedback" not in path and "/roster" not in path:
             course_id = params.get("courseId")
             if not course_id:
                 return resp(400, {"error": "Missing courseId"})
+            err = _require_enrollment_for_course(event, course_id)
+            if err:
+                return err
             return handle_get_course(course_id)
 
         if method == "GET" and path.endswith("/objectives") and path.startswith("/units/"):
             unit_id = params.get("unitId")
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
+            err = _require_enrollment_for_unit(event, unit_id)
+            if err:
+                return err
             return handle_list_objectives(unit_id)
 
         if method == "GET" and path.endswith("/knowledge-topics") and path.startswith("/units/"):
@@ -3490,18 +3716,27 @@ def handler(event, context):
             unit_id = params.get("unitId")
             if not unit_id:
                 return resp(400, {"error": "Missing unitId"})
+            err = _require_enrollment_for_unit(event, unit_id)
+            if err:
+                return err
             return handle_get_unit(unit_id)
 
         if method == "GET" and path.endswith("/questions") and path.startswith("/objectives/"):
             objective_id = params.get("objectiveId")
             if not objective_id:
                 return resp(400, {"error": "Missing objectiveId"})
+            err = _require_enrollment_for_objective(event, objective_id)
+            if err:
+                return err
             return handle_list_questions_for_objective(objective_id)
 
         if method == "GET" and path.endswith("/stages") and path.startswith("/objectives/"):
             objective_id = params.get("objectiveId")
             if not objective_id:
                 return resp(400, {"error": "Missing objectiveId"})
+            err = _require_enrollment_for_objective(event, objective_id)
+            if err:
+                return err
             return handle_list_stages_for_objective(event, objective_id)
 
         if method == "GET" and path.endswith("/progress") and path.startswith("/objectives/"):
@@ -3516,10 +3751,13 @@ def handler(event, context):
                 return resp(400, {"error": "Missing objectiveId"})
             return handle_advance_stage(event, objective_id)
 
-        if method == "GET" and path.startswith("/objectives/") and "/questions" not in path and "/stages" not in path and "/progress" not in path and "/advance" not in path:
+        if method == "GET" and path.startswith("/objectives/") and "/questions" not in path and "/stages" not in path and "/progress" not in path and "/advance" not in path and "/enabled" not in path:
             objective_id = params.get("objectiveId")
             if not objective_id:
                 return resp(400, {"error": "Missing objectiveId"})
+            err = _require_enrollment_for_objective(event, objective_id)
+            if err:
+                return err
             return handle_get_objective(objective_id)
 
         if method == "GET" and path.startswith("/questions/"):

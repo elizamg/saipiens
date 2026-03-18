@@ -5,25 +5,27 @@ This is the remaining work before the backend is ready to be “handed off” to
 ## A) ~~Turn on real auth (Cognito JWT)~~ ✅ DONE
 - JWT authorizer is now attached to all API Gateway routes (except `/health`).
 - Lambda also decodes JWT from the `Authorization: Bearer` header as a fallback (handles cases where API Gateway claims are empty).
-- `cognito:groups` bracket parsing fixed — API Gateway stringifies `["instructors"]` as `[instructors]`; parser now strips brackets.
+- `cognito:groups` bracket parsing fixed — API Gateway stringifies `[“instructors”]` as `[instructors]`; parser now strips brackets.
 - `given_name` + `family_name` from JWT claims are used for display names (auto-created records + synced on login).
 - Frontend signup form collects first/last name and sends them as required Cognito attributes.
 - All frontend pages (student + teacher) use real API calls — zero mock data imports remain.
-- Dev auth (`DEV_AUTH_ENABLED`) is still available for testing but should be disabled before production.
+- **Dev auth has been fully removed** — code paths for `DEV_AUTH_ENABLED`, `X-Dev-Student-Id`, `X-Dev-Instructor-Id`, and `X-Dev-Token` headers have been deleted from `lambda_handler.py`. All five dev auth Lambda env vars have been removed from the production Lambda configuration. Authentication now requires a valid Cognito JWT exclusively.
+- **Frontend 401 handling** — `apiFetch()` now intercepts 401 responses, attempts a token refresh via `getCurrentSession()`, retries the request on success, and redirects to `/login` on failure.
+- **New password challenge UI** — Login page now handles Cognito's `newPasswordRequired` challenge with a dedicated “Set new password” form instead of showing a dead-end error.
 
-## B) CORS tightening
-- Replace `Access-Control-Allow-Origin: *` with the actual frontend origin(s) in production.
-- Confirm preflight OPTIONS handling is correct for Authorization header.
+## B) ~~CORS tightening~~ ✅ DONE
+- `CORS_ALLOW_ORIGIN` default changed from `*` to `https://sapiens-pp4l.vercel.app` in code.
+- Lambda env var updated on production to `https://sapiens-pp4l.vercel.app`.
+- Dev auth headers (`X-Dev-Student-Id`, `X-Dev-Instructor-Id`, `X-Dev-Token`) removed from `CORS_ALLOW_HEADERS`.
+- Preflight OPTIONS handling confirmed working for `Authorization` header.
 
-## C) Data integrity / authorization checks (beyond “current student”)
-Currently, the API resolves a current student and enforces studentId path equality on `/students/{studentId}/courses`.
-Before production, add (or confirm) authorization rules such as:
-- Ensure student is enrolled in the course when accessing:
-  - `/courses/{courseId}` (optional)
-  - `/courses/{courseId}/units`
-  - `/units/{unitId}`, `/units/{unitId}/objectives`, `/units/{unitId}/threads`, `/units/{unitId}/progress*`
-  - `/threads/{threadId}*` and `/threads/{threadId}/messages*`
-This prevents a student from querying arbitrary IDs.
+## C) ~~Data integrity / authorization checks~~ ✅ DONE
+Enrollment validation is now enforced on all student-facing and shared endpoints:
+- Helper functions: `_is_enrolled()`, `_check_enrollment_for_unit()`, `_check_enrollment_for_objective()`, `_check_enrollment_for_thread()`
+- Shared-route helpers (instructor pass-through, student enrollment check): `_require_enrollment_for_course()`, `_require_enrollment_for_unit()`, `_require_enrollment_for_objective()`
+- Returns 403 `”Not enrolled in this course”` when a student tries to access a course/unit/thread they are not enrolled in.
+- Endpoints protected: `GET /courses/{courseId}`, `GET /courses/{courseId}/units`, `GET /units/{unitId}`, `GET /units/{unitId}/objectives`, `GET /units/{unitId}/threads`, `GET /units/{unitId}/progress*`, `GET /units/{unitId}/knowledge-*`, `GET /units/{unitId}/my-grading-report`, `GET /units/{unitId}/my-feedback`, `GET /objectives/{objectiveId}/*`, `GET /threads/{threadId}/*`, `POST /threads/{threadId}/*`, `POST /knowledge-queue/{itemId}/*`
+- Endpoints that are already scoped by `studentId` partition key (awards, feedback global) get enrollment checks only when course-filtered.
 
 ## D) Consistent error shape
 Contract allows flexible error handling, but a stable error schema helps frontend UX.
@@ -31,21 +33,19 @@ Suggested:
 - `{ "message": string, "code"?: string }`
 Currently many errors are `{ "error": "..." }`.
 
-## E) Deterministic data seeding and content completeness
-- Ensure every Objective has:
-  - `order`
-  - exactly 3 ItemStages with correct `stageType` + `order` + `prompt`
-- Ensure each objective has a corresponding ChatThread (either pre-seeded or auto-created; decide one approach).
-
 ## F) Performance & limits
 - Confirm query_all usage is acceptable for expected list sizes.
 - If messages can grow large, consider adding:
   - pagination params (limit, cursor) for `/threads/{threadId}/messages`
   - optional time/window querying
 
-## G) Observability
-- Add structured logs (request id, route, student id, latency).
-- Consider tracing (X-Ray) if needed.
+## G) ~~Observability~~ ✅ DONE (partial)
+Structured audit logging added via `_audit_log()` helper (JSON to stdout → CloudWatch):
+- `request` — every non-OPTIONS/health request with resolved `sub` (or null if unauthenticated)
+- `auth_failure` — 401 on `/current-student`, `/current-instructor`, and enrollment helpers
+- `enrollment_denied` — 403 when student accesses unregistered course
+- `student_first_login` / `instructor_first_login` — first-time auto-creation of user records
+- Remaining: X-Ray tracing, latency metrics (not yet implemented).
 
 ## H) ~~Background tutor replies~~ ✅ DONE
 `sendMessage` now invokes the AI tutor synchronously and returns `{ studentMessage, tutorMessage }`.
@@ -69,7 +69,7 @@ All instructor-facing routes are now implemented in `lambda_handler.py`:
 - `POST /courses/{courseId}/units/upload` — multipart PDF upload → stages files in S3 → invokes Lambda async → returns `202` with `{ unit, objectives: [] }` immediately. Background Lambda runs `Gen_Curriculum_Pipeline`, persists Objectives + ItemStages + Questions + KnowledgeTopics, and updates Unit `status` to `"ready"` or `"error"`.
 - `GET /units/{unitId}/upload-status` — polls upload processing status (`"processing"` → `"ready"` / `"error"`)
 
-**Instructor auth** (production): JWT `sub` + `instructors` Cognito group membership. Dev fallback: `X-Dev-Instructor-Id` + `X-Dev-Token: dev-secret` (controlled by `DEV_AUTH_ENABLED` env var).
+**Instructor auth**: JWT `sub` + `instructors` Cognito group membership. Dev auth fallback has been removed.
 
 Test results: 19/19 instructor route tests passing.
 
@@ -106,8 +106,14 @@ Frontend stubs in `api.ts` are now wired to real backend endpoints.
 Add these in Vercel → Project Settings → Environment Variables:
 - `VITE_COGNITO_USER_POOL_ID` = `us-west-1_pzs7P5vGg`
 - `VITE_COGNITO_CLIENT_ID` = `34es28m8ocaom5rt55khms7p07`
+- `VITE_API_BASE_URL` = `https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod`
 
 Note: `VITE_DEV_STUDENT_ID` and `VITE_DEV_TOKEN` are no longer used by the frontend and can be removed.
+
+## P) ~~Profile Update Endpoints~~ ✅ DONE
+- `PATCH /me` — updates name and/or avatarUrl for the current user (student or instructor). Determines role from JWT, updates the appropriate table.
+- `POST /me/avatar-upload-url` — returns a pre-signed S3 PUT URL for avatar upload and the public URL. Avatars stored at `avatars/{userId}/{filename}` in the upload staging bucket.
+- Both routes added to API Gateway with JWT authorization and deployed to the `prod` stage.
 
 ---
 
@@ -141,17 +147,6 @@ Multi-step upload pipeline with teacher review:
 
 ---
 
-## "Ready for frontend integration" checklist ✅ DONE
-- [x] JWT auth works end-to-end (API Gateway authorizer + Lambda fallback)
-- [x] CORS includes Authorization, PATCH method, x-dev-instructor-id header
-- [x] All routes return correct shapes with correct ordering
-- [x] 404 semantics are consistent
-- [x] All frontend pages (student + teacher) call real API — no mock data
-- [x] Signup collects first/last name; names display correctly on dashboards
-- [ ] Seeded content is complete for demo course(s) — only needed if demo accounts need pre-populated courses
-
----
-
-## Comprehensive Test Results (2026-03-16)
-94/98 tests passed (95.9%) across API + UI testing. See `TEST_RESULTS.md` and `TEST_PLAN.md` in repo root.
+## Comprehensive Test Results (2026-03-18, feature/cognito branch)
+See `TEST_RESULTS_COGNITO.md` in repo root for full results.
 Automated API test script: `run_tests.sh` (47 endpoint tests with Cognito JWT auth).

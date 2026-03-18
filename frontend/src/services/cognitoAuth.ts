@@ -67,6 +67,10 @@ export interface SignInResult {
   newPasswordRequired: boolean;
 }
 
+// Holds the CognitoUser during a newPasswordRequired challenge so
+// completeNewPassword() can finish the flow.
+let _pendingUser: CognitoUser | null = null;
+
 /** Sign in with email + password. Returns session + derived role. */
 export function signIn(email: string, password: string): Promise<SignInResult> {
   return new Promise((resolve, reject) => {
@@ -79,18 +83,40 @@ export function signIn(email: string, password: string): Promise<SignInResult> {
 
     cognitoUser.authenticateUser(authDetails, {
       onSuccess(session) {
+        _pendingUser = null;
         resolve({ session, role: roleFromSession(session), newPasswordRequired: false });
       },
       onFailure(err) {
+        _pendingUser = null;
         reject(err);
       },
       newPasswordRequired(_userAttributes, _requiredAttributes) {
-        // Surface this so the UI can prompt for a new password.
+        _pendingUser = cognitoUser;
         resolve({
           session: null as unknown as CognitoUserSession,
           role: "student",
           newPasswordRequired: true,
         });
+      },
+    });
+  });
+}
+
+/** Complete the new-password challenge after signIn returned newPasswordRequired. */
+export function completeNewPassword(newPassword: string): Promise<SignInResult> {
+  return new Promise((resolve, reject) => {
+    if (!_pendingUser) {
+      reject(new Error("No pending new-password challenge"));
+      return;
+    }
+    const user = _pendingUser;
+    user.completeNewPasswordChallenge(newPassword, {}, {
+      onSuccess(session) {
+        _pendingUser = null;
+        resolve({ session, role: roleFromSession(session), newPasswordRequired: false });
+      },
+      onFailure(err) {
+        reject(err);
       },
     });
   });
