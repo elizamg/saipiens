@@ -422,6 +422,12 @@ export default function CourseEditorPage() {
     );
   }
 
+  const ungeneratedKnowledgeItems = ungeneratedItems.filter((i) => i.type !== "skill");
+  const ungeneratedKnowledgeSelectedCount = ungeneratedKnowledgeItems.filter((item) => {
+    const globalIdx = ungeneratedItems.indexOf(item);
+    return selectedUngeneratedIndices.has(globalIdx);
+  }).length;
+
   const enabledCount = isReviewMode
     ? selectedReviewIndices.size
     : enabledIds.size + enabledTopicIds.size;
@@ -640,11 +646,12 @@ export default function CourseEditorPage() {
                   .map((item, i) => ({ ...item, _uIdx: i }))
                   .filter((item) => (kind === "skill" ? item.type === "skill" : item.type !== "skill" && item.type !== "knowledge"));
                 if (items.length === 0 && ungeneratedForKind.length === 0) return null;
-                const enabledInSection = items.filter((o) => enabledIds.has(o.id)).length;
+                const enabledInSection = items.filter((o) => enabledIds.has(o.id)).length + ungeneratedForKind.filter((item) => selectedUngeneratedIndices.has(item._uIdx)).length;
+                const totalInSection = items.length + ungeneratedForKind.length;
                 return (
                   <section key={kind} style={sectionStyles}>
                     <h2 style={sectionHeadingStyles}>
-                      {SECTION_LABELS[kind]} ({enabledInSection}/{items.length})
+                      {SECTION_LABELS[kind]} ({enabledInSection}/{totalInSection})
                     </h2>
                     {items.map((obj) =>
                       renderObjectiveRow(
@@ -668,7 +675,7 @@ export default function CourseEditorPage() {
               {(knowledgeTopics.length > 0 || ungeneratedItems.some((i) => i.type !== "skill")) && (
                 <section style={sectionStyles}>
                   <h2 style={sectionHeadingStyles}>
-                    Knowledge ({enabledTopicIds.size}/{knowledgeTopics.length})
+                    Knowledge ({enabledTopicIds.size + ungeneratedKnowledgeSelectedCount}/{knowledgeTopics.length + ungeneratedKnowledgeItems.length})
                   </h2>
                   {[...knowledgeTopics]
                     .sort((a, b) => {
