@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { PRIMARY, WHITE } from "../../theme/colors";
 import TintedImage from "./TintedImage";
 
@@ -29,6 +29,7 @@ export default function Avatar({
   imageScale = 1,
   style,
 }: AvatarProps) {
+  const [imgError, setImgError] = useState(false);
   const clampedScale = Math.min(Math.max(imageScale, 0.1), 1);
   const containerStyles: React.CSSProperties = {
     width: size,
@@ -46,7 +47,7 @@ export default function Avatar({
     ...style,
   };
 
-  if (src) {
+  if (src && !imgError) {
     if (tintColor) {
       return (
         <div style={containerStyles}>
@@ -70,10 +71,11 @@ export default function Avatar({
         <img
           src={src}
           alt={name}
+          onError={() => setImgError(true)}
           style={{
             width: `${clampedScale * 100}%`,
             height: `${clampedScale * 100}%`,
-            objectFit: "contain",
+            objectFit: "cover",
           }}
         />
       </div>

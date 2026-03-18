@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
+import BackButton from "../components/ui/BackButton";
 import IconChooser from "../components/course/IconChooser";
 import StudentRosterEditor from "../components/course/StudentRosterEditor";
 import { GRAY_500, GRAY_900 } from "../theme/colors";
@@ -86,14 +87,7 @@ export default function CourseCreationPage() {
       sidebarCourses={sidebarCourses}
       routePrefix="/teacher"
     >
-      <div
-        style={backLinkStyles}
-        onClick={() => navigate("/teacher")}
-        role="link"
-        tabIndex={0}
-      >
-        &larr; Back
-      </div>
+      <BackButton onClick={() => navigate("/teacher")} style={{ marginBottom: 16 }} />
 
       <h1 style={titleStyles}>Create New Course</h1>
 

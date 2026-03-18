@@ -8,6 +8,7 @@ import {
   getMyUnitGradingReport,
 } from "../services/api";
 import type { Student, Course, Unit } from "../types/domain";
+import BackButton from "../components/ui/BackButton";
 import { GRAY_600, GRAY_900, GRAY_200, WHITE, SUCCESS_GREEN } from "../theme/colors";
 
 export default function FeedbackCoursePage() {
@@ -50,12 +51,7 @@ export default function FeedbackCoursePage() {
   return (
     <AppShell student={student} activePath="/feedback">
       <div>
-        <button
-          onClick={() => navigate("/feedback")}
-          style={{ background: "none", border: "none", cursor: "pointer", color: GRAY_600, fontSize: 14, padding: "0 0 16px 0", display: "flex", alignItems: "center", gap: 4 }}
-        >
-          ← Back
-        </button>
+        <BackButton onClick={() => navigate("/feedback")} style={{ marginBottom: 16 }} />
         <h1 style={{ margin: "0 0 8px 0", fontSize: 24, fontWeight: 600, color: GRAY_900 }}>
           {course?.title ?? "Course"}
         </h1>
