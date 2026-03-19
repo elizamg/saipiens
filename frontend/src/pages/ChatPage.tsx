@@ -1148,18 +1148,21 @@ export default function ChatPage() {
               <div style={pillContainerStyles}>
                 <button
                   type="button"
-                  style={{ ...pillButtonStyles, fontStyle: "italic" }}
-                  onClick={() => {
-                    setPendingClarify(true);
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 6,
+                    border: `1.5px solid ${PRIMARY}`,
+                    backgroundColor: pendingClarify ? PRIMARY : "transparent",
+                    color: pendingClarify ? WHITE : PRIMARY,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    fontFamily: "inherit",
+                    transition: "background-color 0.15s ease, color 0.15s ease",
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(139, 122, 158, 0.1)";
-                    e.currentTarget.style.borderColor = PRIMARY;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "#f9fafb";
-                    e.currentTarget.style.borderColor = GRAY_300;
-                  }}
+                  onClick={() => setPendingClarify((prev) => !prev)}
                 >
                   Ask a question
                 </button>
@@ -1186,7 +1189,7 @@ export default function ChatPage() {
             <ChatComposer
               onSend={handleSendKnowledgeMessage}
               disabled={knowledgeComposerDisabled}
-              placeholder={knowledgeItemIsGraded ? "Graded" : (!knowledgeItemIsActive ? "Completed" : pendingClarify ? "Type your question..." : undefined)}
+              placeholder={knowledgeItemIsGraded ? "Graded" : (!knowledgeItemIsActive ? "Completed" : pendingClarify ? "Type your clarifying question..." : "Type your answer...")}
               externalValue={pillText}
               onExternalValueConsumed={() => setPillText("")}
             />
@@ -1218,16 +1221,21 @@ export default function ChatPage() {
                 {showChallengePills && (
                   <button
                     type="button"
-                    style={{ ...pillButtonStyles, fontStyle: "italic" }}
-                    onClick={() => setPendingClarify(true)}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "rgba(139, 122, 158, 0.1)";
-                      e.currentTarget.style.borderColor = PRIMARY;
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 6,
+                      border: `1.5px solid ${PRIMARY}`,
+                      backgroundColor: pendingClarify ? PRIMARY : "transparent",
+                      color: pendingClarify ? WHITE : PRIMARY,
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                      fontFamily: "inherit",
+                      transition: "background-color 0.15s ease, color 0.15s ease",
                     }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "#f9fafb";
-                      e.currentTarget.style.borderColor = GRAY_300;
-                    }}
+                    onClick={() => setPendingClarify((prev) => !prev)}
                   >
                     Ask a question
                   </button>
@@ -1257,8 +1265,8 @@ export default function ChatPage() {
               disabled={!selectedThreadId || !selectedStageId || currentStageCompleted || isSending}
               placeholder={
                 currentStageCompleted ? "Stage completed"
-                : (pendingClarify || showNewAttemptButton) ? "Type your question..."
-                : undefined
+                : (pendingClarify || showNewAttemptButton) ? "Type your clarifying question..."
+                : "Type your answer..."
               }
               externalValue={pillText}
               onExternalValueConsumed={() => setPillText("")}
