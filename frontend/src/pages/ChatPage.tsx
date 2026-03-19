@@ -1014,7 +1014,6 @@ export default function ChatPage() {
         onSelectThread={handleSelectThread}
         onSelectKnowledgeItem={handleSelectKnowledgeItem}
         onBack={() => (courseId ? navigate(`/course/${courseId}`) : navigate(-1))}
-        unitProgress={unitProgress || undefined}
         knowledgeProgress={knowledgeProgress || undefined}
       />
       <main style={{ ...mainStyles, position: "relative" as const }}>
