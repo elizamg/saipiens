@@ -4,7 +4,8 @@ import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
 import BackButton from "../components/ui/BackButton";
 import StudentRosterEditor from "../components/course/StudentRosterEditor";
-import { GRAY_500, GRAY_900 } from "../theme/colors";
+import Skeleton from "../components/ui/Skeleton";
+import { GRAY_200, GRAY_900 } from "../theme/colors";
 import type { Student } from "../types/domain";
 import {
   listTeacherStudents,
@@ -86,7 +87,17 @@ export default function EditRosterPage() {
         sidebarCourses={[]}
         routePrefix="/teacher"
       >
-        <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Loading roster…</div>
+        <div>
+          <Skeleton width={200} height={24} borderRadius={6} style={{ marginBottom: 24 }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 10, border: `1px solid ${GRAY_200}` }}>
+                <Skeleton width={28} height={28} borderRadius="50%" style={{ flexShrink: 0 }} />
+                <Skeleton width={`${50 + i * 8}%`} height={14} borderRadius={6} />
+              </div>
+            ))}
+          </div>
+        </div>
       </AppShell>
     );
   }

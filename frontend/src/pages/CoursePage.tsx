@@ -5,6 +5,7 @@ import ActiveUnits from "../components/course/ActiveUnits";
 import AwardsGrid from "../components/dashboard/AwardsGrid";
 import TeacherFeedbackPanel from "../components/dashboard/TeacherFeedbackPanel";
 import Avatar from "../components/ui/Avatar";
+import Skeleton from "../components/ui/Skeleton";
 import {
   getCurrentStudent,
   getCourse,
@@ -15,9 +16,40 @@ import {
   getUnitProgress,
   getKnowledgeProgress,
 } from "../services/api";
-import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
+import { GRAY_900, GRAY_500, WHITE, PRIMARY } from "../theme/colors";
 import { CourseIcon } from "../theme/courseIcons";
 import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress } from "../types/domain";
+
+function CoursePageSkeleton() {
+  return (
+    <>
+      {/* Course header skeleton */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+          <Skeleton width={48} height={48} borderRadius={8} style={{ flexShrink: 0 }} />
+          <Skeleton width={280} height={32} borderRadius={8} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Skeleton width={32} height={32} borderRadius="50%" style={{ flexShrink: 0 }} />
+          <Skeleton width={140} height={14} borderRadius={6} />
+        </div>
+      </div>
+      {/* Unit row skeletons */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ backgroundColor: WHITE, borderRadius: 16, padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 16 }}>
+            <Skeleton width={40} height={40} borderRadius={8} style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+              <Skeleton width="50%" height={16} borderRadius={6} />
+              <Skeleton width="80%" height={8} borderRadius={4} />
+            </div>
+            <Skeleton width={100} height={36} borderRadius={8} style={{ flexShrink: 0 }} />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
 
 export default function CoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -126,11 +158,11 @@ export default function CoursePage() {
   return (
     <AppShell student={student} activePath="/courses">
       {loading ? (
-        <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Loading…</div>
+        <CoursePageSkeleton />
       ) : !course ? (
         <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Course not found.</div>
       ) : student ? (
-        <>
+        <div style={{ animation: "fadeIn 0.3s ease both" }}>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
               <CourseIcon icon={course.icon ?? "general"} size={48} color={PRIMARY} />
@@ -165,7 +197,7 @@ export default function CoursePage() {
             unitMap={Object.fromEntries(units.map((u) => [u.id, u]))}
             instructorsMap={Object.fromEntries(instructors.map((i) => [i.id, i]))}
           />
-        </>
+        </div>
       ) : null}
     </AppShell>
   );

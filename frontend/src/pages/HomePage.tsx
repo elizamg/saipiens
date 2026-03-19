@@ -5,6 +5,9 @@ import WelcomeBanner from "../components/dashboard/WelcomeBanner";
 import EnrolledCourses from "../components/dashboard/EnrolledCourses";
 import AwardsGrid from "../components/dashboard/AwardsGrid";
 import TeacherFeedbackPanel from "../components/dashboard/TeacherFeedbackPanel";
+import SkeletonBanner from "../components/ui/SkeletonBanner";
+import SkeletonCourseCard from "../components/ui/SkeletonCourseCard";
+import Skeleton from "../components/ui/Skeleton";
 import {
   getCurrentStudent,
   listCoursesForStudent,
@@ -14,6 +17,21 @@ import {
   listUnits,
 } from "../services/api";
 import type { Student, Course, Instructor, Award, FeedbackItem, Unit } from "../types/domain";
+function HomePageSkeleton() {
+  return (
+    <>
+      <SkeletonBanner />
+      <section style={{ marginBottom: 32 }}>
+        <Skeleton width={140} height={20} borderRadius={6} style={{ marginBottom: 16 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
+          <SkeletonCourseCard />
+          <SkeletonCourseCard />
+          <SkeletonCourseCard />
+        </div>
+      </section>
+    </>
+  );
+}
 
 export default function HomePage() {
   const location = useLocation();
@@ -84,8 +102,10 @@ export default function HomePage() {
 
   return (
     <AppShell student={student} activePath={activePath} role="student">
-      {!loading && student ? (
-        <>
+      {loading ? (
+        <HomePageSkeleton />
+      ) : student ? (
+        <div style={{ animation: "fadeIn 0.3s ease both" }}>
           <WelcomeBanner name={student.name} role="student" subtitle={student.yearLabel} />
           <EnrolledCourses courses={courses} instructorsMap={instructorsMap} />
           <AwardsGrid
@@ -98,7 +118,7 @@ export default function HomePage() {
             unitMap={unitMap}
             instructorsMap={instructorsMap}
           />
-        </>
+        </div>
       ) : null}
     </AppShell>
   );

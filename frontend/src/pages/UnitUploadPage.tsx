@@ -5,6 +5,7 @@ import BackButton from "../components/ui/BackButton";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
+import Skeleton from "../components/ui/Skeleton";
 import {
   getCourse,
   getCurrentInstructor,
@@ -374,7 +375,12 @@ export default function UnitUploadPage() {
   if (loading) {
     return (
       <AppShell {...shellProps}>
-        <p style={{ fontSize: 14, color: GRAY_500 }}>Loading…</p>
+        <>
+          <Skeleton width={180} height={24} borderRadius={6} style={{ marginBottom: 16 }} />
+          <Skeleton width="70%" height={14} borderRadius={6} style={{ marginBottom: 32 }} />
+          <Skeleton width="100%" height={120} borderRadius={12} style={{ marginBottom: 16 }} />
+          <Skeleton width={120} height={40} borderRadius={8} />
+        </>
       </AppShell>
     );
   }

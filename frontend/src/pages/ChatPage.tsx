@@ -24,7 +24,51 @@ import {
   clarifyKnowledgeQuestion,
 } from "../services/api";
 import { isStageCompleted, stageLabel, stageTypeToProgressState } from "../utils/progress";
-import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, SUCCESS_GREEN } from "../theme/colors";
+import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, GRAY_200, SUCCESS_GREEN } from "../theme/colors";
+import Skeleton from "../components/ui/Skeleton";
+
+function ChatPageSkeleton() {
+  return (
+    <div style={{ display: "flex", height: "100vh", backgroundColor: WHITE }}>
+      {/* Sidebar */}
+      <div style={{ width: 260, flexShrink: 0, borderRight: `1px solid ${GRAY_200}`, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+        <Skeleton width="70%" height={14} borderRadius={6} style={{ marginBottom: 8 }} />
+        {[80, 65, 72, 55, 68].map((w, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8 }}>
+            <Skeleton width={28} height={28} borderRadius="50%" style={{ flexShrink: 0 }} />
+            <Skeleton width={`${w}%`} height={14} borderRadius={6} />
+          </div>
+        ))}
+      </div>
+      {/* Main panel */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Header */}
+        <div style={{ padding: "16px 24px", borderBottom: `1px solid ${GRAY_200}` }}>
+          <Skeleton width={160} height={13} borderRadius={6} style={{ marginBottom: 8 }} />
+          <Skeleton width={240} height={20} borderRadius={6} />
+        </div>
+        {/* Messages */}
+        <div style={{ flex: 1, padding: "24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Skeleton width={32} height={32} borderRadius="50%" style={{ flexShrink: 0 }} />
+            <Skeleton width="55%" height={64} borderRadius={12} />
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Skeleton width="40%" height={44} borderRadius={12} />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Skeleton width={32} height={32} borderRadius="50%" style={{ flexShrink: 0 }} />
+            <Skeleton width="65%" height={80} borderRadius={12} />
+          </div>
+        </div>
+        {/* Composer */}
+        <div style={{ padding: "16px 24px", borderTop: `1px solid ${GRAY_200}` }}>
+          <Skeleton width="100%" height={44} borderRadius={8} />
+        </div>
+      </div>
+    </div>
+  );
+}
 import type {
   Student,
   Course,
@@ -872,13 +916,7 @@ export default function ChatPage() {
   };
 
   if (loading) {
-    return (
-      <div style={containerStyles}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          Loading...
-        </div>
-      </div>
-    );
+    return <ChatPageSkeleton />;
   }
 
   const isKnowledgeMode = selectedKnowledgeItem != null;

@@ -15,6 +15,7 @@ import {
   getAgent,
 } from "../services/api";
 import type { Course, Instructor, Student, Unit, GradingReport, FeedbackItem, Agent } from "../types/domain";
+import Skeleton from "../components/ui/Skeleton";
 import { GRAY_400, GRAY_600, GRAY_900, GRAY_200, GRAY_100, WHITE, SUCCESS_GREEN, PRIMARY } from "../theme/colors";
 
 export default function TeacherFeedbackUnitPage() {
@@ -118,7 +119,26 @@ export default function TeacherFeedbackUnitPage() {
         </h1>
 
         {loading ? (
-          <p style={{ fontSize: 14, color: GRAY_600 }}>Loading…</p>
+          <>
+            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+              {[0, 1].map((i) => (
+                <div key={i} style={{ flex: 1, background: WHITE, border: `1px solid ${GRAY_200}`, borderRadius: 12, padding: "16px 20px" }}>
+                  <Skeleton width="60%" height={12} borderRadius={4} style={{ marginBottom: 8 }} />
+                  <Skeleton width="40%" height={22} borderRadius={6} style={{ marginBottom: 8 }} />
+                  <Skeleton width="100%" height={6} borderRadius={3} />
+                </div>
+              ))}
+            </div>
+            <div style={{ background: WHITE, border: `1px solid ${GRAY_200}`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <Skeleton width={36} height={36} borderRadius="50%" style={{ flexShrink: 0 }} />
+                <Skeleton width={60} height={15} borderRadius={6} />
+              </div>
+              <Skeleton width="100%" height={14} borderRadius={6} style={{ marginBottom: 6 }} />
+              <Skeleton width="85%" height={14} borderRadius={6} style={{ marginBottom: 6 }} />
+              <Skeleton width="70%" height={14} borderRadius={6} />
+            </div>
+          </>
         ) : (
           <>
             {/* Structured Stats */}
