@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Avatar from "../components/ui/Avatar";
 import SectionIcon from "../components/ui/SectionIcon";
 import { useNavigate, useParams } from "react-router-dom";
@@ -24,6 +24,34 @@ export default function FeedbackUnitPage() {
   const [teacherMessages, setTeacherMessages] = useState<FeedbackItem[]>([]);
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reportGenerating, setReportGenerating] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const pollForReport = useCallback(() => {
+    if (!unitId || pollRef.current) return;
+    setReportGenerating(true);
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await getMyUnitGradingReport(unitId);
+        if (r && (r as any).status !== "generating") {
+          setReport(r);
+          setReportGenerating(false);
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        }
+      } catch {
+        // Keep polling
+      }
+    }, 3000);
+  }, [unitId]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!unitId) return;
@@ -38,9 +66,15 @@ export default function FeedbackUnitPage() {
         ]);
         setStudent(s);
         setUnit(u);
-        setReport(r);
         setTeacherMessages(fb);
         setAgent(ag);
+        // Handle "generating" status from async report generation
+        if (r && (r as any).status === "generating") {
+          setReport(null);
+          pollForReport();
+        } else {
+          setReport(r);
+        }
       } catch (e) {
         console.error(e);
       } finally {
@@ -48,7 +82,7 @@ export default function FeedbackUnitPage() {
       }
     }
     load();
-  }, [unitId]);
+  }, [unitId, pollForReport]);
 
   const cardStyles: React.CSSProperties = {
     background: WHITE,
@@ -108,6 +142,18 @@ export default function FeedbackUnitPage() {
                 <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
                   <StatCard label="Skills Completed" value={`${report.skillCompleted ?? 0}/${report.skillTotal ?? 0}`} pct={skillPct} />
                   <StatCard label="Knowledge Correct" value={`${report.knowledgeCorrect ?? 0}/${report.knowledgeTotal ?? 0}`} pct={knowledgePct} />
+                </div>
+                {/* Additional metrics row */}
+                <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                  {deadline && report.onTimePct != null && (
+                    <StatCard label="Completed On Time" value={`${report.onTimePct}%`} pct={report.onTimePct} />
+                  )}
+                  {report.completionDate && (
+                    <InfoCard label="Completion Date" value={new Date(report.completionDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} />
+                  )}
+                  {!report.completionDate && skillPct < 100 && (
+                    <InfoCard label="Completion Date" value="In progress" muted />
+                  )}
                 </div>
                 {deadline && (
                   <div style={{
@@ -197,7 +243,9 @@ export default function FeedbackUnitPage() {
                 </div>
               ) : (
                 <div style={{ background: GRAY_100, borderRadius: 8, padding: "12px 16px" }}>
-                  <p style={{ margin: 0, fontSize: 14, color: GRAY_400 }}>Waiting for Sam's feedback…</p>
+                  <p style={{ margin: 0, fontSize: 14, color: GRAY_400 }}>
+                    {reportGenerating ? "Sam is preparing your feedback..." : "Waiting for Sam's feedback\u2026"}
+                  </p>
                 </div>
               )}
             </div>
@@ -262,6 +310,25 @@ function StatCard({ label, value, pct }: { label: string; value: string; pct: nu
       <div style={{ height: 6, background: GRAY_100, borderRadius: 3, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: PRIMARY, borderRadius: 3, transition: "width 0.3s" }} />
       </div>
+    </div>
+  );
+}
+
+function InfoCard({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div style={{
+      flex: 1,
+      background: WHITE,
+      border: `1px solid ${GRAY_200}`,
+      borderRadius: 12,
+      padding: "16px 20px",
+    }}>
+      <p style={{ margin: "0 0 4px 0", fontSize: 12, color: GRAY_400, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+        {label}
+      </p>
+      <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: muted ? GRAY_400 : GRAY_900 }}>
+        {value}
+      </p>
     </div>
   );
 }
