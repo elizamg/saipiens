@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
 import AppShell from "../components/layout/AppShell";
+import WelcomeBanner from "../components/dashboard/WelcomeBanner";
 import TeacherCourseCard from "../components/dashboard/TeacherCourseCard";
 import NewCourseCard from "../components/dashboard/NewCourseCard";
 import {
-  GREEN_GRADIENT_VERTICAL,
-  WHITE,
   GRAY_900,
   GRAY_500,
 } from "../theme/colors";
@@ -26,28 +25,6 @@ export default function InstructorHomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const bannerStyles: React.CSSProperties = {
-    background: GREEN_GRADIENT_VERTICAL,
-    borderRadius: 16,
-    padding: "32px 40px",
-    marginBottom: 32,
-  };
-
-  const greetingStyles: React.CSSProperties = {
-    margin: 0,
-    fontSize: 32,
-    fontWeight: 700,
-    color: WHITE,
-    marginBottom: 8,
-    textShadow: "0 1px 2px rgba(0,0,0,0.1)",
-  };
-
-  const subtitleStyles: React.CSSProperties = {
-    margin: 0,
-    fontSize: 16,
-    color: "rgba(255, 255, 255, 0.9)",
-  };
-
   const headingStyles: React.CSSProperties = {
     margin: 0,
     fontSize: 20,
@@ -62,22 +39,21 @@ export default function InstructorHomePage() {
     gap: 20,
   };
 
-  const firstName = instructor?.name?.split(" ")[0] ?? "there";
-
   return (
     <AppShell
       student={instructor ? { ...instructor, yearLabel: "" } : { id: "", name: "", yearLabel: "" }}
       activePath="/teacher"
       sidebarCourses={loading ? [] : courses}
       routePrefix="/teacher"
+      role="teacher"
     >
-      <div style={bannerStyles}>
-        <h1 style={greetingStyles}>Welcome back, {firstName}!</h1>
-        <p style={subtitleStyles}>
-          {loading ? "Loading…" : `${courses.length} course${courses.length !== 1 ? "s" : ""} • Ready to inspire!`}
-        </p>
-      </div>
-
+      {!loading && instructor && (
+        <WelcomeBanner
+          name={instructor.name}
+          role="teacher"
+          subtitle={`${courses.length} course${courses.length !== 1 ? "s" : ""}`}
+        />
+      )}
       <section style={{ marginBottom: 32 }}>
         <h2 style={headingStyles}>Your Courses</h2>
         {loading ? (

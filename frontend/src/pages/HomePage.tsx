@@ -83,10 +83,10 @@ export default function HomePage() {
   }, []);
 
   return (
-    <AppShell student={student} activePath={activePath}>
+    <AppShell student={student} activePath={activePath} role="student">
       {!loading && student ? (
         <>
-          <WelcomeBanner student={student} />
+          <WelcomeBanner name={student.name} role="student" subtitle={student.yearLabel} />
           <EnrolledCourses courses={courses} instructorsMap={instructorsMap} />
           <AwardsGrid
             awards={awards}

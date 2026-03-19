@@ -5,6 +5,7 @@ import type { Student } from "../../types/domain";
 
 interface TopBarProps {
   student: Student | null;
+  role?: "student" | "teacher";
 }
 
 export default function TopBar({ student }: TopBarProps) {

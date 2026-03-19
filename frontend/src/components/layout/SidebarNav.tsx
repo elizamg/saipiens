@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { PRIMARY, WHITE } from "../../theme/colors";
+import { PRIMARY_GRADIENT, WHITE } from "../../theme/colors";
 import whiteTreeLogo from "../../assets/white-tree.png";
 import TintedImage from "../ui/TintedImage";
 import { getCurrentStudent, listCoursesForStudent } from "../../services/api";
@@ -88,7 +88,7 @@ export default function SidebarNav({ activePath, sidebarCourses, routePrefix = "
 
   const sidebarStyles: React.CSSProperties = {
     width: 240,
-    background: PRIMARY,
+    background: PRIMARY_GRADIENT,
     padding: "24px 16px",
     display: "flex",
     flexDirection: "column",

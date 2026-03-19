@@ -201,7 +201,7 @@ export default function SettingsPage() {
         {/* Sign Out */}
         <Card>
           <h2 style={cardHeadingStyle}>Sign Out</h2>
-          <Button variant="secondary" onClick={handleSignOut}>
+          <Button onClick={handleSignOut}>
             Sign Out
           </Button>
         </Card>
