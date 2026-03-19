@@ -3,12 +3,30 @@ import AppShell from "../components/layout/AppShell";
 import WelcomeBanner from "../components/dashboard/WelcomeBanner";
 import TeacherCourseCard from "../components/dashboard/TeacherCourseCard";
 import NewCourseCard from "../components/dashboard/NewCourseCard";
+import SkeletonBanner from "../components/ui/SkeletonBanner";
+import SkeletonCourseCard from "../components/ui/SkeletonCourseCard";
+import Skeleton from "../components/ui/Skeleton";
 import {
   GRAY_900,
-  GRAY_500,
 } from "../theme/colors";
 import { getCurrentInstructor, listTeacherCourses } from "../services/api";
 import type { Course, Instructor } from "../types/domain";
+
+function InstructorHomePageSkeleton() {
+  return (
+    <>
+      <SkeletonBanner />
+      <section style={{ marginBottom: 32 }}>
+        <Skeleton width={140} height={20} borderRadius={6} style={{ marginBottom: 16 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
+          <SkeletonCourseCard />
+          <SkeletonCourseCard />
+          <SkeletonCourseCard />
+        </div>
+      </section>
+    </>
+  );
+}
 
 export default function InstructorHomePage() {
   const [instructor, setInstructor] = useState<Instructor | null>(null);
@@ -47,32 +65,34 @@ export default function InstructorHomePage() {
       routePrefix="/teacher"
       role="teacher"
     >
-      {!loading && instructor && (
-        <WelcomeBanner
-          name={instructor.name}
-          role="teacher"
-          subtitle={`${courses.length} course${courses.length !== 1 ? "s" : ""}`}
-        />
+      {loading ? (
+        <InstructorHomePageSkeleton />
+      ) : (
+        <div style={{ animation: "fadeIn 0.3s ease both" }}>
+          {instructor && (
+            <WelcomeBanner
+              name={instructor.name}
+              role="teacher"
+              subtitle={`${courses.length} course${courses.length !== 1 ? "s" : ""}`}
+            />
+          )}
+          <section style={{ marginBottom: 32 }}>
+            <h2 style={headingStyles}>Your Courses</h2>
+            <div style={gridStyles}>
+              {courses.map((course) => (
+                <TeacherCourseCard
+                  key={course.id}
+                  id={course.id}
+                  title={course.title}
+                  studentCount={course.studentCount ?? 0}
+                  icon={course.icon ?? ""}
+                />
+              ))}
+              <NewCourseCard />
+            </div>
+          </section>
+        </div>
       )}
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={headingStyles}>Your Courses</h2>
-        {loading ? (
-          <p style={{ fontSize: 14, color: GRAY_500 }}>Loading courses…</p>
-        ) : (
-          <div style={gridStyles}>
-            {courses.map((course) => (
-              <TeacherCourseCard
-                key={course.id}
-                id={course.id}
-                title={course.title}
-                studentCount={course.studentCount ?? 0}
-                icon={course.icon ?? ""}
-              />
-            ))}
-            <NewCourseCard />
-          </div>
-        )}
-      </section>
     </AppShell>
   );
 }

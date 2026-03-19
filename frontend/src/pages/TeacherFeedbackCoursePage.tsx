@@ -11,6 +11,7 @@ import {
   listTeacherStudents,
 } from "../services/api";
 import type { Course, Instructor, Student } from "../types/domain";
+import Skeleton from "../components/ui/Skeleton";
 import { GRAY_400, GRAY_600, GRAY_900, GRAY_200, WHITE } from "../theme/colors";
 
 export default function TeacherFeedbackCoursePage() {
@@ -63,7 +64,14 @@ export default function TeacherFeedbackCoursePage() {
           Select a student to view their feedback.
         </p>
         {loading ? (
-          <p style={{ fontSize: 14, color: GRAY_600 }}>Loading students…</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {[50, 65, 55].map((w, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", background: WHITE, border: `1px solid ${GRAY_200}`, borderRadius: 12 }}>
+                <Skeleton width={28} height={28} borderRadius="50%" style={{ flexShrink: 0 }} />
+                <Skeleton width={`${w}%`} height={15} borderRadius={6} />
+              </div>
+            ))}
+          </div>
         ) : students.length === 0 ? (
           <p style={{ fontSize: 14, color: GRAY_400 }}>No students enrolled.</p>
         ) : (

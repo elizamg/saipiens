@@ -4,6 +4,7 @@ import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
 import BackButton from "../components/ui/BackButton";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
+import Skeleton from "../components/ui/Skeleton";
 import type { ObjectiveKind, Course, Unit, Objective, Student, KnowledgeTopic } from "../types/domain";
 import {
   getCourse,
@@ -421,7 +422,17 @@ export default function CourseEditorPage() {
   if (loading) {
     return (
       <AppShell {...shellProps}>
-        <p style={{ fontSize: 14, color: GRAY_500 }}>Loading…</p>
+        <>
+          <Skeleton width={200} height={28} borderRadius={8} style={{ marginBottom: 24 }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 10, border: `1px solid ${GRAY_300}` }}>
+                <Skeleton width={20} height={20} borderRadius={4} style={{ flexShrink: 0 }} />
+                <Skeleton width={`${55 + i * 7}%`} height={14} borderRadius={6} />
+              </div>
+            ))}
+          </div>
+        </>
       </AppShell>
     );
   }
