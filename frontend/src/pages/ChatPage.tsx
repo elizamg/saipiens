@@ -18,7 +18,6 @@ import {
   getAgent,
   getKnowledgeQueue,
   getKnowledgeProgress,
-  completeKnowledgeAttempt,
   respondToKnowledgeAnswer,
   listKnowledgeMessages,
   sendKnowledgeMessage,
@@ -561,7 +560,7 @@ export default function ChatPage() {
 
       setGradingInProgress(true);
       try {
-        const { outcome, tutorFeedback, updatedItem } = await respondToKnowledgeAnswer(
+        const { outcome, tutorFeedback } = await respondToKnowledgeAnswer(
           itemId,
           content,
           attemptNumber
