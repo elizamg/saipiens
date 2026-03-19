@@ -159,7 +159,7 @@ Wired, designed, and created different parts of the student-facing AI experience
 | Knowledge questions | AI grades answers, generates retry questions on incorrect, manages the queue |
 | Multi-attempt knowledge chat | Students get 2 answer attempts with clarifying questions before final grading |
 | Clarifying questions | AI generates "Ask a question" pills — now generated eagerly with zero extra latency |
-| Capstone section | Created capstone section for students to learn by explaining it back based on existing code (frontend, infra, backend) |
+| Capstone section | Created capstone section (frontend, infra, backend) for students to learn by explaining it back based on existing sections |
 
 Commits: `bc7ada4`, `08955b7`, `eac5368`, `dc4e687`, `fd15ddf`, `b0a4d25`
 
