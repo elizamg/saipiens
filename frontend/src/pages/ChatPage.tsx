@@ -1016,7 +1016,7 @@ export default function ChatPage() {
         {isKnowledgeMode ? (
           // ── Knowledge item chat area ──
           <div style={chatAreaStyles}>
-            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} isSending={gradingInProgress || isSending} />
+            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} isSending={!knowledgeItemIsGraded && (gradingInProgress || isSending)} />
             {/* Graded status bar */}
             {knowledgeItemIsGraded && (
               <div style={ctaBarStyles}>

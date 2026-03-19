@@ -220,6 +220,7 @@ export interface KnowledgeTopic {
   unitId: string;
   knowledgeTopic: string; // e.g. "Magnetic Fields Around Wires"
   order: number;
+  enabled?: boolean;
 }
 
 /** Student-facing knowledge queue item status */
