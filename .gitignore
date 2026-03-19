@@ -55,9 +55,12 @@ __pycache__/
 backend/lambdalith/*.dist-info/
 backend/lambdalith/*.so
 backend/lambdalith/bin/
+backend/lambdalith/bin 2/
 backend/lambdalith/share/
+backend/lambdalith/share 2/
 backend/lambdalith/pillow.libs/
 backend/lambdalith/PIL/
+backend/lambdalith/PIL 2/
 backend/lambdalith/annotated_types/
 backend/lambdalith/anyio/
 backend/lambdalith/certifi/
@@ -68,6 +71,7 @@ backend/lambdalith/defusedxml/
 backend/lambdalith/distro/
 backend/lambdalith/fontTools/
 backend/lambdalith/fpdf/
+backend/lambdalith/fpdf 2/
 backend/lambdalith/google/
 backend/lambdalith/h11/
 backend/lambdalith/httpcore/
