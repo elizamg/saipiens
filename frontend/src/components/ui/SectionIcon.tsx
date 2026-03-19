@@ -14,7 +14,11 @@ type IconName =
   | "flame"       // streak
   | "bookOpen"    // walkthrough
   | "target"      // challenge
-  | "star";       // general
+  | "star"        // general
+  | "muscle"      // almost there
+  | "refresh"     // retry / small mistake
+  | "clipboard"   // incorrect
+  | "party";      // celebration
 
 interface SectionIconProps {
   name: IconName;
@@ -125,15 +129,52 @@ export default function SectionIcon({ name, size = 22, color = "#7B68A6" }: Sect
     case "target":
       return (
         <svg {...props}>
-          <circle cx="12" cy="12" r="10" opacity={0.3} />
-          <circle cx="12" cy="12" r="6" opacity={0.6} />
-          <circle cx="12" cy="12" r="2" />
+          <circle cx="12" cy="12" r="10" fill="#ef4444" opacity={0.3} />
+          <circle cx="12" cy="12" r="6" fill="#ef4444" opacity={0.6} />
+          <circle cx="12" cy="12" r="2" fill="#ef4444" />
         </svg>
       );
     case "pencil":
       return (
         <svg {...props}>
           <path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+        </svg>
+      );
+    case "muscle":
+      return (
+        <svg {...props} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 15l3-3c1-1 2-1.5 3-1s1.5 1.5 1 3l-1 2" />
+          <path d="M7 12l3-5c.8-1.2 2-1.5 3-.5s1 2.5 0 4" />
+          <path d="M10 7l1.5-2.5c.7-1 1.8-1.2 2.5-.3s.5 2-.3 3L12 10" />
+          <path d="M4 15c-1 1.5-.5 3 1 3.5s3 0 4-1.5l3-4.5" />
+          <path d="M14 7c1-1 2.5-1 3.5.5s1 3-.5 4l-3 3.5c-1 1-1.5 2.5-1 4" />
+          <path d="M17 19h3" />
+        </svg>
+      );
+    case "refresh":
+      return (
+        <svg {...props}>
+          <path d="M1 4v6h6" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M23 20v-6h-6" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "clipboard":
+      return (
+        <svg {...props}>
+          <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" />
+          <rect x="8" y="2" width="8" height="4" rx="1" opacity={0.6} />
+          <path d="M9 12h6M9 16h4" fill="none" stroke="white" strokeWidth={1.8} strokeLinecap="round" />
+        </svg>
+      );
+    case "party":
+      return (
+        <svg {...props}>
+          <path d="M5.8 21.2L2 22l.8-3.8L14.4 6.6l3 3z" />
+          <path d="M16 2l1.5.5L18 4l-1 1-2-2z" opacity={0.6} />
+          <circle cx="19" cy="8" r="1" />
+          <circle cx="21" cy="3" r="0.8" opacity={0.6} />
+          <path d="M9 2l.5 2M3 8l2 .5" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
         </svg>
       );
     default: // star

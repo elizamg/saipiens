@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { PRIMARY, GRAY_900, GRAY_600, GRAY_200, WHITE } from "../../theme/colors";
 import Confetti from "../ui/Confetti";
+import SectionIcon from "../ui/SectionIcon";
 
 const NEW_ATTEMPT_BUTTON_STYLES: React.CSSProperties = {
   padding: "8px 20px",
@@ -15,20 +16,20 @@ const NEW_ATTEMPT_BUTTON_STYLES: React.CSSProperties = {
   letterSpacing: "0.5px",
 };
 
-const GRADING_BADGE: Record<string, { label: string; bg: string; color: string }> = {
-  "correct": { label: "🎯 Correct!", bg: "#d1fae5", color: "#065f46" },
-  "slight clarification": { label: "💪 Almost there!", bg: "#fef9c3", color: "#713f12" },
-  "small mistake": { label: "🔄 Small mistake", bg: "#ffedd5", color: "#7c2d12" },
-  "incorrect": { label: "📝 Incorrect", bg: "#fee2e2", color: "#7f1d1d" },
+const GRADING_BADGE: Record<string, { icon: React.ReactNode; text: string; bg: string; color: string }> = {
+  "correct": { icon: <SectionIcon name="check" size={14} color="#065f46" />, text: "Correct!", bg: "#d1fae5", color: "#065f46" },
+  "slight clarification": { icon: null, text: "Almost there!", bg: "#fef9c3", color: "#713f12" },
+  "small mistake": { icon: null, text: "Small mistake", bg: "#ffedd5", color: "#7c2d12" },
+  "incorrect": { icon: null, text: "Incorrect", bg: "#fee2e2", color: "#7f1d1d" },
 };
 import ProgressCircle from "../ui/ProgressCircle";
 import Avatar from "../ui/Avatar";
 import type { ChatMessage, ProgressState, Agent } from "../../types/domain";
 
-const PROGRESS_LABELS: Record<string, string> = {
-  walkthrough_started: "📖 Walkthrough started",
-  walkthrough_complete: "✅ Walkthrough complete",
-  challenge_complete: "🏆 Challenge complete!",
+const PROGRESS_LABEL_CONFIG: Record<string, { icon: React.ReactNode; text: string }> = {
+  walkthrough_started: { icon: <SectionIcon name="bookOpen" size={16} color="#5c8f6a" />, text: "Walkthrough started" },
+  walkthrough_complete: { icon: <SectionIcon name="check" size={16} color="#5c8f6a" />, text: "Walkthrough complete" },
+  challenge_complete: { icon: <SectionIcon name="trophy" size={16} color="#5c8f6a" />, text: "Challenge complete!" },
 };
 
 interface MessageBubbleProps {
@@ -132,14 +133,19 @@ export default function MessageBubble({ message, agent, onNewAttempt }: MessageB
       {isProgressFeedback ? (
         <div style={{ ...contentStyles, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
           {showCircle && <ProgressCircle state={progressState as ProgressState} size={20} />}
-          <span>{PROGRESS_LABELS[progressState as string] ?? message.content}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            {PROGRESS_LABEL_CONFIG[progressState as string]?.icon}
+            {PROGRESS_LABEL_CONFIG[progressState as string]?.text ?? message.content}
+          </span>
         </div>
       ) : (
         <div style={contentStyles}>{message.content}</div>
       )}
       {gradingBadge && (
         <div style={{
-          display: "inline-block",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
           marginTop: 8,
           padding: "3px 10px",
           borderRadius: 12,
@@ -148,7 +154,8 @@ export default function MessageBubble({ message, agent, onNewAttempt }: MessageB
           backgroundColor: gradingBadge.bg,
           color: gradingBadge.color,
         }}>
-          {gradingBadge.label}
+          {gradingBadge.icon}
+          {gradingBadge.text}
         </div>
       )}
       {message.attachments && message.attachments.length > 0 && (

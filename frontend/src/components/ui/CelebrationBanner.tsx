@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { WHITE } from "../../theme/colors";
+import SectionIcon from "./SectionIcon";
 
 interface CelebrationBannerProps {
   unitTitle: string;
@@ -55,7 +56,11 @@ export default function CelebrationBanner({ unitTitle, show, onDismiss }: Celebr
           fontWeight: 700,
           color: WHITE,
         }}>
-          🎉 You completed {unitTitle}! Amazing work! 🎉
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <SectionIcon name="party" size={20} color={WHITE} />
+            You completed {unitTitle}! Amazing work!
+            <SectionIcon name="party" size={20} color={WHITE} />
+          </span>
         </p>
       </div>
     </>
