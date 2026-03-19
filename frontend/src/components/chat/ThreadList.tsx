@@ -147,13 +147,9 @@ export default function ThreadList({
               isCollapsed={collapsed[kind] ?? false}
               onToggle={() => toggleSection(kind)}
               selectedThreadId={selectedThreadId}
-<<<<<<< Updated upstream
-              onSelectThread={onSelectThread}
-=======
               onSelectThread={locked ? () => {} : onSelectThread}
               unitProgress={kind === "skill" ? unitProgress : undefined}
               locked={locked}
->>>>>>> Stashed changes
             />
           );
         })}
@@ -329,11 +325,8 @@ interface SectionGroupProps {
   onToggle: () => void;
   selectedThreadId?: string;
   onSelectThread: (threadId: string) => void;
-<<<<<<< Updated upstream
-=======
   unitProgress?: UnitProgress;
   locked?: boolean;
->>>>>>> Stashed changes
 }
 
 function SectionGroup({
@@ -343,11 +336,8 @@ function SectionGroup({
   onToggle,
   selectedThreadId,
   onSelectThread,
-<<<<<<< Updated upstream
-=======
   unitProgress,
   locked = false,
->>>>>>> Stashed changes
 }: SectionGroupProps) {
   const completedCount = threads.filter((t) => t.progressState === "challenge_complete").length;
   const attemptedCount = threads.filter((t) => {
