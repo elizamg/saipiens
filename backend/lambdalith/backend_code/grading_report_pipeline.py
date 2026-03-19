@@ -20,13 +20,14 @@ _student_prompt = Prompt(_student_details[RAW_PROMPT_KEY])
 _report_schema = get_prompt_details("grading_report")[JSON_SCHEMA_KEY]
 
 
-def _generate_summary(prompt: Prompt, unit_title: str, course_title: str, objectives_data: str, knowledge_data: str) -> str:
+def _generate_summary(prompt: Prompt, unit_title: str, course_title: str, objectives_data: str, knowledge_data: str, capstone_data: str = "") -> str:
     """Call the AI model with the given prompt and return the summary string."""
     content = prompt.arguments_to_content(
         UNIT_TITLE=unit_title,
         COURSE_TITLE=course_title,
         OBJECTIVES_DATA=objectives_data,
         KNOWLEDGE_DATA=knowledge_data,
+        CAPSTONE_DATA=capstone_data,
     )
     response = ai_client.models.generate_content(
         model=GEM_3_FLASH,
@@ -45,9 +46,10 @@ def generate_teacher_summary(
     course_title: str,
     objectives_data: str,
     knowledge_data: str,
+    capstone_data: str = "",
 ) -> str:
     """Generate a detailed, analytical grading report for the teacher."""
-    return _generate_summary(_teacher_prompt, unit_title, course_title, objectives_data, knowledge_data)
+    return _generate_summary(_teacher_prompt, unit_title, course_title, objectives_data, knowledge_data, capstone_data)
 
 
 @retry(stop=stop_after_attempt(GRADING_REPORT_TRIES))
@@ -56,6 +58,7 @@ def generate_student_summary(
     course_title: str,
     objectives_data: str,
     knowledge_data: str,
+    capstone_data: str = "",
 ) -> str:
     """Generate an encouraging, actionable progress report for the student."""
-    return _generate_summary(_student_prompt, unit_title, course_title, objectives_data, knowledge_data)
+    return _generate_summary(_student_prompt, unit_title, course_title, objectives_data, knowledge_data, capstone_data)

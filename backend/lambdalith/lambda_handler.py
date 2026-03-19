@@ -856,8 +856,97 @@ def handle_list_feedback(event, course_id: str | None = None):
 
 # ---- Grading Reports & Per-Unit Feedback ----
 
-def _format_objectives_data(objectives: list[dict], progress_map: dict, deadline: str | None) -> str:
+
+def _collect_skill_feedback(objectives: list[dict]) -> dict[str, list[dict]]:
+    """Collect grading feedback from chat messages for each skill/capstone objective.
+
+    Returns a map of objective_id -> list of {"category": str, "feedback": str} dicts
+    representing tutor grading results from the challenge stage.
+    """
+    msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+    feedback_map: dict[str, list[dict]] = {}
+    for obj in objectives:
+        kind = obj.get("kind", "skill")
+        if kind == "knowledge":
+            continue
+        oid = obj.get("id", "")
+        thread_id = f"thread-{oid}"
+        try:
+            items = query_all(msgs_tbl, key_condition=Key("threadId").eq(thread_id), scan_forward=True)
+        except Exception:
+            items = []
+        feedbacks = []
+        for msg in items:
+            if msg.get("role") != "tutor":
+                continue
+            metadata = msg.get("metadata") or {}
+            category = metadata.get("gradingCategory", "")
+            if category:
+                feedbacks.append({"category": category, "feedback": msg.get("content", "")})
+        if feedbacks:
+            feedback_map[oid] = feedbacks
+    return feedback_map
+
+
+def _format_capstone_data(objectives: list[dict], feedback_map: dict[str, list[dict]]) -> str:
+    """Format capstone objective conversations into a summary string for the AI prompt.
+
+    Includes the capstone skill focus, grading feedback received, and conversation highlights.
+    """
+    capstone_objs = [o for o in objectives if o.get("kind") == "capstone"]
+    if not capstone_objs:
+        return "No capstone objective in this unit."
+
+    lines = []
+    for obj in capstone_objs:
+        oid = obj.get("id", "")
+        title = obj.get("title", "Capstone")
+        description = obj.get("description", "")
+        lines.append(f"Capstone: \"{title}\"")
+        if description:
+            lines.append(f"  Description: {description}")
+
+        # Pull the capstone thread to find what skill it focused on
+        threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
+        thread_id = f"thread-{oid}"
+        try:
+            thread = threads_tbl.get_item(Key={"id": thread_id}).get("Item") or {}
+        except Exception:
+            thread = {}
+        capstone_ctx = thread.get("capstoneSkillContext") or {}
+        if capstone_ctx:
+            lines.append(f"  Focused on weakest skill: \"{capstone_ctx.get('title', 'Unknown')}\"")
+            grading_fb = capstone_ctx.get("grading_feedback", "")
+            if grading_fb:
+                lines.append(f"  Original grading feedback on that skill: {grading_fb[:300]}")
+
+        # Summarize the capstone conversation
+        msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+        try:
+            msgs = query_all(msgs_tbl, key_condition=Key("threadId").eq(thread_id), scan_forward=True)
+        except Exception:
+            msgs = []
+        if msgs:
+            student_msgs = [m for m in msgs if m.get("role") == "student"]
+            tutor_msgs = [m for m in msgs if m.get("role") == "tutor"]
+            lines.append(f"  Conversation turns: {len(student_msgs)} student, {len(tutor_msgs)} tutor")
+            # Include the final tutor message as the capstone outcome
+            if tutor_msgs:
+                final_tutor = tutor_msgs[-1].get("content", "")
+                if final_tutor:
+                    # Truncate to keep prompt manageable
+                    snippet = final_tutor[:400] + ("..." if len(final_tutor) > 400 else "")
+                    lines.append(f"  Final tutor assessment: {snippet}")
+        else:
+            lines.append("  No conversation recorded (capstone not attempted).")
+
+    return "\n".join(lines)
+
+
+def _format_objectives_data(objectives: list[dict], progress_map: dict, deadline: str | None, feedback_map: dict[str, list[dict]] | None = None) -> str:
     """Format skill objective progress into a human-readable string for the AI prompt."""
+    if feedback_map is None:
+        feedback_map = {}
     lines = []
     for obj in objectives:
         oid = obj.get("id", "")
@@ -895,9 +984,29 @@ def _format_objectives_data(objectives: list[dict], progress_map: dict, deadline
         scaffolded = stage == "walkthrough" and kind != "knowledge"
         scaffold_note = " (needed scaffolding)" if scaffolded else ""
 
-        lines.append(
-            f"{kind.capitalize()}: \"{title}\" — Stars: {stars}/3, Stage: {stage}{scaffold_note}, Status: {status}"
-        )
+        line = f"{kind.capitalize()}: \"{title}\" — Stars: {stars}/3, Stage: {stage}{scaffold_note}, Status: {status}"
+
+        # Append per-skill grading feedback if available
+        obj_feedbacks = feedback_map.get(oid, [])
+        if obj_feedbacks:
+            categories = [f.get("category", "") for f in obj_feedbacks]
+            worst = "correct"
+            for cat in categories:
+                if cat == "incorrect":
+                    worst = "incorrect"
+                    break
+                elif cat == "small mistake" and worst in ("correct", "slight clarification"):
+                    worst = "small mistake"
+                elif cat == "slight clarification" and worst == "correct":
+                    worst = "slight clarification"
+            line += f", Grading: {worst}"
+            # Include the most relevant feedback snippet (from the worst-graded response)
+            worst_fb = next((f for f in obj_feedbacks if f.get("category") == worst), None)
+            if worst_fb:
+                snippet = worst_fb["feedback"][:200] + ("..." if len(worst_fb["feedback"]) > 200 else "")
+                line += f"\n    Feedback: {snippet}"
+
+        lines.append(line)
     return "\n".join(lines) if lines else "No skill objectives in this unit."
 
 
@@ -1004,10 +1113,12 @@ def handle_get_unit_grading_report(event, unit_id: str):
     )
     topics_map = {t["id"]: t for t in topics if t.get("id")}
 
-    # Format data
+    # Format data — collect skill/capstone grading feedback from chat messages
     deadline = unit.get("deadline")
-    objectives_data = _format_objectives_data(objectives, progress_map, deadline)
+    feedback_map = _collect_skill_feedback(objectives)
+    objectives_data = _format_objectives_data(objectives, progress_map, deadline, feedback_map)
     knowledge_data = _format_knowledge_data(unit_kq, topics_map)
+    capstone_data = _format_capstone_data(objectives, feedback_map)
 
     # Compute stats for structured display
     skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
@@ -1068,6 +1179,7 @@ def handle_get_unit_grading_report(event, unit_id: str):
         course_title=course.get("title", ""),
         objectives_data=objectives_data,
         knowledge_data=knowledge_data,
+        capstone_data=capstone_data,
     )
     with ThreadPoolExecutor(max_workers=2) as executor:
         teacher_future = executor.submit(generate_teacher_summary, **summary_kwargs)
@@ -1144,15 +1256,33 @@ def _trigger_report_stats_update(student_id: str, unit_id: str):
         pass  # Non-critical
 
 
+SUMMARY_REGEN_COOLDOWN_SECONDS = 5 * 60  # Only regenerate AI summaries every 5 minutes
+
+
 def _update_grading_report_stats(student_id: str, unit_id: str):
-    """Update just the stats on a cached grading report (no AI regen).
-    Called after knowledge grading or skill progress changes."""
+    """Update stats AND regenerate AI summaries on a cached grading report.
+    Called after knowledge grading or skill progress changes so feedback
+    stays current as the student progresses.
+    AI summaries are debounced: only regenerated if >5 min since last regen."""
     gr_tbl = dynamodb.Table(T["GRADING_REPORTS"])
     existing = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id}).get("Item")
     if not existing:
         return  # No report to update yet
 
-    # Gather fresh stats
+    # Check if we should regenerate AI summaries (debounce)
+    should_regen_summaries = True
+    last_updated = existing.get("updatedAt", "")
+    if last_updated:
+        try:
+            last_dt = datetime.fromisoformat(last_updated.replace("Z", "+00:00"))
+            now_dt = datetime.now(last_dt.tzinfo) if last_dt.tzinfo else datetime.utcnow()
+            elapsed = (now_dt - last_dt).total_seconds()
+            if elapsed < SUMMARY_REGEN_COOLDOWN_SECONDS:
+                should_regen_summaries = False
+        except Exception:
+            pass  # If we can't parse, regenerate to be safe
+
+    # Gather fresh data
     objectives = query_all(
         dynamodb.Table(T["OBJECTIVES"]),
         index_name=IDX["UNIT_OBJECTIVES"],
@@ -1179,7 +1309,14 @@ def _update_grading_report_stats(student_id: str, unit_id: str):
     topics_map = {t["id"]: t for t in topics if t.get("id")}
 
     unit = dynamodb.Table(T["UNITS"]).get_item(Key={"id": unit_id}).get("Item") or {}
+    course = dynamodb.Table(T["COURSES"]).get_item(Key={"id": unit.get("courseId", "")}).get("Item") or {}
     deadline = unit.get("deadline")
+
+    # Format data for AI summaries (includes skill feedback + capstone context)
+    feedback_map = _collect_skill_feedback(objectives)
+    objectives_data = _format_objectives_data(objectives, progress_map, deadline, feedback_map)
+    knowledge_data = _format_knowledge_data(unit_kq, topics_map)
+    capstone_data = _format_capstone_data(objectives, feedback_map)
 
     # Compute skill stats
     skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
@@ -1224,31 +1361,67 @@ def _update_grading_report_stats(student_id: str, unit_id: str):
     if deadline and skill_total > 0:
         on_time_pct = round(skill_completed_before_deadline / skill_total * 100)
 
-    # Update cached report in-place
+    # Regenerate AI summaries with fresh data (only if cooldown has elapsed)
+    teacher_summary = None
+    student_summary = None
+    if should_regen_summaries:
+        from concurrent.futures import ThreadPoolExecutor
+        from backend_code.grading_report_pipeline import generate_teacher_summary, generate_student_summary
+
+        summary_kwargs = dict(
+            unit_title=unit.get("title", ""),
+            course_title=course.get("title", ""),
+            objectives_data=objectives_data,
+            knowledge_data=knowledge_data,
+            capstone_data=capstone_data,
+        )
+        try:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                teacher_future = executor.submit(generate_teacher_summary, **summary_kwargs)
+                student_future = executor.submit(generate_student_summary, **summary_kwargs)
+            teacher_summary = teacher_future.result()
+            student_summary = student_future.result()
+        except Exception as e:
+            print(f"[update-report-stats] AI summary regen failed, updating stats only: {e}")
+            teacher_summary = None
+            student_summary = None
+    else:
+        print(f"[update-report-stats] Skipping AI regen (cooldown), stats-only update for student={student_id} unit={unit_id}")
+
+    # Update cached report with fresh stats AND summaries
+    update_expr = (
+        "SET skillCompleted = :sc, skillTotal = :st, "
+        "skillCompletedBeforeDeadline = :scbd, "
+        "knowledgeCorrect = :kc, knowledgeTotal = :kt, "
+        "knowledgeAttempts = :ka, "
+        "completedBeforeDeadline = :cbd, onTimePct = :otp, "
+        "completionDate = :cd, objectiveDetails = :od, "
+        "updatedAt = :u"
+    )
+    attr_values = {
+        ":sc": skill_completed,
+        ":st": skill_total,
+        ":scbd": skill_completed_before_deadline,
+        ":kc": knowledge_correct,
+        ":kt": knowledge_total,
+        ":ka": knowledge_attempts,
+        ":cbd": completed_before_deadline,
+        ":otp": on_time_pct,
+        ":cd": latest_completion_ts or "",
+        ":od": objective_details,
+        ":u": iso_now(),
+    }
+    if teacher_summary is not None:
+        update_expr += ", teacherSummary = :ts"
+        attr_values[":ts"] = teacher_summary
+    if student_summary is not None:
+        update_expr += ", studentSummary = :ss"
+        attr_values[":ss"] = student_summary
+
     gr_tbl.update_item(
         Key={"studentId": student_id, "unitId": unit_id},
-        UpdateExpression=(
-            "SET skillCompleted = :sc, skillTotal = :st, "
-            "skillCompletedBeforeDeadline = :scbd, "
-            "knowledgeCorrect = :kc, knowledgeTotal = :kt, "
-            "knowledgeAttempts = :ka, "
-            "completedBeforeDeadline = :cbd, onTimePct = :otp, "
-            "completionDate = :cd, objectiveDetails = :od, "
-            "updatedAt = :u"
-        ),
-        ExpressionAttributeValues={
-            ":sc": skill_completed,
-            ":st": skill_total,
-            ":scbd": skill_completed_before_deadline,
-            ":kc": knowledge_correct,
-            ":kt": knowledge_total,
-            ":ka": knowledge_attempts,
-            ":cbd": completed_before_deadline,
-            ":otp": on_time_pct,
-            ":cd": latest_completion_ts or "",
-            ":od": objective_details,
-            ":u": iso_now(),
-        },
+        UpdateExpression=update_expr,
+        ExpressionAttributeValues=attr_values,
     )
 
 
@@ -3687,8 +3860,10 @@ def _handle_generate_grading_report_async(payload: dict):
         topics_map = {t["id"]: t for t in topics if t.get("id")}
 
         deadline = unit.get("deadline")
-        objectives_data = _format_objectives_data(objectives, progress_map, deadline)
+        feedback_map = _collect_skill_feedback(objectives)
+        objectives_data = _format_objectives_data(objectives, progress_map, deadline, feedback_map)
         knowledge_data = _format_knowledge_data(unit_kq, topics_map)
+        capstone_data = _format_capstone_data(objectives, feedback_map)
 
         # Compute stats
         skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
@@ -3741,6 +3916,7 @@ def _handle_generate_grading_report_async(payload: dict):
             course_title=course.get("title", ""),
             objectives_data=objectives_data,
             knowledge_data=knowledge_data,
+            capstone_data=capstone_data,
         )
         with ThreadPoolExecutor(max_workers=2) as executor:
             teacher_future = executor.submit(generate_teacher_summary, **summary_kwargs)

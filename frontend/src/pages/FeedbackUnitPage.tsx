@@ -84,6 +84,41 @@ export default function FeedbackUnitPage() {
     load();
   }, [unitId, pollForReport]);
 
+  // Auto-refresh report stats when page becomes visible (e.g. switching back from chat)
+  useEffect(() => {
+    if (!unitId) return;
+    const handleVisibility = async () => {
+      if (document.visibilityState === "visible") {
+        try {
+          const r = await getMyUnitGradingReport(unitId);
+          if (r && (r as any).status !== "generating") {
+            setReport(r);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [unitId]);
+
+  // Also refresh report on a 30-second interval while the page is open
+  useEffect(() => {
+    if (!unitId || report === undefined) return;
+    const interval = setInterval(async () => {
+      try {
+        const r = await getMyUnitGradingReport(unitId);
+        if (r && (r as any).status !== "generating") {
+          setReport(r);
+        }
+      } catch {
+        // ignore
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [unitId, report]);
+
   const cardStyles: React.CSSProperties = {
     background: WHITE,
     border: `1px solid ${GRAY_200}`,
