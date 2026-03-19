@@ -36,7 +36,7 @@ export default function ProgressStats({
 
   const labelStyles: React.CSSProperties = {
     margin: "6px 0 0 0",
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: 500,
     color: GRAY_500,
   };

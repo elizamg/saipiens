@@ -4,9 +4,9 @@ import AppShell from "../components/layout/AppShell";
 import ActiveUnits from "../components/course/ActiveUnits";
 import NewUnitCard from "../components/course/NewUnitCard";
 import Button from "../components/ui/Button";
-import { GRAY_900, GRAY_500, WHITE, PRIMARY } from "../theme/colors";
+import { GRAY_900, GRAY_500, WHITE } from "../theme/colors";
 import Skeleton from "../components/ui/Skeleton";
-import { CourseIcon } from "../theme/courseIcons";
+import { CourseIcon, COURSE_COLORS } from "../theme/courseIcons";
 import {
   getCourse,
   listUnits,
@@ -127,7 +127,7 @@ export default function TeacherCoursePage() {
         <>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              <CourseIcon icon={course.icon ?? "general"} size={48} color={PRIMARY} />
+              <CourseIcon icon={course.icon ?? "general"} size={48} color={(COURSE_COLORS[course.icon ?? "general"] ?? COURSE_COLORS.general).main} />
               {editingTitle ? (
                 <input
                   autoFocus

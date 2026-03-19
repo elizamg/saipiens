@@ -1,13 +1,14 @@
-import { WHITE } from "../../theme/colors";
+import { GRAY_50, GRAY_200 } from "../../theme/colors";
 import Skeleton from "./Skeleton";
 
 export default function SkeletonCourseCard() {
   return (
     <div style={{
-      backgroundColor: WHITE,
+      background: GRAY_50,
       borderRadius: 16,
       padding: 24,
       boxShadow: "0 2px 12px rgba(0, 0, 0, 0.08)",
+      borderLeft: `4px solid ${GRAY_200}`,
     }}>
       {/* Icon + title row */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>

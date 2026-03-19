@@ -82,7 +82,7 @@ export default function CourseCard({ course, instructors, progress }: CourseCard
       <Button
         variant="primary"
         onClick={() => navigate(`/course/${course.id}`)}
-        style={{ padding: "10px 20px", fontSize: 14 }}
+        style={{ padding: "10px 20px", fontSize: 14, background: courseColor.main }}
       >
         View Course
       </Button>
