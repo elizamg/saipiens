@@ -77,8 +77,8 @@ function pickPhrase(name: string, role: "student" | "teacher"): string {
 }
 
 export default function WelcomeBanner({ name, role = "student", subtitle }: WelcomeBannerProps) {
-  const firstName = name.split(" ")[0];
-  const phrase = useMemo(() => pickPhrase(firstName, role), [firstName, role]);
+  const displayName = role === "teacher" ? name : name.split(" ")[0];
+  const phrase = useMemo(() => pickPhrase(displayName, role), [displayName, role]);
 
   return (
     <div style={{
