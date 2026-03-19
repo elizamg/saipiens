@@ -9,7 +9,6 @@ import {
   getCurrentStudent,
   getCourse,
   getUnit,
-  getUnitProgress,
   listChatThreadsForUnit,
   listItemStages,
   getStage,
@@ -77,7 +76,6 @@ import type {
   Unit,
   ThreadWithProgress,
   ChatMessage,
-  UnitProgress,
   ItemStage,
   ProgressState,
   StageType,
@@ -136,7 +134,6 @@ export default function ChatPage() {
   const [threads, setThreads] = useState<ThreadWithProgress[]>([]);
   const [stagesByThread, setStagesByThread] = useState<Record<string, ItemStage[]>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [unitProgress, setUnitProgress] = useState<UnitProgress | null>(null);
   const [currentStage, setCurrentStage] = useState<ItemStage | null>(null);
   const [agentData, setAgentData] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -254,14 +251,12 @@ export default function ChatPage() {
         const courseData = await getCourse(courseId);
         const unitData = await getUnit(unitId);
         const threadsData = await listChatThreadsForUnit({ courseId, unitId, studentId: studentData.id });
-        const progressData = await getUnitProgress(studentData.id, unitId);
         const kQueueData = await getKnowledgeQueue(unitId, studentData.id);
         const kProgressData = await getKnowledgeProgress(unitId, studentData.id);
 
         setCourse(courseData || null);
         setUnit(unitData || null);
         setThreads(threadsData);
-        setUnitProgress(progressData);
         setKnowledgeItems(kQueueData);
         setKnowledgeProgress(kProgressData);
 
@@ -368,12 +363,8 @@ export default function ChatPage() {
 
     advanceStage(student.id, thread.objectiveId)
       .then(async () => {
-        const [updatedThreads, updatedProgress] = await Promise.all([
-          listChatThreadsForUnit({ courseId, unitId, studentId: student.id }),
-          getUnitProgress(student.id, unitId),
-        ]);
+        const updatedThreads = await listChatThreadsForUnit({ courseId, unitId, studentId: student.id });
         setThreads(updatedThreads);
-        setUnitProgress(updatedProgress);
         setSearchParams({ thread: selectedThreadId, stage: walkthroughStage.id }, { replace: true });
       })
       .catch((err) => console.error("Error auto-advancing begin stage:", err));
@@ -546,21 +537,13 @@ export default function ChatPage() {
           setMessages((prev) => [...prev, completionMsg]);
 
           if (courseId && unitId) {
-            const [updatedThreads, updatedUnitProgress] = await Promise.all([
-              listChatThreadsForUnit({ courseId, unitId, studentId: student.id }),
-              getUnitProgress(student.id, unitId),
-            ]);
+            const updatedThreads = await listChatThreadsForUnit({ courseId, unitId, studentId: student.id });
             setThreads(updatedThreads);
-            setUnitProgress(updatedUnitProgress);
           }
         } else if (tutorMessage?.metadata?.isCompletionMessage && courseId && unitId) {
           // Backend auto-advanced progress — re-fetch threads to pick up new progressState
-          const [updatedThreads, updatedUnitProgress] = await Promise.all([
-            listChatThreadsForUnit({ courseId, unitId, studentId: student.id }),
-            getUnitProgress(student.id, unitId),
-          ]);
+          const updatedThreads = await listChatThreadsForUnit({ courseId, unitId, studentId: student.id });
           setThreads(updatedThreads);
-          setUnitProgress(updatedUnitProgress);
         }
       } catch (error) {
         console.error("Error sending message:", error);
