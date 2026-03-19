@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Avatar from "../components/ui/Avatar";
+import SectionIcon from "../components/ui/SectionIcon";
 import { useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import BackButton from "../components/ui/BackButton";
@@ -168,14 +169,28 @@ export default function FeedbackUnitPage() {
               </>
             )}
 
-            {/* Sam's Report */}
-            <div style={cardStyles}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <Avatar src={agent?.avatarUrl} name={agent?.name ?? "Sam"} size={36} imageScale={0.8} tintColor={agent?.tintColor} />
-                <span style={{ fontWeight: 600, fontSize: 15, color: GRAY_900 }}>Sam</span>
+            {/* Sam's Report — highlighted */}
+            <div style={{
+              ...cardStyles,
+              background: "linear-gradient(135deg, rgba(139,122,158,0.06) 0%, rgba(154,152,181,0.08) 100%)",
+              borderColor: "rgba(139,122,158,0.2)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                <Avatar src={agent?.avatarUrl} name={agent?.name ?? "Sam"} size={40} imageScale={0.8} tintColor={agent?.tintColor} />
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: 15, color: GRAY_900, display: "block" }}><><SectionIcon name="robot" color="#7B68A6" size={16} />Sam's Learning Summary</></span>
+                  <span style={{ fontSize: 12, color: GRAY_400 }}>AI-generated feedback based on your work</span>
+                </div>
               </div>
               {report ? (
-                <div style={{ margin: 0, fontSize: 14, color: GRAY_600, lineHeight: 1.6 }}>
+                <div style={{
+                  margin: 0,
+                  fontSize: 15,
+                  color: GRAY_600,
+                  lineHeight: 1.7,
+                  borderLeft: `3px solid ${PRIMARY}`,
+                  paddingLeft: 16,
+                }}>
                   {report.summary.split("\n").map((para, i) => (
                     <p key={i} style={{ margin: i === 0 ? 0 : "12px 0 0 0" }}>{para}</p>
                   ))}
@@ -187,13 +202,20 @@ export default function FeedbackUnitPage() {
               )}
             </div>
 
-            {/* Teacher Messages */}
+            {/* Teacher Messages — prominent section */}
             {teacherMessages.length > 0 && (
               <>
+                <h2 style={{ margin: "8px 0 16px 0", fontSize: 18, fontWeight: 600, color: GRAY_900 }}>
+                  <><SectionIcon name="teacher" color="#5c8f6a" size={18} />From Your Teacher</>
+                </h2>
                 {teacherMessages.map((fb) => (
-                  <div key={fb.id} style={cardStyles}>
+                  <div key={fb.id} style={{
+                    ...cardStyles,
+                    background: "rgba(92,143,106,0.04)",
+                    borderColor: "rgba(92,143,106,0.15)",
+                  }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                      <div style={{ ...avatarStyles, background: GRAY_200, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: GRAY_600 }}>
+                      <div style={{ ...avatarStyles, background: "rgba(92,143,106,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 600, color: SUCCESS_GREEN }}>
                         {(fb.instructorName ?? "T").charAt(0).toUpperCase()}
                       </div>
                       <span style={{ fontWeight: 600, fontSize: 15, color: GRAY_900 }}>{fb.instructorName ?? "Teacher"}</span>
@@ -203,7 +225,14 @@ export default function FeedbackUnitPage() {
                         </span>
                       )}
                     </div>
-                    <p style={{ margin: 0, fontSize: 14, color: GRAY_600, lineHeight: 1.6 }}>{fb.body}</p>
+                    <p style={{
+                      margin: 0,
+                      fontSize: 15,
+                      color: GRAY_600,
+                      lineHeight: 1.7,
+                      borderLeft: `3px solid ${SUCCESS_GREEN}`,
+                      paddingLeft: 16,
+                    }}>{fb.body}</p>
                   </div>
                 ))}
               </>

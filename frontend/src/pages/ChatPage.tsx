@@ -3,6 +3,8 @@ import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import ThreadList from "../components/chat/ThreadList";
 import MessageList from "../components/chat/MessageList";
 import ChatComposer from "../components/chat/ChatComposer";
+import CelebrationBanner from "../components/ui/CelebrationBanner";
+import Confetti from "../components/ui/Confetti";
 import {
   getCurrentStudent,
   getCourse,
@@ -146,6 +148,8 @@ export default function ChatPage() {
   const [gradingInProgress, setGradingInProgress] = useState(false);
   const [gradedItemIds, setGradedItemIds] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [knowledgeConfetti, setKnowledgeConfetti] = useState(false);
   const [pendingClarify, setPendingClarify] = useState(false);
   const [usedClarifyQuestions, setUsedClarifyQuestions] = useState<Set<string>>(new Set());
   const [knowledgeAttemptCounts, setKnowledgeAttemptCounts] = useState<Record<string, number>>({});
@@ -628,6 +632,12 @@ export default function ChatPage() {
           // Final grade (correct or incorrect)
           setGradedItemIds((prev) => new Set([...prev, itemId]));
 
+          // Trigger confetti for correct answers
+          if (outcome === "correct") {
+            setKnowledgeConfetti(true);
+            setTimeout(() => setKnowledgeConfetti(false), 2500);
+          }
+
           // Refresh queue + progress
           const [updatedQueue, kProgress] = await Promise.all([
             getKnowledgeQueue(unitId, student.id),
@@ -738,6 +748,21 @@ export default function ChatPage() {
   const showChallengePills = isSkillThread
     && currentStage?.stageType === "challenge"
     && !currentStageCompleted;
+
+  // ============ Unit Completion Celebration ============
+  const prevAllCompleteRef = useRef(false);
+  useEffect(() => {
+    if (threads.length === 0) return;
+    const allSkillsComplete = threads.every((t) => t.progressState === "challenge_complete");
+    const allKnowledgeDone = !knowledgeItems.length || knowledgeItems.every(
+      (k) => k.status === "completed_correct" || k.status === "completed_incorrect"
+    );
+    const allComplete = allSkillsComplete && allKnowledgeDone;
+    if (allComplete && !prevAllCompleteRef.current) {
+      setShowCelebration(true);
+    }
+    prevAllCompleteRef.current = allComplete;
+  }, [threads, knowledgeItems]);
 
   // ============ Styles ============
 
@@ -943,7 +968,15 @@ export default function ChatPage() {
         unitProgress={unitProgress || undefined}
         knowledgeProgress={knowledgeProgress || undefined}
       />
-      <main style={mainStyles}>
+      <main style={{ ...mainStyles, position: "relative" as const }}>
+        {knowledgeConfetti && <Confetti trigger={knowledgeConfetti} intensity="small" />}
+        {showCelebration && (
+          <CelebrationBanner
+            unitTitle={unit?.title ?? "this unit"}
+            show={showCelebration}
+            onDismiss={() => setShowCelebration(false)}
+          />
+        )}
         <header style={headerStyles}>
           <div style={breadcrumbRowStyles}>
             <span style={breadcrumbStyles}>
