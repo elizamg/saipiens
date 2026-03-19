@@ -646,7 +646,7 @@ export default function ChatPage() {
             setTimeout(() => setKnowledgeConfetti(false), 2500);
           }
 
-          // Refresh queue + progress in background for consistency
+          // Refresh queue + progress — clarifying questions are generated in parallel with grading
           Promise.all([
             getKnowledgeQueue(unitId, student.id),
             getKnowledgeProgress(unitId, student.id),
@@ -1115,8 +1115,8 @@ export default function ChatPage() {
                 <span style={completedLabelStyles}>{preCompletedLabel}</span>
               </div>
             )}
-            {/* Suggested question pills: shown for active empty chats */}
-            {knowledgeSuggestedQuestions.length > 0 && (
+            {/* Suggested question pills: always show "Ask a question" for active items */}
+            {knowledgeItemIsActive && !knowledgeItemIsGraded && !gradingInProgress && (
               <div style={pillContainerStyles}>
                 <button
                   type="button"
