@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { PRIMARY_GRADIENT, WHITE } from "../../theme/colors";
 
 interface WelcomeBannerProps {
