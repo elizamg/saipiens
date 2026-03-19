@@ -58,8 +58,20 @@ Sapiens is a process-first, AI-driven learning platform built for K-12 classroom
 | [AI Pipelines](backend/AI_PIPELINES.md) | Curriculum generation, tutoring, grading pipelines |
 | [Deployment Guide](DEPLOYMENT.md) | Infrastructure, environment config, deploy procedures |
 | [Development Guide](DEVELOPMENT.md) | Local setup, testing, project structure |
-| [Testing Guide](backend/TESTING_QUICKSTART.md) | How to test the API without AWS credentials |
 | [Pedagogy Research](research_and_design/teaching_methods_research.md) | Evidence-based instructional methods |
+
+### Testing
+
+| Document | Description |
+|----------|-------------|
+| [Test Report](TEST_REPORT.md) | Comprehensive results for all 212+ tests |
+| [Testing Quickstart](backend/TESTING_QUICKSTART.md) | How to test the API without AWS credentials |
+| [Browser Testing Guide](backend/browser_testing_guide.md) | Browser console testing with dev auth headers |
+| [Integration Tests](backend/test_suite.py) | 88 tests — all API routes, error handling, AI pipelines |
+| [Edge Case Tests](backend/test_edge_cases.py) | 37 tests — auth, input validation, path traversal, CORS |
+| [LLM Quality Tests](backend/test_llm_quality.py) | 24 tests — tutoring quality, grading accuracy, prompt injection |
+| [Component Tests](frontend/src/test/components.test.tsx) | 41 tests — ProgressBar, MessageBubble, domain types |
+| [Auth Tests](frontend/src/test/auth.test.tsx) | 22 tests — Cognito, AuthContext, RequireRole guards |
 
 ---
 

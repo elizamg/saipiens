@@ -79,14 +79,42 @@ curl -H "X-Dev-Student-Id: student_demo_1" \
      https://4bo5f0giwi.execute-api.us-west-1.amazonaws.com/prod/current-student
 ```
 
-### Automated Test Suite
+### Automated Test Suites
 
 ```bash
 cd backend
+
+# Integration tests — 88 tests, all API routes + AI pipelines (~90s)
 python test_suite.py
+
+# Edge case & security tests — 37 tests, auth, input validation, cross-student isolation (~5s)
+python test_edge_cases.py
+
+# LLM output quality tests — 24 tests, uses Gemini-as-judge (~2 min)
+export SAIPIENS_GEMINI_API_KEY=<your-key>
+python test_llm_quality.py
 ```
 
-Runs 88 tests covering all routes, error cases, and AI pipeline calls. Takes ~90 seconds.
+```bash
+# Frontend component + auth tests — 63 tests (<1s)
+cd frontend
+npx vitest run
+```
+
+Full test report: [TEST_REPORT.md](TEST_REPORT.md)
+
+| Suite | File | Tests | Description |
+|-------|------|-------|-------------|
+| Integration | [backend/test_suite.py](backend/test_suite.py) | 88 | All routes, error handling, AI pipelines |
+| Edge cases | [backend/test_edge_cases.py](backend/test_edge_cases.py) | 37 | Auth, validation, path traversal, CORS, concurrency |
+| LLM quality | [backend/test_llm_quality.py](backend/test_llm_quality.py) | 24 | Tutoring quality, grading accuracy, safety, prompt injection |
+| Components | [frontend/src/test/components.test.tsx](frontend/src/test/components.test.tsx) | 41 | ProgressBar, ProgressCircle, MessageBubble, domain types |
+| Auth | [frontend/src/test/auth.test.tsx](frontend/src/test/auth.test.tsx) | 22 | Cognito service, AuthContext, RequireRole guards |
+
+See also:
+- [TESTING_QUICKSTART.md](backend/TESTING_QUICKSTART.md) — How to test the API without AWS credentials
+- [browser_testing_guide.md](backend/browser_testing_guide.md) — Browser console testing with dev headers
+- [test_report.md](backend/test_report.md) — Backend integration test results
 
 ## Running AI Pipelines Locally
 
@@ -132,10 +160,13 @@ sapiens/
 │   ├── route_schema.md
 │   ├── table_schema.md
 │   ├── TESTING_QUICKSTART.md
-│   └── test_suite.py
+│   ├── test_suite.py            Integration tests (88)
+│   ├── test_edge_cases.py       Edge case & security tests (37)
+│   └── test_llm_quality.py      LLM output quality tests (24)
 ├── research_and_design/         Pedagogy research, design artifacts
 ├── FRONTEND_BACKEND_CONTRACT.md Contract between FE & BE
 ├── DEPLOYMENT.md                Infrastructure & deployment guide
+├── TEST_REPORT.md               Comprehensive test report (all suites)
 └── README.md                    Project overview & sprint updates
 ```
 
@@ -151,6 +182,13 @@ sapiens/
 | API Routes | `backend/route_schema.md` | Full API endpoint reference |
 | DB Schema | `backend/table_schema.md` | DynamoDB table definitions & GSIs |
 | AI Pipelines | `backend/AI_PIPELINES.md` | Curriculum generation, tutoring, grading |
-| Testing Guide | `backend/TESTING_QUICKSTART.md` | How to test without AWS credentials |
+| **Test Report** | `TEST_REPORT.md` | Comprehensive results for all 212+ tests |
+| Testing Quickstart | `backend/TESTING_QUICKSTART.md` | How to test the API without AWS credentials |
+| Browser Testing | `backend/browser_testing_guide.md` | Browser console testing with dev headers |
+| Integration Tests | `backend/test_suite.py` | 88 tests — all routes, error handling, AI pipelines |
+| Edge Case Tests | `backend/test_edge_cases.py` | 37 tests — auth, validation, security, CORS |
+| LLM Quality Tests | `backend/test_llm_quality.py` | 24 tests — tutoring quality, grading, safety |
+| Component Tests | `frontend/src/test/components.test.tsx` | 41 tests — UI components, domain types |
+| Auth Tests | `frontend/src/test/auth.test.tsx` | 22 tests — Cognito, context, route guards |
 | Deployment | `DEPLOYMENT.md` | Infrastructure, deployment procedures |
 | Pedagogy Research | `research_and_design/teaching_methods_research.md` | Evidence-based instructional methods |

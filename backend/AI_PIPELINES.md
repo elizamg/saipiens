@@ -288,3 +288,31 @@ API Gateway has a 30-second integration timeout. Curriculum generation can take 
 ### Why Rate-Limited Parallel Generation?
 
 The free-tier Gemini API has a 5 requests/minute limit. Using `asyncio.Semaphore(2)` with exponential backoff keeps throughput high while avoiding 429 errors.
+
+## Testing AI Output Quality
+
+The LLM output quality test suite ([test_llm_quality.py](test_llm_quality.py)) validates pipeline behavior across 24 tests using **Gemini-as-judge** — a separate Gemini call evaluates whether each response meets quality criteria.
+
+### Test Categories
+
+| Category | Tests | What's validated |
+|----------|-------|-----------------|
+| Response consistency | 2 | Responses aren't canned/static (varies across calls) |
+| Multi-turn coherence | 2 | Tutor tracks conversation context across turns |
+| Edge case inputs | 4 | Single word, "I don't know", 500+ word essays, Spanish input |
+| Grading accuracy | 4 | Correct answers not marked incorrect, wrong answers not marked correct |
+| Answer leakage | 2 | Walkthrough mode doesn't reveal the answer on first turn |
+| Feedback tone | 2 | Encouraging tone, not harsh or dismissive |
+| Safety boundaries | 2 | Off-topic and prompt injection attempts are redirected |
+| Format compliance | 4 | JSON output matches expected schema (Tutor_Response, Is_Finished, etc.) |
+| Response length | 2 | Responses are concise and grade-appropriate |
+
+### Running
+
+```bash
+cd backend
+export SAIPIENS_GEMINI_API_KEY=<your-key>
+python test_llm_quality.py
+```
+
+See the full test report at [TEST_REPORT.md](../TEST_REPORT.md).
