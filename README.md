@@ -13,6 +13,56 @@ through an AI-enabled homework system."</i></p>
 
 ---
 
+# App Overview
+
+Sapiens is a process-first, AI-driven learning platform built for K-12 classrooms. It transforms teacher-provided curriculum documents into adaptive, AI-tutored homework assignments that prioritize student reasoning over answer production.
+
+## How It Works
+
+**For Teachers:**
+1. Create a course and enroll students
+2. Upload curriculum materials (PDFs, textbooks, worksheets)
+3. AI identifies learning objectives — knowledge topics and skills — from the uploaded content
+4. Review and select which objectives to include
+5. Students receive auto-generated, adaptive assignments
+
+**For Students:**
+1. Enroll in courses and view assigned units
+2. Work through objectives in a chat-based interface with an AI tutor ("Sam")
+3. Each objective has three stages: **Begin** (read the question), **Walkthrough** (guided step-by-step tutoring), and **Challenge** (independent attempt with grading)
+4. Knowledge review: a queue of factual recall questions with retry on incorrect answers
+5. Earn progress indicators and awards as objectives are completed
+
+## Technical Architecture
+
+| Layer       | Technology                                                |
+|-------------|-----------------------------------------------------------|
+| Frontend    | React 19, TypeScript, Vite, Tailwind CSS                  |
+| Hosting     | Vercel                                                    |
+| API         | AWS API Gateway (HTTP API v2) + Lambda (Python 3.12)      |
+| Database    | DynamoDB (15 tables, on-demand billing)                   |
+| Auth        | AWS Cognito (JWT-based, role via group membership)        |
+| AI Model    | Google Gemini 3 Flash (curriculum generation, tutoring, grading) |
+| File Storage| S3 (presigned upload for curriculum documents)            |
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Frontend README](frontend/README.md) | Setup, tech stack, routing, API integration |
+| [Frontend Architecture](frontend/ARCHITECTURE.md) | Component hierarchy, data flow, design decisions |
+| [FE-BE Contract](FRONTEND_BACKEND_CONTRACT.md) | API surface agreement and type definitions |
+| [Backend Master Doc](backend/sapiens_backend_master_document.md) | Architecture, auth model, data models |
+| [API Routes](backend/route_schema.md) | Full API endpoint reference (52+ routes) |
+| [DB Schema](backend/table_schema.md) | DynamoDB table definitions and GSIs |
+| [AI Pipelines](backend/AI_PIPELINES.md) | Curriculum generation, tutoring, grading pipelines |
+| [Deployment Guide](DEPLOYMENT.md) | Infrastructure, environment config, deploy procedures |
+| [Development Guide](DEVELOPMENT.md) | Local setup, testing, project structure |
+| [Testing Guide](backend/TESTING_QUICKSTART.md) | How to test the API without AWS credentials |
+| [Pedagogy Research](research_and_design/teaching_methods_research.md) | Evidence-based instructional methods |
+
+---
+
 # Sprint 3 Progress
 ## Live App
 
