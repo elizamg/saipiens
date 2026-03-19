@@ -230,6 +230,106 @@ Wrote comprehensive documentation covering the full system:
 | [Backend Master Doc](backend/sapiens_backend_master_document.md) | Architecture overview, auth model, data models (updated) |
 | [API Routes](backend/route_schema.md) | Full 52+ endpoint reference (updated) |
 
+### Eliza — feedback and grading report, course icons and color theming, skeletons, dashboard, ask a question                                                                
+  1. Feedback & Grading Report System                                               
+                                                                                    
+  Built the entire student and teacher feedback experience from scratch across 17   
+  files:                                                                            
+                                                                                    
+  - Created FeedbackPage, FeedbackCoursePage, and FeedbackUnitPage — the full       
+  student-side drill-down from course → unit → grading report                       
+  - Created the parallel teacher-side: TeacherFeedbackPage,                         
+  TeacherFeedbackCoursePage, TeacherFeedbackStudentPage, TeacherFeedbackUnitPage
+  - Added supporting API calls to api.ts and extended domain types for
+  feedback/grading data
+  - Updated FRONTEND_BACKEND_CONTRACT.md with the new feedback endpoints
+  - Built full SettingsPage and TeacherSettingsPage from scratch (292 and 280 lines
+  respectively)
+  - Removed the old ProgressPage and unused components (RatingStars, Landing, etc.)
+  - Cleaned up TeacherFeedbackPanel, fixed Sam's profile picture display, and made
+  feedback + settings pages full-screen
+
+  Commits: 3c29152, d9cb3ce, af81eeb
+
+  ---
+  2. Course Icons & Subject Color Theming
+
+  Designed and implemented the per-subject visual identity system:
+
+  - Created courseIcons.tsx — SVG icon components for each subject and a
+  COURSE_COLORS map (main + light tint per subject)
+  - Applied subject colors to CourseCard, TeacherCourseCard, CoursePage,
+  FeedbackPage, TeacherCoursePage, TeacherFeedbackPage, and IconChooser
+  - Stripped all gradients and drop shadows from SectionIcon and CourseIcon — flat
+  solid fill throughout
+  - Updated IconChooser to render each icon in its own subject color with a colored
+  border/tint on selection
+  - Added purple pencil icon to ContinueLearning section header and wired "Continue"
+   button color to course subject
+
+  Commits: d5a8a15, 9d31f3b
+
+  ---
+  3. Loading Skeletons Across the App
+
+  Replaced every "Loading..." spinner/text with shimmer skeleton screens:
+
+  - Created Skeleton.tsx (shimmer primitive with injected @keyframes),
+  SkeletonBanner.tsx, and SkeletonCourseCard.tsx
+  - Rolled out skeletons to 15 pages: ChatPage, CoursePage, CourseEditorPage,
+  EditRosterPage, FeedbackPage, FeedbackUnitPage, HomePage, InstructorHomePage,
+  TeacherCoursePage, TeacherFeedbackPage, TeacherFeedbackCoursePage,
+  TeacherFeedbackStudentPage, TeacherFeedbackUnitPage, UnitUploadPage,
+  FeedbackCoursePage
+  - Added fadeIn 0.3s ease animation on content reveal to eliminate layout shift
+
+  Commits: b500f39
+
+  ---
+  4. Dashboard & Welcome Banner
+
+  Overhauled the dashboard header and app chrome:
+
+  - Rewrote WelcomeBanner with time-of-day phrase banks (morning/afternoon/evening)
+  for both student and teacher roles — 123 lines of copy
+  - Updated AppShell, SidebarNav, and TopBar for layout consistency
+  - Rebuilt the teacher InstructorHomePage header and cleaned up its structure
+  - Updated colors.ts with revised palette values
+
+  Commits: 3ee9988, 8036da7
+
+  ---
+  5. Chat Page: Thread Types & "Ask a Question"
+
+  Extended the chat page to support multiple content types and an interactive
+  clarify mode:
+
+  - Updated ThreadList to correctly display and handle knowledge, skill, and
+  capstone thread types (+82 lines)
+  - Added a backend debug script (query_thread_kinds.py) to inspect thread data
+  during development
+  - Converted the "Ask a question" pill into a toggle button — ghost (outline) when
+  inactive, filled when active — with the composer placeholder switching between
+  "Type your answer..." and "Type your clarifying question..."
+
+  Commits: a9ddeb4, 86ab0d7
+
+  ---
+  6. Build & Stability Fixes
+
+  Kept the Vercel deployment green through active development:
+
+  - Removed unused variables and imports across CourseCreationPage,
+  CourseEditorPage, EditRosterPage, and UnitUploadPage that were breaking TypeScript
+   builds
+  - Fixed a WelcomeBanner Vercel-specific error
+
+  Commits: 4eb9a8d, 8f8312e
+
+
+   7. Deck and Poster
+    Spearheaded deck and poster
+
 ---
 
 # Sprint 3 Progress
