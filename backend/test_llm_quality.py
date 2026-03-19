@@ -112,7 +112,7 @@ def _api_req(method, path, body=None, token=None):
 
 
 GEMINI_API_KEY = os.environ.get("SAIPIENS_GEMINI_API_KEY", "")
-JUDGE_MODEL = "gemini-2.0-flash"  # Use Gemini as judge by default
+JUDGE_MODEL = "gemini-2.5-flash"  # Use Gemini as judge
 
 
 def _parse_judge_response(text: str) -> dict:
