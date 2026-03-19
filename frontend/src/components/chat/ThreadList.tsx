@@ -397,10 +397,11 @@ function SectionGroup({
         </div>
       )}
       {!isCollapsed &&
-        threads.map((thread) => (
+        threads.map((thread, idx) => (
           <ThreadItem
             key={thread.id}
             thread={thread}
+            displayNumber={idx + 1}
             isThreadSelected={thread.id === selectedThreadId}
             onSelectThread={() => onSelectThread(thread.id)}
           />
@@ -411,12 +412,14 @@ function SectionGroup({
 
 interface ThreadItemProps {
   thread: ThreadWithProgress;
+  displayNumber: number;
   isThreadSelected: boolean;
   onSelectThread: () => void;
 }
 
 function ThreadItem({
   thread,
+  displayNumber,
   isThreadSelected,
   onSelectThread,
 }: ThreadItemProps) {
@@ -449,7 +452,7 @@ function ThreadItem({
       }}
     >
       <span style={threadTitleStyles}>
-        {thread.kind === "skill" ? `Skill ${thread.order + 1}` : thread.title}
+        {thread.kind === "skill" ? `Skill ${displayNumber}` : thread.title}
       </span>
       <ProgressCircle state={thread.progressState} size={21} />
     </div>
