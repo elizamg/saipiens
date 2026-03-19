@@ -1,5 +1,6 @@
 import AwardCard from "./AwardCard";
-import { GRAY_900 } from "../../theme/colors";
+import SectionIcon from "../ui/SectionIcon";
+import { GRAY_900, GRAY_200, GRAY_500 } from "../../theme/colors";
 import type { Award, Course } from "../../types/domain";
 
 interface AwardsGridProps {
@@ -34,12 +35,31 @@ export default function AwardsGrid({
   };
 
   if (awards.length === 0) {
-    return null;
+    return (
+      <section style={sectionStyles}>
+        <h2 style={headingStyles}><SectionIcon name="trophy" color="#b08d57" />{title}</h2>
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 12,
+          padding: "32px 24px",
+          border: `2px dashed ${GRAY_200}`,
+          borderRadius: 16,
+        }}>
+          <SectionIcon name="trophy" color="#b08d57" size={40} />
+          <p style={{ margin: 0, fontSize: 14, color: GRAY_500, textAlign: "center" }}>
+            Complete units to earn awards!
+          </p>
+        </div>
+      </section>
+    );
   }
 
   return (
     <section style={sectionStyles}>
-      <h2 style={headingStyles}>{title}</h2>
+      <h2 style={headingStyles}><SectionIcon name="trophy" color="#b08d57" />{title}</h2>
       <div style={gridStyles}>
         {awards.map((award) => {
           const courseName = showCourseName && coursesMap

@@ -1,14 +1,17 @@
 import React from "react";
 import CourseCard from "./CourseCard";
-import { GRAY_900 } from "../../theme/colors";
+import { GRAY_900, PRIMARY } from "../../theme/colors";
+import SectionIcon from "../ui/SectionIcon";
 import type { Course, Instructor } from "../../types/domain";
+import type { CourseProgress } from "../../pages/HomePage";
 
 interface EnrolledCoursesProps {
   courses: Course[];
   instructorsMap: Record<string, Instructor>;
+  courseProgressMap?: Record<string, CourseProgress>;
 }
 
-export default function EnrolledCourses({ courses, instructorsMap }: EnrolledCoursesProps) {
+export default function EnrolledCourses({ courses, instructorsMap, courseProgressMap }: EnrolledCoursesProps) {
   const sectionStyles: React.CSSProperties = {
     marginBottom: 32,
   };
@@ -29,7 +32,7 @@ export default function EnrolledCourses({ courses, instructorsMap }: EnrolledCou
 
   return (
     <section style={sectionStyles}>
-      <h2 style={headingStyles}>Your Courses</h2>
+      <h2 style={headingStyles}><SectionIcon name="bookOpen" color={PRIMARY} />Your Courses</h2>
       <div style={gridStyles}>
         {courses.map((course) => {
           const courseInstructors = (course.instructorIds ?? [])
@@ -40,6 +43,7 @@ export default function EnrolledCourses({ courses, instructorsMap }: EnrolledCou
               key={course.id}
               course={course}
               instructors={courseInstructors}
+              progress={courseProgressMap?.[course.id]}
             />
           );
         })}

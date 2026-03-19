@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { PRIMARY, GRAY_900, GRAY_600, GRAY_200, WHITE } from "../../theme/colors";
+import Confetti from "../ui/Confetti";
 
 const NEW_ATTEMPT_BUTTON_STYLES: React.CSSProperties = {
   padding: "8px 20px",
@@ -15,19 +16,19 @@ const NEW_ATTEMPT_BUTTON_STYLES: React.CSSProperties = {
 };
 
 const GRADING_BADGE: Record<string, { label: string; bg: string; color: string }> = {
-  "correct": { label: "Correct", bg: "#d1fae5", color: "#065f46" },
-  "slight clarification": { label: "Almost — small clarification needed", bg: "#fef9c3", color: "#713f12" },
-  "small mistake": { label: "Small mistake", bg: "#ffedd5", color: "#7c2d12" },
-  "incorrect": { label: "Incorrect", bg: "#fee2e2", color: "#7f1d1d" },
+  "correct": { label: "🎯 Correct!", bg: "#d1fae5", color: "#065f46" },
+  "slight clarification": { label: "💪 Almost there!", bg: "#fef9c3", color: "#713f12" },
+  "small mistake": { label: "🔄 Small mistake", bg: "#ffedd5", color: "#7c2d12" },
+  "incorrect": { label: "📝 Incorrect", bg: "#fee2e2", color: "#7f1d1d" },
 };
 import ProgressCircle from "../ui/ProgressCircle";
 import Avatar from "../ui/Avatar";
 import type { ChatMessage, ProgressState, Agent } from "../../types/domain";
 
 const PROGRESS_LABELS: Record<string, string> = {
-  walkthrough_started: "Walkthrough started",
-  walkthrough_complete: "Walkthrough complete",
-  challenge_complete: "Challenge complete!",
+  walkthrough_started: "📖 Walkthrough started",
+  walkthrough_complete: "✅ Walkthrough complete",
+  challenge_complete: "🏆 Challenge complete!",
 };
 
 interface MessageBubbleProps {
@@ -113,6 +114,19 @@ export default function MessageBubble({ message, agent, onNewAttempt }: MessageB
   const gradingCategory = !isStudent && !isSystem ? message.metadata?.gradingCategory : undefined;
   const gradingBadge = gradingCategory ? GRADING_BADGE[gradingCategory] : undefined;
 
+  // Confetti triggers
+  const isCorrectAnswer = gradingCategory === "correct";
+  const isChallengeComplete = isProgressFeedback && progressState === "challenge_complete";
+  const [confettiTrigger, setConfettiTrigger] = useState(false);
+
+  useEffect(() => {
+    if (isCorrectAnswer || isChallengeComplete) {
+      // Small delay so the message renders first
+      const timer = setTimeout(() => setConfettiTrigger(true), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isCorrectAnswer, isChallengeComplete]);
+
   const bubble = (
     <div style={bubbleStyles}>
       {isProgressFeedback ? (
@@ -156,25 +170,33 @@ export default function MessageBubble({ message, agent, onNewAttempt }: MessageB
   );
 
   return (
-    <div style={containerStyles}>
-      {showAgentAvatar && (
-        <Avatar
-          src={agent.avatarUrl}
-          name={agent.name}
-          size={32}
-          imageScale={0.8}
-          tintColor={agent.tintColor}
-          style={{ marginTop: 4 }}
+    <div style={{ position: "relative" }}>
+      {confettiTrigger && (
+        <Confetti
+          trigger={confettiTrigger}
+          intensity={isChallengeComplete ? "big" : "small"}
         />
       )}
-      {showAgentAvatar ? (
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <span style={senderNameStyles}>{agent.name}</span>
-          {bubble}
-        </div>
-      ) : (
-        bubble
-      )}
+      <div style={containerStyles}>
+        {showAgentAvatar && (
+          <Avatar
+            src={agent.avatarUrl}
+            name={agent.name}
+            size={32}
+            imageScale={0.8}
+            tintColor={agent.tintColor}
+            style={{ marginTop: 4 }}
+          />
+        )}
+        {showAgentAvatar ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={senderNameStyles}>{agent.name}</span>
+            {bubble}
+          </div>
+        ) : (
+          bubble
+        )}
+      </div>
     </div>
   );
 }
