@@ -2,8 +2,8 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import Card from "../ui/Card";
 import Button from "../ui/Button";
-import { CourseIcon } from "../../theme/courseIcons";
-import { GRAY_900, GRAY_500, PRIMARY } from "../../theme/colors";
+import { CourseIcon, COURSE_COLORS } from "../../theme/courseIcons";
+import { GRAY_900, GRAY_500 } from "../../theme/colors";
 
 interface TeacherCourseCardProps {
   id: string;
@@ -49,10 +49,12 @@ export default function TeacherCourseCard({
     color: GRAY_500,
   };
 
+  const courseColor = COURSE_COLORS[icon] ?? COURSE_COLORS.general;
+
   return (
-    <Card>
+    <Card style={{ borderLeft: `4px solid ${courseColor.main}`, background: courseColor.light }}>
       <div style={headerStyles}>
-        <CourseIcon icon={icon} size={40} color={PRIMARY} />
+        <CourseIcon icon={icon} size={40} color={courseColor.main} />
         <h3 style={titleStyles}>{title}</h3>
       </div>
       <div style={infoSectionStyles}>
@@ -78,7 +80,7 @@ export default function TeacherCourseCard({
       <Button
         variant="primary"
         onClick={onNavigate ?? (() => navigate(`/teacher/course/${id}`))}
-        style={{ padding: "10px 20px", fontSize: 14 }}
+        style={{ padding: "10px 20px", fontSize: 14, background: courseColor.main }}
       >
         View Course
       </Button>

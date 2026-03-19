@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Card from "../ui/Card";
 import Button from "../ui/Button";
 import ProgressBar from "../ui/ProgressBar";
-import { CourseIcon } from "../../theme/courseIcons";
+import { CourseIcon, COURSE_COLORS } from "../../theme/courseIcons";
 import { GRAY_900, GRAY_500, PRIMARY } from "../../theme/colors";
 import SectionIcon from "../ui/SectionIcon";
 import type { Unit, Course, UnitProgress } from "../../types/domain";
@@ -69,10 +69,10 @@ export default function ContinueLearning({ unit, course, progress }: ContinueLea
 
   return (
     <section style={sectionStyles}>
-      <h2 style={headingStyles}><SectionIcon name="book" color={PRIMARY} />Continue Learning</h2>
+      <h2 style={headingStyles}><SectionIcon name="pencil" color={PRIMARY} />Continue Learning</h2>
       <Card>
         <div style={rowStyles}>
-          <CourseIcon icon={course.icon ?? "general"} size={40} color={PRIMARY} />
+          <CourseIcon icon={course.icon ?? "general"} size={40} color={(COURSE_COLORS[course.icon ?? "general"] ?? COURSE_COLORS.general).main} />
           <div style={infoStyles}>
             <h3 style={unitTitleStyles}>{unit.title}</h3>
             <p style={courseNameStyles}>{course.title}</p>
@@ -88,7 +88,7 @@ export default function ContinueLearning({ unit, course, progress }: ContinueLea
           <Button
             variant="primary"
             onClick={() => navigate(`/course/${course.id}/unit/${unit.id}/chat`)}
-            style={{ padding: "10px 20px", fontSize: 14, flexShrink: 0 }}
+            style={{ padding: "10px 20px", fontSize: 14, flexShrink: 0, background: (COURSE_COLORS[course.icon ?? "general"] ?? COURSE_COLORS.general).main }}
           >
             Continue
           </Button>

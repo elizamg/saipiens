@@ -10,6 +10,7 @@ import TeacherFeedbackPanel from "../components/dashboard/TeacherFeedbackPanel";
 import SkeletonBanner from "../components/ui/SkeletonBanner";
 import SkeletonCourseCard from "../components/ui/SkeletonCourseCard";
 import Skeleton from "../components/ui/Skeleton";
+import { WHITE } from "../theme/colors";
 import {
   getCurrentStudent,
   listCoursesForStudent,
@@ -26,9 +27,43 @@ import type {
 } from "../types/domain";
 
 function HomePageSkeleton() {
+  const card = {
+    backgroundColor: WHITE,
+    borderRadius: 16,
+    padding: 24,
+    boxShadow: "0 2px 12px rgba(0, 0, 0, 0.08)",
+  };
   return (
     <>
       <SkeletonBanner />
+      {/* ProgressStats: 4 stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={card}>
+            <Skeleton width={48} height={28} borderRadius={6} />
+            <Skeleton width="70%" height={12} borderRadius={6} style={{ marginTop: 8 }} />
+          </div>
+        ))}
+      </div>
+      {/* ContinueLearning */}
+      <section style={{ marginBottom: 32 }}>
+        <Skeleton width={180} height={20} borderRadius={6} style={{ marginBottom: 16 }} />
+        <div style={card}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <Skeleton width={40} height={40} borderRadius={8} style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Skeleton width="60%" height={16} borderRadius={6} />
+              <Skeleton width="40%" height={12} borderRadius={6} style={{ marginTop: 4 }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <div style={{ flex: 1 }}><Skeleton height={4} borderRadius={4} /></div>
+                <Skeleton width={28} height={12} borderRadius={4} style={{ flexShrink: 0 }} />
+              </div>
+            </div>
+            <Skeleton width={100} height={38} borderRadius={8} style={{ flexShrink: 0 }} />
+          </div>
+        </div>
+      </section>
+      {/* EnrolledCourses */}
       <section style={{ marginBottom: 32 }}>
         <Skeleton width={140} height={20} borderRadius={6} style={{ marginBottom: 16 }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
