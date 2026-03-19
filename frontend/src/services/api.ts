@@ -392,6 +392,21 @@ export function completeKnowledgeAttempt(
   );
 }
 
+export type KnowledgeRespondOutcome = "correct" | "incorrect" | "partial";
+
+export function respondToKnowledgeAnswer(
+  queueItemId: string,
+  answer: string,
+  attemptNumber: number
+): Promise<{
+  outcome: KnowledgeRespondOutcome;
+  tutorFeedback: string;
+  updatedItem?: KnowledgeQueueItem;
+  newQueueItem?: KnowledgeQueueItem;
+}> {
+  return post(`/knowledge-queue/${queueItemId}/respond`, { answer, attemptNumber });
+}
+
 export function clarifyKnowledgeQuestion(
   queueItemId: string,
   question: string

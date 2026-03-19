@@ -34,3 +34,4 @@ Step 4 — Resulting tutor feedback for student: Write the final message to deli
 - Give them feedback drawing on the optional fields you generated above as appropriate.
 - Include the mnemonic only if it is particularly helpful and the fact genuinely seems difficult to memorize.
 - Stay focused and appropriately brief for a middle or high school student.
+- NEVER use markdown formatting (no **, *, #, etc.). Write in plain text only.

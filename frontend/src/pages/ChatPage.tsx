@@ -18,7 +18,7 @@ import {
   getAgent,
   getKnowledgeQueue,
   getKnowledgeProgress,
-  completeKnowledgeAttempt,
+  respondToKnowledgeAnswer,
   listKnowledgeMessages,
   sendKnowledgeMessage,
   clarifyKnowledgeQuestion,
@@ -104,6 +104,7 @@ export default function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [pendingClarify, setPendingClarify] = useState(false);
   const [usedClarifyQuestions, setUsedClarifyQuestions] = useState<Set<string>>(new Set());
+  const [knowledgeAttemptCounts, setKnowledgeAttemptCounts] = useState<Record<string, number>>({});
   const [usedSkillClarifyQuestions, setUsedSkillClarifyQuestions] = useState<Set<string>>(new Set());
   // Track which item IDs we've already loaded messages for (avoid double-load)
   const loadedMessageItemIds = useRef<Set<string>>(new Set());
@@ -551,52 +552,53 @@ export default function ChatPage() {
         return;
       }
 
-      // Grade immediately
+      // Multi-turn answer evaluation (up to 2 attempts before final grade)
+      const itemId = selectedKnowledgeItem.id;
+      const currentAttempts = knowledgeAttemptCounts[itemId] ?? 0;
+      const attemptNumber = currentAttempts + 1;
+      setKnowledgeAttemptCounts((prev) => ({ ...prev, [itemId]: attemptNumber }));
+
       setGradingInProgress(true);
       try {
-        const { updatedItem, tutorFeedback } = await completeKnowledgeAttempt(
-          unitId,
-          student.id,
-          selectedKnowledgeItem.id,
-          content
+        const { outcome, tutorFeedback } = await respondToKnowledgeAnswer(
+          itemId,
+          content,
+          attemptNumber
         );
 
-        setGradedItemIds((prev) => new Set([...prev, selectedKnowledgeItem.id]));
-
-        // Show AI feedback as a tutor chat message
+        // Show tutor feedback as a chat message
         try {
-          const resultContent = tutorFeedback
-            ?? (updatedItem.is_correct ? "Correct! Great work on this topic." : "Good try, we'll revisit this.");
-          const resultMsg = await sendKnowledgeMessage(
-            selectedKnowledgeItem.id,
-            "tutor",
-            resultContent
-          );
-
+          const resultMsg = await sendKnowledgeMessage(itemId, "tutor", tutorFeedback);
           setKnowledgeMessages((prev) => ({
             ...prev,
-            [selectedKnowledgeItem.id]: [...(prev[selectedKnowledgeItem.id] ?? []), resultMsg],
+            [itemId]: [...(prev[itemId] ?? []), resultMsg],
           }));
         } catch {
           // Result message display is non-critical
         }
 
-        // Refresh queue + progress
-        const [updatedQueue, kProgress] = await Promise.all([
-          getKnowledgeQueue(unitId, student.id),
-          getKnowledgeProgress(unitId, student.id),
-        ]);
-        setKnowledgeItems(updatedQueue);
-        setKnowledgeProgress(kProgress);
+        if (outcome === "partial") {
+          // Keep composer enabled — student gets another attempt
+          // No grading, no queue refresh needed
+        } else {
+          // Final grade (correct or incorrect)
+          setGradedItemIds((prev) => new Set([...prev, itemId]));
 
-        // Stay on current item — student clicks next in sidebar
+          // Refresh queue + progress
+          const [updatedQueue, kProgress] = await Promise.all([
+            getKnowledgeQueue(unitId, student.id),
+            getKnowledgeProgress(unitId, student.id),
+          ]);
+          setKnowledgeItems(updatedQueue);
+          setKnowledgeProgress(kProgress);
+        }
       } catch (error) {
-        console.error("Error grading knowledge item:", error);
+        console.error("Error evaluating knowledge answer:", error);
       } finally {
         setGradingInProgress(false);
       }
     },
-    [selectedKnowledgeItemId, selectedKnowledgeItem, student, unitId, knowledgeItemIsActive, knowledgeItemIsGraded, pendingClarify, setSearchParams]
+    [selectedKnowledgeItemId, selectedKnowledgeItem, student, unitId, knowledgeItemIsActive, knowledgeItemIsGraded, pendingClarify, knowledgeAttemptCounts]
   );
 
   const handleAdvanceToNextStage = useCallback(async () => {

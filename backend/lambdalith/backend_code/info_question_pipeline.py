@@ -37,6 +37,57 @@ def grade_info(grade: str, subject: str, information: str, question: str, answer
     return result["is_correct"], result["tutor_feedback"]  # type: ignore
 
 
+RESPOND_TRIES = 3
+
+# Load respond prompt and schema once at module level
+_respond_details = get_prompt_details("gen_info_respond")
+_respond_prompt = Prompt(_respond_details[RAW_PROMPT_KEY])
+_respond_schema = _respond_details[JSON_SCHEMA_KEY]
+
+
+@retry(stop=stop_after_attempt(RESPOND_TRIES))
+def respond_to_knowledge_answer(
+    grade: str,
+    subject: str,
+    information: str,
+    question: str,
+    conversation_history: str,
+    answer: str,
+    attempt_number: int,
+) -> tuple[str, str]:
+    """Evaluate a student's knowledge answer with support for partial responses.
+
+    Returns (outcome, tutor_feedback) where outcome is 'correct', 'incorrect', or 'partial'.
+    'partial' is only returned on attempt 1; attempt 2 always returns 'correct' or 'incorrect'.
+    """
+    content = _respond_prompt.arguments_to_content(
+        GRADE=grade,
+        SUBJECT=subject,
+        INFORMATION=information,
+        QUESTION=question,
+        CONVERSATION_HISTORY=conversation_history,
+        ANSWER=answer,
+        ATTEMPT_NUMBER=str(attempt_number),
+    )
+    response = ai_client.models.generate_content(
+        model=GEM_3_FLASH,
+        contents=content,
+        config={
+            "response_mime_type": "application/json",
+            "response_schema": _respond_schema,
+        },
+    )
+    result = response.parsed
+    outcome = result["outcome"]  # type: ignore
+    # Enforce: attempt 1 always returns "correct" or "partial" (never "incorrect")
+    if attempt_number == 1 and outcome == "incorrect":
+        outcome = "partial"
+    # Enforce: attempt 2 cannot return "partial"
+    if attempt_number >= 2 and outcome == "partial":
+        outcome = "incorrect"
+    return outcome, result["tutor_feedback"]  # type: ignore
+
+
 GEN_QUESTION_TRIES = 3
 
 # Load question-generation prompt and schema once at module level
