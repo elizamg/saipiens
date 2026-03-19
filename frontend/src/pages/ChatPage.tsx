@@ -312,8 +312,8 @@ export default function ChatPage() {
     const threadStages = stagesByThread[selectedThreadId] ?? [];
     if (threadStages.length === 0) return; // stages not loaded yet
 
-    const challengeStage = threadStages.find((s) => s.stageType === "challenge");
-    if (!challengeStage) return;
+    const walkthroughStage = threadStages.find((s) => s.stageType === "walkthrough");
+    if (!walkthroughStage) return;
 
     autoAdvancedBeginThreadIds.current.add(selectedThreadId);
 
@@ -325,7 +325,7 @@ export default function ChatPage() {
         ]);
         setThreads(updatedThreads);
         setUnitProgress(updatedProgress);
-        setSearchParams({ thread: selectedThreadId, stage: challengeStage.id }, { replace: true });
+        setSearchParams({ thread: selectedThreadId, stage: walkthroughStage.id }, { replace: true });
       })
       .catch((err) => console.error("Error auto-advancing begin stage:", err));
   }, [selectedThreadId, stagesByThread, threads, student, courseId, unitId]);
@@ -654,6 +654,39 @@ export default function ChatPage() {
       setSearchParams({ thread: selectedThread.id, stage: walkthroughStage.id }, { replace: true });
     }
   }, [selectedThread, stagesByThread, setSearchParams]);
+
+  const handleSkipWalkthrough = useCallback(async () => {
+    if (!selectedThread) return;
+    const threadStages = stagesByThread[selectedThread.id] ?? [];
+    // Check if any challenge stage has already been encountered (has messages)
+    const hasEncounteredChallenge = encounteredStageIds.some((id) => {
+      const stage = threadStages.find((s) => s.id === id);
+      return stage?.stageType === "challenge";
+    });
+    if (!hasEncounteredChallenge) {
+      // First time — navigate to the existing challenge stage
+      const challengeStage = threadStages.find((s) => s.stageType === "challenge");
+      if (challengeStage) {
+        setEncounteredStageIds((prev) =>
+          prev.includes(challengeStage.id) ? prev : [...prev, challengeStage.id]
+        );
+        setSearchParams({ thread: selectedThread.id, stage: challengeStage.id }, { replace: true });
+      }
+    } else {
+      // Challenge already attempted — create a fresh attempt (potentially new question)
+      try {
+        const newStage = await createNewAttempt(selectedThread.id, "challenge");
+        setStagesByThread((prev) => ({
+          ...prev,
+          [selectedThread.id]: [...(prev[selectedThread.id] ?? []), newStage],
+        }));
+        setEncounteredStageIds((prev) => [...prev, newStage.id]);
+        setSearchParams({ thread: selectedThread.id, stage: newStage.id }, { replace: true });
+      } catch (err) {
+        console.error("Error creating new challenge attempt:", err);
+      }
+    }
+  }, [selectedThread, stagesByThread, encounteredStageIds, setEncounteredStageIds, setSearchParams]);
 
   const [pillText, setPillText] = useState("");
 
@@ -988,7 +1021,13 @@ export default function ChatPage() {
                     TRY WALKTHROUGH
                   </button>
                 ) : currentStage.stageType === "walkthrough" ? (
-                  <span style={stageBadgeStyles}>WALKTHROUGH</span>
+                  <button
+                    type="button"
+                    style={tryWalkthroughButtonStyles}
+                    onClick={handleSkipWalkthrough}
+                  >
+                    SKIP WALKTHROUGH
+                  </button>
                 ) : (
                   <span style={stageBadgeStyles}>{stageLabel(currentStage.stageType)}</span>
                 )
