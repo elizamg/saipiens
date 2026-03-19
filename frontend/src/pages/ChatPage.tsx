@@ -737,35 +737,55 @@ export default function ChatPage() {
     }
   }, [selectedThreadId, selectedThread, setSearchParams]);
 
-  const handleTryWalkthrough = useCallback(() => {
+  const handleTryWalkthrough = useCallback(async () => {
     if (!selectedThread) return;
     const threadStages = stagesByThread[selectedThread.id] ?? [];
-    const walkthroughStage = threadStages.find((s) => s.stageType === "walkthrough");
-    if (walkthroughStage) {
-      setSearchParams({ thread: selectedThread.id, stage: walkthroughStage.id }, { replace: true });
+    const walkthroughStages = threadStages.filter((s) => s.stageType === "walkthrough");
+    try {
+      const allMessages = await listMessages(selectedThread.id);
+      // Find first walkthrough stage with no completion message (unfinished)
+      const unfinished = walkthroughStages.find((stage) => {
+        const stageMessages = allMessages.filter((m) => m.stageId === stage.id);
+        return !stageMessages.some((m) => m.metadata?.isCompletionMessage === true);
+      });
+      if (unfinished) {
+        setEncounteredStageIds((prev) =>
+          prev.includes(unfinished.id) ? prev : [...prev, unfinished.id]
+        );
+        setSearchParams({ thread: selectedThread.id, stage: unfinished.id }, { replace: true });
+      } else {
+        // All walkthroughs finished — create a new one
+        const newStage = await createNewAttempt(selectedThread.id, "walkthrough");
+        setStagesByThread((prev) => ({
+          ...prev,
+          [selectedThread.id]: [...(prev[selectedThread.id] ?? []), newStage],
+        }));
+        setEncounteredStageIds((prev) => [...prev, newStage.id]);
+        setSearchParams({ thread: selectedThread.id, stage: newStage.id }, { replace: true });
+      }
+    } catch (err) {
+      console.error("Error navigating to walkthrough:", err);
     }
-  }, [selectedThread, stagesByThread, setSearchParams]);
+  }, [selectedThread, stagesByThread, setEncounteredStageIds, setSearchParams]);
 
   const handleSkipWalkthrough = useCallback(async () => {
     if (!selectedThread) return;
     const threadStages = stagesByThread[selectedThread.id] ?? [];
-    // Check if any challenge stage has already been encountered (has messages)
-    const hasEncounteredChallenge = encounteredStageIds.some((id) => {
-      const stage = threadStages.find((s) => s.id === id);
-      return stage?.stageType === "challenge";
-    });
-    if (!hasEncounteredChallenge) {
-      // First time — navigate to the existing challenge stage
-      const challengeStage = threadStages.find((s) => s.stageType === "challenge");
-      if (challengeStage) {
+    const challengeStages = threadStages.filter((s) => s.stageType === "challenge");
+    try {
+      const allMessages = await listMessages(selectedThread.id);
+      // Find first challenge stage with no graded message (unfinished = no gradingCategory)
+      const unfinished = challengeStages.find((stage) => {
+        const stageMessages = allMessages.filter((m) => m.stageId === stage.id);
+        return !stageMessages.some((m) => m.metadata?.gradingCategory != null);
+      });
+      if (unfinished) {
         setEncounteredStageIds((prev) =>
-          prev.includes(challengeStage.id) ? prev : [...prev, challengeStage.id]
+          prev.includes(unfinished.id) ? prev : [...prev, unfinished.id]
         );
-        setSearchParams({ thread: selectedThread.id, stage: challengeStage.id }, { replace: true });
-      }
-    } else {
-      // Challenge already attempted — create a fresh attempt (potentially new question)
-      try {
+        setSearchParams({ thread: selectedThread.id, stage: unfinished.id }, { replace: true });
+      } else {
+        // All challenges graded — create a new attempt
         const newStage = await createNewAttempt(selectedThread.id, "challenge");
         setStagesByThread((prev) => ({
           ...prev,
@@ -773,11 +793,11 @@ export default function ChatPage() {
         }));
         setEncounteredStageIds((prev) => [...prev, newStage.id]);
         setSearchParams({ thread: selectedThread.id, stage: newStage.id }, { replace: true });
-      } catch (err) {
-        console.error("Error creating new challenge attempt:", err);
       }
+    } catch (err) {
+      console.error("Error navigating to challenge:", err);
     }
-  }, [selectedThread, stagesByThread, encounteredStageIds, setEncounteredStageIds, setSearchParams]);
+  }, [selectedThread, stagesByThread, setEncounteredStageIds, setSearchParams]);
 
   const [pillText, setPillText] = useState("");
 
