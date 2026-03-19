@@ -150,17 +150,16 @@ Connected the unit ingestion pipeline from upload to question generation:
 
 Commits: `bd43a6c`, `e955c06`, `81ca042`, `16cfe92`, `f59013b`, `cf0ace0`, `30f69a4`
 
-#### 2. Student AI Pipeline Wiring
+#### 2. Student Features (Capstone, optimizations, and integration)
 
-Wired the full student-facing AI experience:
+Wired, designed, and created different parts of the student-facing AI experience:
 
 | Feature | What it does |
 |---------|--------------|
 | Knowledge questions | AI grades answers, generates retry questions on incorrect, manages the queue |
-| Skill walkthroughs | AI tutor walks through problems step-by-step via the scaffolded pipeline |
-| Challenge grading | 4-category rubric (correct / slight clarification / small mistake / incorrect) |
-| Multi-turn knowledge chat | Students get 2 answer attempts with clarifying questions before final grading |
+| Multi-attempt knowledge chat | Students get 2 answer attempts with clarifying questions before final grading |
 | Clarifying questions | AI generates "Ask a question" pills — now generated eagerly with zero extra latency |
+| Capstone section | Created capstone section for students to learn by explaining it back based on existing code (frontend, infra, backend) |
 
 Commits: `bc7ada4`, `08955b7`, `eac5368`, `dc4e687`, `fd15ddf`, `b0a4d25`
 
@@ -329,6 +328,19 @@ Wrote comprehensive documentation covering the full system:
 
    7. Deck and Poster
     Spearheaded deck and poster
+
+
+
+### Ben — Challenege and Walkthrough Questions Integrations and Finalizing
+
+For this sprint, I:
+- Integrated clairifying questions for challenge questions based on code for the knowledge questions 
+- Designed and created the UI for and integrated in the backend+infrastructure having multiple challenge or walkthrough attempts for a single skill question
+- Made the UI for challenge and walkthrough questions based on the UI for knowledge questions
+- Made the "skip walkthrough" and "try walkthrough" features (backend, infra, and frontend)
+- Integrated and did some design work (having a second grey progress bar for partial progress) for the progress bars and circle indicators for skill questions
+- Integrated challenge question and walkthrough question functionality (grading, completion status, messaging, responses, etc)
+
 
 ---
 
