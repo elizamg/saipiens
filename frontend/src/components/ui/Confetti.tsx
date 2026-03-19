@@ -16,29 +16,25 @@ interface Particle {
 }
 
 interface ConfettiProps {
-  /** "small" for correct answer, "big" for unit/challenge completion */
   intensity?: "small" | "big";
-  /** Set to true to trigger a burst */
   trigger: boolean;
 }
 
 export default function Confetti({ intensity = "small", trigger }: ConfettiProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
-  const prevTrigger = useRef(false);
 
   useEffect(() => {
-    if (!trigger || prevTrigger.current === trigger) return;
-    prevTrigger.current = trigger;
+    if (!trigger) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const rect = canvas.parentElement?.getBoundingClientRect();
-    canvas.width = rect?.width ?? 400;
-    canvas.height = rect?.height ?? 400;
+    // Use full viewport
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
     const count = intensity === "big" ? 60 : 30;
     const particles: Particle[] = [];
@@ -46,12 +42,12 @@ export default function Confetti({ intensity = "small", trigger }: ConfettiProps
     for (let i = 0; i < count; i++) {
       const shapes: Particle["shape"][] = ["square", "circle", "strip"];
       particles.push({
-        x: canvas.width / 2 + (Math.random() - 0.5) * canvas.width * 0.3,
-        y: canvas.height * 0.3,
-        vx: (Math.random() - 0.5) * (intensity === "big" ? 12 : 8),
-        vy: -(Math.random() * (intensity === "big" ? 14 : 8) + 2),
+        x: canvas.width / 2 + (Math.random() - 0.5) * canvas.width * 0.4,
+        y: canvas.height * 0.35,
+        vx: (Math.random() - 0.5) * (intensity === "big" ? 14 : 9),
+        vy: -(Math.random() * (intensity === "big" ? 16 : 10) + 3),
         color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        size: Math.random() * 6 + 3,
+        size: Math.random() * 8 + 4,
         rotation: Math.random() * Math.PI * 2,
         rotationSpeed: (Math.random() - 0.5) * 0.3,
         opacity: 1,
@@ -59,7 +55,7 @@ export default function Confetti({ intensity = "small", trigger }: ConfettiProps
       });
     }
 
-    let startTime = performance.now();
+    const startTime = performance.now();
     const duration = intensity === "big" ? 2500 : 1800;
 
     function animate(now: number) {
@@ -70,10 +66,11 @@ export default function Confetti({ intensity = "small", trigger }: ConfettiProps
 
       for (const p of particles) {
         p.x += p.vx;
-        p.vy += 0.3; // gravity
+        p.vy += 0.35; // gravity
         p.y += p.vy;
+        p.vx *= 0.99; // air resistance
         p.rotation += p.rotationSpeed;
-        p.opacity = Math.max(0, 1 - progress * 1.2);
+        p.opacity = Math.max(0, 1 - progress * 1.1);
 
         ctx!.save();
         ctx!.translate(p.x, p.y);
@@ -88,7 +85,7 @@ export default function Confetti({ intensity = "small", trigger }: ConfettiProps
           ctx!.arc(0, 0, p.size / 2, 0, Math.PI * 2);
           ctx!.fill();
         } else {
-          ctx!.fillRect(-p.size / 2, -1, p.size, 2.5);
+          ctx!.fillRect(-p.size / 2, -1.5, p.size, 3);
         }
 
         ctx!.restore();
@@ -106,22 +103,19 @@ export default function Confetti({ intensity = "small", trigger }: ConfettiProps
     };
   }, [trigger, intensity]);
 
-  // Reset trigger tracking when trigger goes back to false
-  useEffect(() => {
-    if (!trigger) prevTrigger.current = false;
-  }, [trigger]);
+  if (!trigger) return null;
 
   return (
     <canvas
       ref={canvasRef}
       style={{
-        position: "absolute",
+        position: "fixed",
         top: 0,
         left: 0,
-        width: "100%",
-        height: "100%",
+        width: "100vw",
+        height: "100vh",
         pointerEvents: "none",
-        zIndex: 100,
+        zIndex: 9999,
       }}
     />
   );
