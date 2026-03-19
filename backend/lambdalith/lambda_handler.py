@@ -2463,6 +2463,29 @@ def _get_unit_context(unit_id: str, student_id: str) -> tuple:
 
 # ---- Knowledge Queue (student-facing) ----
 
+def _activate_knowledge_item(tbl, student_id: str, unit_id: str, item: dict):
+    """Activate a pending knowledge queue item and eagerly generate its clarifying questions."""
+    tbl.update_item(
+        Key={"studentId": student_id, "id": item["id"]},
+        UpdateExpression="SET #s = :s",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": "active"},
+    )
+    # Eagerly generate clarifying questions if missing
+    if not item.get("suggestedQuestions") and item.get("questionPrompt"):
+        try:
+            from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+            subject, grade = _get_unit_context(unit_id, student_id)
+            cqs = gen_clarifying_questions(subject, grade, item["questionPrompt"])
+            tbl.update_item(
+                Key={"studentId": student_id, "id": item["id"]},
+                UpdateExpression="SET suggestedQuestions = :sq",
+                ExpressionAttributeValues={":sq": cqs},
+            )
+        except Exception as e:
+            print(f"[clarifying-questions] eager gen failed for {item['id']}: {e}")
+
+
 def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
     """Auto-create queue items for a student on first access to a unit's queue.
     One item per KnowledgeTopic, first is 'active', rest are 'pending'.
@@ -2557,22 +2580,20 @@ def handle_list_knowledge_queue(event, unit_id: str):
         if "questionPrompt" not in item and "question" in item:
             item["questionPrompt"] = item["question"]
 
-    # Backfill clarifying questions for any visible items missing them
+    # Backfill clarifying questions asynchronously — don't block the response
     needs_backfill = [i for i in visible if not i.get("suggestedQuestions") and i.get("questionPrompt")]
     if needs_backfill:
-        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
-        subject, grade = _get_unit_context(unit_id, student_id)
-        for item in needs_backfill:
-            try:
-                cqs = gen_clarifying_questions(subject, grade, item["questionPrompt"])
-                tbl.update_item(
-                    Key={"studentId": student_id, "id": item["id"]},
-                    UpdateExpression="SET suggestedQuestions = :sq",
-                    ExpressionAttributeValues={":sq": cqs},
-                )
-                item["suggestedQuestions"] = cqs
-            except Exception as e:
-                print(f"[clarifying-questions] backfill failed for {item['id']}: {e}")
+        async_payload = {
+            "_internal": "backfill-clarifying-questions",
+            "studentId": student_id,
+            "unitId": unit_id,
+            "items": [{"id": i["id"], "questionPrompt": i["questionPrompt"]} for i in needs_backfill],
+        }
+        lambda_client.invoke(
+            FunctionName=SELF_FUNCTION_NAME,
+            InvocationType="Event",
+            Payload=json.dumps(async_payload).encode(),
+        )
 
     return resp(200, visible)
 
@@ -2791,17 +2812,11 @@ def handle_respond_knowledge_queue_item(event, queue_item_id: str):
         if i.get("unitId") == unit_id
     ]
 
-    # Advance the next pending item to active immediately (before async retry gen)
+    # Advance the next pending item to active and eagerly gen clarifying questions
     pending = [i for i in all_items if i.get("status") == "pending"]
     pending.sort(key=lambda x: x.get("order", 0))
     if pending:
-        next_item = pending[0]
-        tbl.update_item(
-            Key={"studentId": student_id, "id": next_item["id"]},
-            UpdateExpression="SET #s = :s",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": "active"},
-        )
+        _activate_knowledge_item(tbl, student_id, unit_id, pending[0])
 
     # If incorrect, defer retry question generation to async Lambda
     if not is_correct:
@@ -2910,17 +2925,11 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
         if i.get("unitId") == unit_id
     ]
 
-    # Advance the next pending item to active immediately
+    # Advance the next pending item to active and eagerly gen clarifying questions
     pending = [i for i in all_items if i.get("status") == "pending"]
     pending.sort(key=lambda x: x.get("order", 0))
     if pending:
-        next_item = pending[0]
-        tbl.update_item(
-            Key={"studentId": student_id, "id": next_item["id"]},
-            UpdateExpression="SET #s = :s",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": "active"},
-        )
+        _activate_knowledge_item(tbl, student_id, unit_id, pending[0])
 
     # If incorrect, defer retry question generation to async Lambda
     if not is_correct:
@@ -3331,6 +3340,32 @@ def handle_generate_objectives(event, unit_id: str):
     )
 
     return resp(202, {"unitId": unit_id, "status": "processing"})
+
+
+def _handle_backfill_clarifying_questions_async(payload: dict):
+    """Async handler — generates clarifying questions for items missing them."""
+    student_id = payload["studentId"]
+    unit_id = payload["unitId"]
+    items = payload["items"]
+
+    try:
+        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+        subject, grade = _get_unit_context(unit_id, student_id)
+        tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+
+        for item in items:
+            try:
+                cqs = gen_clarifying_questions(subject, grade, item["questionPrompt"])
+                tbl.update_item(
+                    Key={"studentId": student_id, "id": item["id"]},
+                    UpdateExpression="SET suggestedQuestions = :sq",
+                    ExpressionAttributeValues={":sq": cqs},
+                )
+                print(f"[async] Backfilled clarifying questions for {item['id']}")
+            except Exception as e:
+                print(f"[async clarifying-questions] backfill failed for {item['id']}: {e}")
+    except Exception as e:
+        print(f"[async clarifying-questions] error: {e}")
 
 
 def _handle_generate_grading_report_async(payload: dict):
@@ -4040,6 +4075,9 @@ def handler(event, context):
         return
     if isinstance(event, dict) and event.get("_internal") == "generate-retry-question":
         _handle_generate_retry_question_async(event)
+        return
+    if isinstance(event, dict) and event.get("_internal") == "backfill-clarifying-questions":
+        _handle_backfill_clarifying_questions_async(event)
         return
     if isinstance(event, dict) and event.get("_internal") == "generate-grading-report":
         _handle_generate_grading_report_async(event)
