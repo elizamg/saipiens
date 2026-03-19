@@ -67,6 +67,26 @@ export default function TeacherFeedbackUnitPage() {
     load();
   }, [courseId, studentId, unitId]);
 
+  // Auto-refresh report when page becomes visible and on a 30s interval
+  useEffect(() => {
+    if (!unitId || !studentId) return;
+    const refresh = async () => {
+      try {
+        const r = await getUnitGradingReport(unitId, studentId);
+        if (r) setReport(r);
+      } catch { /* ignore */ }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    const interval = setInterval(refresh, 30000);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(interval);
+    };
+  }, [unitId, studentId]);
+
   async function handleSubmit() {
     if (!unitId || !studentId || !feedbackBody.trim()) return;
     setSaving(true);
