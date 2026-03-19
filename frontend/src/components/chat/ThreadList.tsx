@@ -2,7 +2,7 @@ import { useState } from "react";
 import ProgressCircle from "../ui/ProgressCircle";
 import DualProgressBar from "../ui/DualProgressBar";
 import KnowledgeCircle from "../ui/KnowledgeCircle";
-import { GRAY_900, GRAY_700, GRAY_500, PRIMARY, TRANSPARENT_PRIMARY, WHITE } from "../../theme/colors";
+import { GRAY_300, GRAY_900, GRAY_700, GRAY_500, PRIMARY, TRANSPARENT_PRIMARY, WHITE } from "../../theme/colors";
 import type {
   ThreadWithProgress,
   ObjectiveKind,
@@ -26,6 +26,7 @@ interface ThreadListProps {
   onSelectKnowledgeItem?: (itemId: string) => void;
   onBack?: () => void;
   knowledgeProgress?: KnowledgeProgress;
+  allSkillsComplete?: boolean;
 }
 
 export default function ThreadList({
@@ -37,6 +38,7 @@ export default function ThreadList({
   onSelectKnowledgeItem,
   onBack,
   knowledgeProgress,
+  allSkillsComplete = false,
 }: ThreadListProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
     knowledge: false,
@@ -135,6 +137,7 @@ export default function ThreadList({
         {SECTION_ORDER.filter((k) => k !== "knowledge").map((kind) => {
           const sectionThreads = threadsByKind(kind);
           if (sectionThreads.length === 0) return null;
+          const locked = kind === "capstone" && !allSkillsComplete;
           return (
             <SectionGroup
               key={kind}
@@ -144,7 +147,13 @@ export default function ThreadList({
               isCollapsed={collapsed[kind] ?? false}
               onToggle={() => toggleSection(kind)}
               selectedThreadId={selectedThreadId}
+<<<<<<< Updated upstream
               onSelectThread={onSelectThread}
+=======
+              onSelectThread={locked ? () => {} : onSelectThread}
+              unitProgress={kind === "skill" ? unitProgress : undefined}
+              locked={locked}
+>>>>>>> Stashed changes
             />
           );
         })}
@@ -320,6 +329,11 @@ interface SectionGroupProps {
   onToggle: () => void;
   selectedThreadId?: string;
   onSelectThread: (threadId: string) => void;
+<<<<<<< Updated upstream
+=======
+  unitProgress?: UnitProgress;
+  locked?: boolean;
+>>>>>>> Stashed changes
 }
 
 function SectionGroup({
@@ -329,6 +343,11 @@ function SectionGroup({
   onToggle,
   selectedThreadId,
   onSelectThread,
+<<<<<<< Updated upstream
+=======
+  unitProgress,
+  locked = false,
+>>>>>>> Stashed changes
 }: SectionGroupProps) {
   const completedCount = threads.filter((t) => t.progressState === "challenge_complete").length;
   const attemptedCount = threads.filter((t) => {
@@ -399,16 +418,35 @@ function SectionGroup({
           </span>
         </div>
       )}
-      {!isCollapsed &&
-        threads.map((thread, idx) => (
-          <ThreadItem
-            key={thread.id}
-            thread={thread}
-            displayNumber={idx + 1}
-            isThreadSelected={thread.id === selectedThreadId}
-            onSelectThread={() => onSelectThread(thread.id)}
-          />
-        ))}
+      {!isCollapsed && (
+        <div style={locked ? { opacity: 0.45, pointerEvents: "none" } : undefined}>
+          {threads.map((thread, idx) => (
+            <ThreadItem
+              key={thread.id}
+              thread={thread}
+              displayNumber={idx + 1}
+              isThreadSelected={!locked && thread.id === selectedThreadId}
+              onSelectThread={() => onSelectThread(thread.id)}
+            />
+          ))}
+        </div>
+      )}
+      {locked && !isCollapsed && (
+        <div style={{
+          padding: "4px 16px 8px",
+          fontSize: 11,
+          color: GRAY_300,
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          Complete all skills to unlock
+        </div>
+      )}
     </div>
   );
 }

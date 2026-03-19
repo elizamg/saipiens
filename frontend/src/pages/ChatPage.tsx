@@ -781,15 +781,20 @@ export default function ChatPage() {
     && currentStage?.stageType === "challenge"
     && !currentStageCompleted;
 
+  // ============ Skill/Capstone Completion State ============
+  const allSkillsComplete = threads.length > 0
+    && threads.filter((t) => t.kind === "skill").every((t) => t.progressState === "challenge_complete")
+    && threads.some((t) => t.kind === "skill");
+
   // ============ Unit Completion Celebration ============
   const prevAllCompleteRef = useRef(false);
   useEffect(() => {
     if (threads.length === 0) return;
-    const allSkillsComplete = threads.every((t) => t.progressState === "challenge_complete");
+    const allThreadsDone = threads.every((t) => t.progressState === "challenge_complete");
     const allKnowledgeDone = !knowledgeItems.length || knowledgeItems.every(
       (k) => k.status === "completed_correct" || k.status === "completed_incorrect"
     );
-    const allComplete = allSkillsComplete && allKnowledgeDone;
+    const allComplete = allThreadsDone && allKnowledgeDone;
     if (allComplete && !prevAllCompleteRef.current) {
       setShowCelebration(true);
     }
@@ -998,6 +1003,7 @@ export default function ChatPage() {
         onSelectKnowledgeItem={handleSelectKnowledgeItem}
         onBack={() => (courseId ? navigate(`/course/${courseId}`) : navigate(-1))}
         knowledgeProgress={knowledgeProgress || undefined}
+        allSkillsComplete={allSkillsComplete}
       />
       <main style={{ ...mainStyles, position: "relative" as const }}>
         {knowledgeConfetti && <Confetti trigger={knowledgeConfetti} intensity="small" />}
