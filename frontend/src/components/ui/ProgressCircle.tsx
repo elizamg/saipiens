@@ -9,10 +9,10 @@ interface ProgressCircleProps {
 /**
  * 5-state progress circle indicator:
  * ○  Not started (empty circle)
- * ◔  Walkthrough started (1/4 filled)
- * ◐  Walkthrough complete (1/2 filled)
- * ◕  Challenge started (3/4 filled)
- * ●  Challenge complete (full circle)
+ * ●  Walkthrough started (full grey — student attempted but not complete)
+ * ◐  Walkthrough complete (1/2 green)
+ * ◕  Challenge started (3/4 green)
+ * ●  Challenge complete (full green)
  */
 export default function ProgressCircle({ state, size = 16 }: ProgressCircleProps) {
   const r = size / 2;
@@ -67,10 +67,25 @@ export default function ProgressCircle({ state, size = 16 }: ProgressCircleProps
     );
   }
 
-  // Partial fill: 1/4, 1/2, 3/4
+  if (state === "walkthrough_started") {
+    // Full grey circle — student has attempted but not completed walkthrough
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle
+          cx={cx}
+          cy={cy}
+          r={innerR}
+          fill={GRAY_300}
+          stroke={GRAY_300}
+          strokeWidth={strokeWidth}
+        />
+      </svg>
+    );
+  }
+
+  // Partial fill: 1/2, 3/4
   const fillFraction =
-    state === "walkthrough_started" ? 0.25
-    : state === "walkthrough_complete" ? 0.5
+    state === "walkthrough_complete" ? 0.5
     : 0.75; // challenge_started
 
   // Create a pie slice using SVG arc
@@ -91,10 +106,6 @@ export default function ProgressCircle({ state, size = 16 }: ProgressCircleProps
     "Z",
   ].join(" ");
 
-  // walkthrough_started uses grey fill (student just began, no progress yet)
-  const fillColor = state === "walkthrough_started" ? GRAY_300 : SUCCESS_GREEN;
-  const strokeColor = state === "walkthrough_started" ? GRAY_300 : SUCCESS_GREEN;
-
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <circle
@@ -102,10 +113,10 @@ export default function ProgressCircle({ state, size = 16 }: ProgressCircleProps
         cy={cy}
         r={innerR}
         fill="none"
-        stroke={strokeColor}
+        stroke={SUCCESS_GREEN}
         strokeWidth={strokeWidth}
       />
-      <path d={pathData} fill={fillColor} />
+      <path d={pathData} fill={SUCCESS_GREEN} />
     </svg>
   );
 }

@@ -1509,12 +1509,28 @@ def handle_list_threads_for_unit(event, unit_id: str):
         stages = _load_stages_by_objective(oid) if oid else []
         stage_id = _current_stage_id_from_stages(stages, stage_type)
 
+        # Determine if student has sent any messages (distinguishes auto-advance from real activity).
+        # Only needs a DB check for walkthrough_started (earned==1); other states are unambiguous.
+        if earned == 0:
+            has_student_messages = False
+        elif earned >= 2:
+            has_student_messages = True
+        else:
+            # earned == 1 (walkthrough_started) — check if any messages exist for this thread
+            msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+            msg_result = msgs_tbl.query(
+                KeyConditionExpression=Key("threadId").eq(t.get("id", "")),
+                Limit=1,
+            )
+            has_student_messages = len(msg_result.get("Items", [])) > 0
+
         twp = dict(t)
         twp["earnedStars"] = earned
         twp["progressState"] = _earned_stars_to_progress_state(earned)
         twp["currentStageType"] = stage_type
         twp["currentStageId"] = stage_id
         twp["order"] = order
+        twp["hasStudentMessages"] = has_student_messages
         out.append(twp)
 
     out.sort(key=lambda x: int(x.get("order") or 0))
@@ -1560,12 +1576,25 @@ def handle_get_thread_with_progress(event, thread_id: str):
     stages = _load_stages_by_objective(oid)
     stage_id = _current_stage_id_from_stages(stages, stage_type)
 
+    if earned == 0:
+        has_student_messages = False
+    elif earned >= 2:
+        has_student_messages = True
+    else:
+        msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+        msg_result = msgs_tbl.query(
+            KeyConditionExpression=Key("threadId").eq(thread_id),
+            Limit=1,
+        )
+        has_student_messages = len(msg_result.get("Items", [])) > 0
+
     twp = dict(thread)
     twp["earnedStars"] = earned
     twp["progressState"] = _earned_stars_to_progress_state(earned)
     twp["currentStageType"] = stage_type
     twp["currentStageId"] = stage_id
     twp["order"] = order
+    twp["hasStudentMessages"] = has_student_messages
     return resp(200, twp)
 
 

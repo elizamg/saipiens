@@ -1,12 +1,10 @@
 import { useState } from "react";
 import ProgressCircle from "../ui/ProgressCircle";
-import ProgressBar from "../ui/ProgressBar";
 import DualProgressBar from "../ui/DualProgressBar";
 import KnowledgeCircle from "../ui/KnowledgeCircle";
 import { GRAY_900, GRAY_700, GRAY_500, PRIMARY, TRANSPARENT_PRIMARY, WHITE } from "../../theme/colors";
 import type {
   ThreadWithProgress,
-  UnitProgress,
   ObjectiveKind,
   KnowledgeQueueItem,
   KnowledgeProgress,
@@ -27,7 +25,6 @@ interface ThreadListProps {
   onSelectThread: (threadId: string) => void;
   onSelectKnowledgeItem?: (itemId: string) => void;
   onBack?: () => void;
-  unitProgress?: UnitProgress;
   knowledgeProgress?: KnowledgeProgress;
 }
 
@@ -39,7 +36,6 @@ export default function ThreadList({
   onSelectThread,
   onSelectKnowledgeItem,
   onBack,
-  unitProgress,
   knowledgeProgress,
 }: ThreadListProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
@@ -149,7 +145,6 @@ export default function ThreadList({
               onToggle={() => toggleSection(kind)}
               selectedThreadId={selectedThreadId}
               onSelectThread={onSelectThread}
-              unitProgress={kind === "skill" ? unitProgress : undefined}
             />
           );
         })}
@@ -325,7 +320,6 @@ interface SectionGroupProps {
   onToggle: () => void;
   selectedThreadId?: string;
   onSelectThread: (threadId: string) => void;
-  unitProgress?: UnitProgress;
 }
 
 function SectionGroup({
@@ -335,8 +329,16 @@ function SectionGroup({
   onToggle,
   selectedThreadId,
   onSelectThread,
-  unitProgress,
 }: SectionGroupProps) {
+  const completedCount = threads.filter((t) => t.progressState === "challenge_complete").length;
+  const attemptedCount = threads.filter((t) => {
+    if (t.progressState === "not_started") return false;
+    if (t.progressState === "walkthrough_started") return t.hasStudentMessages === true;
+    return true;
+  }).length;
+  const total = threads.length;
+  const greenPercent = total > 0 ? (completedCount / total) * 100 : 0;
+  const greyPercent = total > 0 ? ((attemptedCount - completedCount) / total) * 100 : 0;
   const sectionHeaderStyles: React.CSSProperties = {
     padding: "12px 16px 0",
     fontSize: 12,
@@ -387,13 +389,13 @@ function SectionGroup({
         </svg>
         {label}
       </div>
-      {unitProgress && (
+      {total > 0 && (
         <div style={progressRowStyles}>
           <div style={{ flex: 1 }}>
-            <ProgressBar percent={unitProgress.progressPercent} height={4} />
+            <DualProgressBar greenPercent={greenPercent} greyPercent={greyPercent} height={4} />
           </div>
           <span style={progressCountStyles}>
-            {unitProgress.completedObjectives}/{unitProgress.totalObjectives}
+            {completedCount}/{total}
           </span>
         </div>
       )}
@@ -455,7 +457,14 @@ function ThreadItem({
       <span style={threadTitleStyles}>
         {thread.kind === "skill" ? `Skill ${displayNumber}` : thread.title}
       </span>
-      <ProgressCircle state={thread.progressState} size={21} />
+      <ProgressCircle
+        state={
+          thread.progressState === "walkthrough_started" && !thread.hasStudentMessages
+            ? "not_started"
+            : thread.progressState
+        }
+        size={21}
+      />
     </div>
   );
 }
