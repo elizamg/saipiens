@@ -2999,6 +2999,12 @@ def handle_list_knowledge_messages(event, queue_item_id: str):
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
 
+    # Verify the queue item belongs to this student
+    kq_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    owner_check = kq_tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    if not owner_check:
+        return resp(403, {"error": "Not found or unauthorized"})
+
     msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
     # Knowledge messages use threadId = "kq-{queueItemId}" to namespace them
     thread_id = f"kq-{queue_item_id}"
@@ -3018,6 +3024,12 @@ def handle_save_knowledge_message(event, queue_item_id: str):
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
+
+    # Verify the queue item belongs to this student
+    kq_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    owner_check = kq_tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    if not owner_check:
+        return resp(403, {"error": "Not found or unauthorized"})
 
     err, body = require_json(event)
     if err:
