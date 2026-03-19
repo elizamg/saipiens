@@ -492,6 +492,43 @@ export default function ChatPage() {
       .finally(() => setIsSending(false));
   }, [capstoneDataLoaded, selectedThreadId, selectedStageId, student, messages.length]);
 
+  // Auto-trigger the first walkthrough message when the thread is opened with no messages.
+  const walkthroughInitializedThreadIds = useRef<Set<string>>(new Set());
+  const [walkthroughDataLoaded, setWalkthroughDataLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!selectedThreadId || !currentStage) {
+      setWalkthroughDataLoaded(false);
+      return;
+    }
+    if (currentStage.stageType === "walkthrough") {
+      setWalkthroughDataLoaded(true);
+    } else {
+      setWalkthroughDataLoaded(false);
+    }
+  }, [selectedThreadId, currentStage]);
+
+  useEffect(() => {
+    if (!walkthroughDataLoaded || !selectedThreadId || !selectedStageId || !student) return;
+    if (walkthroughInitializedThreadIds.current.has(selectedThreadId)) return;
+    if (messages.length > 0) {
+      walkthroughInitializedThreadIds.current.add(selectedThreadId);
+      return;
+    }
+
+    walkthroughInitializedThreadIds.current.add(selectedThreadId);
+    setIsSending(true);
+
+    sendMessage(selectedThreadId, "", selectedStageId, "walkthrough", undefined, undefined, true)
+      .then(({ tutorMessage }) => {
+        const msgs: typeof messages = [];
+        if (tutorMessage) msgs.push(tutorMessage);
+        setMessages(msgs);
+      })
+      .catch((err) => console.error("Error initializing walkthrough:", err))
+      .finally(() => setIsSending(false));
+  }, [walkthroughDataLoaded, selectedThreadId, selectedStageId, student, messages.length]);
+
   const handleSelectThread = useCallback(
     (threadId: string) => {
       const thread = threads.find((t) => t.id === threadId);

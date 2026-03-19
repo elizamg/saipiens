@@ -331,11 +331,12 @@ export function sendMessage(
   stageId?: string,
   stageType?: string,
   clarify?: boolean,
-  capstoneInit?: boolean
+  capstoneInit?: boolean,
+  walkthroughInit?: boolean
 ): Promise<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }> {
   return post<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }>(
     `/threads/${threadId}/messages`,
-    { content, stageId, stageType, ...(clarify ? { clarify: true } : {}), ...(capstoneInit ? { capstoneInit: true } : {}) }
+    { content, stageId, stageType, ...(clarify ? { clarify: true } : {}), ...(capstoneInit ? { capstoneInit: true } : {}), ...(walkthroughInit ? { walkthroughInit: true } : {}) }
   );
 }
 

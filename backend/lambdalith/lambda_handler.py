@@ -2085,9 +2085,10 @@ def handle_send_message(event, thread_id: str):
     stage_type = body.get("stageType")  # client sends this to avoid extra DB lookup
     is_clarify = body.get("clarify") is True
     capstone_init = body.get("capstoneInit") is True  # Allow empty content for capstone initialization
-    if not capstone_init and (not isinstance(content, str) or not content.strip()):
+    walkthrough_init = body.get("walkthroughInit") is True  # Allow empty content for walkthrough initialization
+    if not capstone_init and not walkthrough_init and (not isinstance(content, str) or not content.strip()):
         return resp(400, {"error": "Missing content"})
-    if capstone_init:
+    if capstone_init or walkthrough_init:
         content = content or ""
 
     from concurrent.futures import ThreadPoolExecutor, Future
@@ -2106,7 +2107,7 @@ def handle_send_message(event, thread_id: str):
 
     # Parallelize: save student message + update thread + fetch context + stage + conversation
     def _save_msg():
-        if not capstone_init:
+        if not capstone_init and not walkthrough_init:
             msgs_tbl.put_item(Item=student_msg)
 
     def _update_thread():
@@ -2221,7 +2222,7 @@ def handle_send_message(event, thread_id: str):
                             _complete_challenge_for_student(student_id, objective_id)
                             _trigger_report_stats_update(student_id, ctx["thread"].get("unitId", ""))
 
-    return resp(200, {"studentMessage": None if capstone_init else student_msg, "tutorMessage": tutor_msg})
+    return resp(200, {"studentMessage": None if (capstone_init or walkthrough_init) else student_msg, "tutorMessage": tutor_msg})
 
 
 # ---- Instructor routes ----
