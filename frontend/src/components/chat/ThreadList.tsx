@@ -259,10 +259,11 @@ function KnowledgeSectionGroup({
               onSelect={() => onSelectItem?.(item.id)}
             />
           ))}
-          {knowledgeThreads.map((thread) => (
+          {knowledgeThreads.map((thread, idx) => (
             <ThreadItem
               key={thread.id}
               thread={thread}
+              displayNumber={idx + 1}
               isThreadSelected={thread.id === selectedThreadId}
               onSelectThread={() => onSelectThread?.(thread.id)}
             />
