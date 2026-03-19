@@ -85,6 +85,8 @@ Auto-creates student record on first access. Name is pulled from JWT `given_name
 - **GET** `/threads/{threadId}` → `ChatThread` or 404
 - **GET** `/threads/{threadId}/with-progress` → `ThreadWithProgress` or 404
 
+`ThreadWithProgress` shape includes `hasStudentMessages: bool` — see master document § Chat Model for details.
+
 ### Messages
 - **GET** `/threads/{threadId}/messages?stageId=...` → `ChatMessage[]` (sorted by createdAt asc)
 - **POST** `/threads/{threadId}/messages`

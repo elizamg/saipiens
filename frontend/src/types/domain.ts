@@ -210,6 +210,8 @@ export interface ThreadWithProgress extends ChatThread {
   currentStageType: StageType;
   currentStageId: string;
   order: number;
+  /** True if the student has sent at least one message to this thread. */
+  hasStudentMessages?: boolean;
 }
 
 // ============ Knowledge Types ============

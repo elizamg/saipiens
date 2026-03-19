@@ -330,7 +330,11 @@ function SectionGroup({
   onSelectThread,
 }: SectionGroupProps) {
   const completedCount = threads.filter((t) => t.progressState === "challenge_complete").length;
-  const attemptedCount = threads.filter((t) => t.progressState !== "not_started").length;
+  const attemptedCount = threads.filter((t) => {
+    if (t.progressState === "not_started") return false;
+    if (t.progressState === "walkthrough_started") return t.hasStudentMessages === true;
+    return true;
+  }).length;
   const total = threads.length;
   const greenPercent = total > 0 ? (completedCount / total) * 100 : 0;
   const greyPercent = total > 0 ? ((attemptedCount - completedCount) / total) * 100 : 0;
@@ -449,7 +453,14 @@ function ThreadItem({
       <span style={threadTitleStyles}>
         {thread.kind === "skill" ? `Skill ${thread.order + 1}` : thread.title}
       </span>
-      <ProgressCircle state={thread.progressState} size={21} />
+      <ProgressCircle
+        state={
+          thread.progressState === "walkthrough_started" && !thread.hasStudentMessages
+            ? "not_started"
+            : thread.progressState
+        }
+        size={21}
+      />
     </div>
   );
 }

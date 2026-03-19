@@ -178,6 +178,12 @@ Unit-level progress is computed server-side.
 -   Messages partitioned by threadId
 -   Messages sorted by createdAt ascending
 -   ThreadWithProgress computed server-side
+-   `ThreadWithProgress` includes `hasStudentMessages: bool` — `true` if any messages exist for
+    the thread (Limit=1 ChatMessages query). Only queried for `walkthrough_started` threads
+    (earned == 1); `not_started` is always `false`, `walkthrough_complete`/`challenge_complete`
+    are always `true`. Used by the frontend to distinguish auto-advance from actual user activity
+    (e.g., a skill is auto-advanced to `walkthrough_started` on first open, but the circle and
+    grey progress bar should remain empty until the student sends their first message).
 
 ## Awards & Feedback
 

@@ -478,6 +478,13 @@ export default function ChatPage() {
           if (tutorMessage) next.push(tutorMessage);
           return next;
         });
+        // Optimistically mark this thread as having student messages so the
+        // sidebar circle and grey bar update without waiting for a full thread refresh.
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === selectedThreadId ? { ...t, hasStudentMessages: true } : t
+          )
+        );
         if (isClarifying) {
           setUsedSkillClarifyQuestions((prev) => new Set([...prev, content]));
           return;
