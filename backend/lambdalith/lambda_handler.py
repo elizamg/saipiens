@@ -2637,6 +2637,138 @@ def handle_clarify_knowledge_question(event, queue_item_id: str):
         return resp(500, {"error": "Failed to generate clarifying answer"})
 
 
+def handle_respond_knowledge_queue_item(event, queue_item_id: str):
+    """POST /knowledge-queue/{queueItemId}/respond
+    Body: { "answer": string, "attemptNumber": 1 | 2 }
+    Multi-turn knowledge evaluation. On attempt 1, may return "partial" with feedback
+    instead of grading. On attempt 2, always returns a final binary grade.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    body = json.loads(event.get("body") or "{}")
+    answer = body.get("answer")
+    attempt_number = body.get("attemptNumber", 1)
+    if not answer:
+        return resp(400, {"error": "Missing answer"})
+
+    tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    existing = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    if not existing:
+        return resp_not_found("KnowledgeQueueItem")
+    if existing.get("status") != "active":
+        return resp(400, {"error": "Item is not active"})
+
+    unit_id = existing["unitId"]
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
+
+    # Fetch topic context
+    topic_id = existing.get("knowledgeTopicId")
+    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
+    topic_description = (topic.get("knowledgeTopic", "") if topic else "") or existing.get("questionPrompt", "") or existing.get("question", "")
+    question = existing.get("questionPrompt", "") or existing.get("question", "")
+
+    subject, grade = _get_unit_context(unit_id, student_id)
+
+    # Build conversation history from persisted messages
+    msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+    thread_id = f"kq-{queue_item_id}"
+    all_msgs = query_all(msgs_tbl, key_condition=Key("threadId").eq(thread_id), scan_forward=True)
+    conversation_lines = []
+    for m in all_msgs:
+        role_label = "Student" if m.get("role") == "student" else "Tutor"
+        conversation_lines.append(f"{role_label}: {m.get('content', '')}")
+    conversation_history = "\n".join(conversation_lines) if conversation_lines else "(no prior messages)"
+
+    # Call the multi-turn evaluation LLM
+    try:
+        from backend_code.info_question_pipeline import respond_to_knowledge_answer
+        outcome, tutor_feedback = respond_to_knowledge_answer(
+            grade=grade,
+            subject=subject,
+            information=topic_description,
+            question=question,
+            conversation_history=conversation_history,
+            answer=answer,
+            attempt_number=attempt_number,
+        )
+    except Exception as e:
+        print(f"[respond error] knowledge queue item {queue_item_id}: {e}")
+        return resp(500, {"error": "Evaluation failed"})
+
+    result: dict = {"outcome": outcome, "tutorFeedback": tutor_feedback}
+
+    # If partial, return feedback without grading — student gets another attempt
+    if outcome == "partial":
+        return resp(200, result)
+
+    # Final grade: correct or incorrect — same completion logic as /complete
+    now = iso_now()
+    is_correct = outcome == "correct"
+    new_status = "completed_correct" if is_correct else "completed_incorrect"
+    tbl.update_item(
+        Key={"studentId": student_id, "id": queue_item_id},
+        UpdateExpression="SET #s = :s, is_correct = :ic, updatedAt = :u, completedAt = :c",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": new_status, ":ic": is_correct, ":u": now, ":c": now},
+    )
+    updated_item = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    result["updatedItem"] = updated_item
+
+    # If incorrect, create a retry item with a newly generated question
+    if not is_correct:
+        all_items = query_all(tbl, key_condition=Key("studentId").eq(student_id))
+        unit_items = [i for i in all_items if i.get("unitId") == unit_id]
+        max_order = max((i.get("order", 0) for i in unit_items), default=0)
+
+        retry_question = question
+        try:
+            from backend_code.info_question_pipeline import generate_info_question
+            retry_question = generate_info_question(
+                grade=grade,
+                subject=subject,
+                description=topic_description,
+            )
+        except Exception as e:
+            print(f"[retry question gen error] {queue_item_id}: {e}")
+
+        max_label = max((i.get("labelIndex", 0) for i in unit_items), default=0)
+        retry_id = str(uuid.uuid4())
+        new_queue_item = {
+            "studentId": student_id,
+            "id": retry_id,
+            "unitId": unit_id,
+            "knowledgeTopicId": existing["knowledgeTopicId"],
+            "labelIndex": max_label + 1,
+            "order": max_order + 1,
+            "status": "pending",
+            "questionPrompt": retry_question,
+            "createdAt": now,
+        }
+        tbl.put_item(Item=new_queue_item)
+        result["newQueueItem"] = new_queue_item
+
+    # Advance the next pending item to active
+    all_items = query_all(tbl, key_condition=Key("studentId").eq(student_id))
+    unit_items = [i for i in all_items if i.get("unitId") == unit_id]
+    pending = [i for i in unit_items if i.get("status") == "pending"]
+    pending.sort(key=lambda x: x.get("order", 0))
+
+    if pending:
+        next_item = pending[0]
+        tbl.update_item(
+            Key={"studentId": student_id, "id": next_item["id"]},
+            UpdateExpression="SET #s = :s",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":s": "active"},
+        )
+
+    return resp(200, result)
+
+
 def handle_complete_knowledge_queue_item(event, queue_item_id: str):
     """POST /knowledge-queue/{queueItemId}/complete
     Body: { "answer": string }
@@ -3773,6 +3905,12 @@ def handler(event, context):
             if not item_id:
                 return resp(400, {"error": "Missing itemId"})
             return handle_clarify_knowledge_question(event, item_id)
+
+        if method == "POST" and path.endswith("/respond") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_respond_knowledge_queue_item(event, item_id)
 
         if method == "POST" and path.endswith("/complete") and path.startswith("/knowledge-queue/"):
             item_id = params.get("itemId")
