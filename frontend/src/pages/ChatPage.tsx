@@ -673,7 +673,9 @@ export default function ChatPage() {
     return messages;
   }, [messages, currentStage, currentStageCompleted, selectedThreadId, showNewAttemptButton]);
 
-  const skillNumber = isSkillThread && selectedThread ? selectedThread.order + 1 : 0;
+  const skillNumber = isSkillThread && selectedThread
+    ? threads.filter((t) => t.kind === "skill").sort((a, b) => a.order - b.order).findIndex((t) => t.id === selectedThread.id) + 1
+    : 0;
   const attemptNumber = currentNavIndex >= 0 ? currentNavIndex + 1 : 0;
 
   const showCurrentQuestion = currentStage?.stageType === "challenge"

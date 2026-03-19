@@ -217,6 +217,19 @@ export async function changePassword(oldPassword: string, newPassword: string): 
   });
 }
 
+/** Update the Cognito 'name' attribute so the JWT stays in sync with DynamoDB. */
+export async function updateCognitoName(newName: string): Promise<void> {
+  const user = userPool.getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+  await new Promise<void>((resolve, reject) => {
+    user.getSession((err: Error | null, session: CognitoUserSession | null) => {
+      if (err || !session) return reject(err ?? new Error("No session"));
+      const attr = new CognitoUserAttribute({ Name: "name", Value: newName });
+      user.updateAttributes([attr], (e) => (e ? reject(e) : resolve()));
+    });
+  });
+}
+
 /** Decode email from the current user's ID token JWT claims. */
 export async function getCurrentUserEmail(): Promise<string | null> {
   const token = await getIdToken();

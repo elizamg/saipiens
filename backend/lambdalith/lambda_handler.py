@@ -27,6 +27,25 @@ s3 = boto3.client(
 lambda_client = boto3.client("lambda")
 
 UPLOAD_BUCKET = "sapiens-upload-staging-681816819209"
+
+
+def _presign_avatar_url(avatar_url):
+    """If avatarUrl is an S3 key (avatars/...), return a presigned GET URL. Otherwise pass through."""
+    if not avatar_url or not isinstance(avatar_url, str):
+        return avatar_url
+    # Handle both raw keys and full S3 URLs stored previously
+    if avatar_url.startswith("avatars/"):
+        s3_key = avatar_url
+    elif f"{UPLOAD_BUCKET}.s3" in avatar_url:
+        # Extract key from https://bucket.s3.region.amazonaws.com/key
+        s3_key = avatar_url.split(".amazonaws.com/", 1)[-1]
+    else:
+        return avatar_url
+    return s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": UPLOAD_BUCKET, "Key": s3_key},
+        ExpiresIn=3600,
+    )
 SELF_FUNCTION_NAME = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "sapiens-api")
 
 # ---- Tables (env vars) ----
@@ -450,16 +469,7 @@ def handle_current_student(event):
         _audit_log("student_first_login", sub=sub, method="GET", path="/current-student", status=200)
 
     if item:
-        # Update name from JWT if it changed
-        jwt_name = _name_from_claims(event)
-        if jwt_name != "Unknown" and item.get("name") != jwt_name:
-            item["name"] = jwt_name
-            students.update_item(
-                Key={"id": sub},
-                UpdateExpression="SET #n = :n, updatedAt = :u",
-                ExpressionAttributeNames={"#n": "name"},
-                ExpressionAttributeValues={":n": jwt_name, ":u": iso_now()},
-            )
+        item["avatarUrl"] = _presign_avatar_url(item.get("avatarUrl"))
         return resp(200, item)
 
     now = iso_now()
@@ -1812,16 +1822,7 @@ def handle_current_instructor(event):
         _audit_log("instructor_first_login", sub=instructor_id, method="GET", path="/current-instructor", status=200)
 
     if item:
-        # Update name from JWT if it changed (e.g. user edited Cognito profile)
-        jwt_name = _name_from_claims(event)
-        if jwt_name != "Unknown" and item.get("name") != jwt_name:
-            item["name"] = jwt_name
-            instructors_tbl.update_item(
-                Key={"id": instructor_id},
-                UpdateExpression="SET #n = :n, updatedAt = :u",
-                ExpressionAttributeNames={"#n": "name"},
-                ExpressionAttributeValues={":n": jwt_name, ":u": iso_now()},
-            )
+        item["avatarUrl"] = _presign_avatar_url(item.get("avatarUrl"))
         return resp(200, item)
 
     # Auto-create instructor record on first access
@@ -3619,6 +3620,7 @@ def handle_update_profile(event):
         ExpressionAttributeValues=attr_values,
     )
     item.update(updates)
+    item["avatarUrl"] = _presign_avatar_url(item.get("avatarUrl"))
     return resp(200, item)
 
 
@@ -3655,9 +3657,7 @@ def handle_avatar_upload_url(event):
         },
         ExpiresIn=900,
     )
-    public_url = f"https://{UPLOAD_BUCKET}.s3.us-west-1.amazonaws.com/{s3_key}"
-
-    return resp(200, {"uploadUrl": upload_url, "publicUrl": public_url})
+    return resp(200, {"uploadUrl": upload_url, "publicUrl": s3_key})
 
 
 # ---- Main router ----

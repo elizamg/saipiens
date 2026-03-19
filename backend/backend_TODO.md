@@ -111,9 +111,10 @@ Add these in Vercel → Project Settings → Environment Variables:
 Note: `VITE_DEV_STUDENT_ID` and `VITE_DEV_TOKEN` are no longer used by the frontend and can be removed.
 
 ## P) ~~Profile Update Endpoints~~ ✅ DONE
-- `PATCH /me` — updates name and/or avatarUrl for the current user (student or instructor). Determines role from JWT, updates the appropriate table.
-- `POST /me/avatar-upload-url` — returns a pre-signed S3 PUT URL for avatar upload and the public URL. Avatars stored at `avatars/{userId}/{filename}` in the upload staging bucket.
+- `PATCH /me` — updates name and/or avatarUrl for the current user (student or instructor). Determines role from JWT, updates the appropriate table. Returns the user record with avatarUrl presigned for GET.
+- `POST /me/avatar-upload-url` — returns a pre-signed S3 PUT URL for avatar upload and the S3 key (stored as avatarUrl in DynamoDB). Avatars stored at `avatars/{userId}/{filename}` in the upload staging bucket. The S3 bucket is private; `GET /current-student` and `GET /current-instructor` presign the avatarUrl on read.
 - Both routes added to API Gateway with JWT authorization and deployed to the `prod` stage.
+- Name changes also update the Cognito `name` attribute from the frontend to keep JWTs in sync.
 
 ---
 

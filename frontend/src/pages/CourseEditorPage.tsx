@@ -146,13 +146,17 @@ export default function CourseEditorPage() {
             const objs = await listTeacherObjectives(unitId);
             setObjectives(objs);
             setEnabledIds(new Set(objs.filter((o) => o.enabled !== false).map((o) => o.id)));
-            setIdentifiedKnowledge([]);
             setGenerating(false);
             // Fetch knowledge topics for the newly ready unit
             try {
               const topics = await listKnowledgeTopics(unitId);
               setKnowledgeTopics(topics);
               setEnabledTopicIds(new Set(topics.filter((t) => t.enabled !== false).map((t) => t.id)));
+            } catch { /* ignore */ }
+            // Re-fetch identified knowledge so ungenerated items still show
+            try {
+              const data = await getIdentifiedKnowledge(unitId);
+              setIdentifiedKnowledge(data.identifiedKnowledge);
             } catch { /* ignore */ }
             return;
           }
@@ -428,10 +432,17 @@ export default function CourseEditorPage() {
     return selectedUngeneratedIndices.has(globalIdx);
   }).length;
 
+  const skillObjs = objectives.filter((o) => o.kind === "skill");
+  const ungeneratedSkillItems = ungeneratedItems.filter((i) => i.type === "skill");
   const enabledCount = isReviewMode
     ? selectedReviewIndices.size
-    : enabledIds.size + enabledTopicIds.size;
-  const totalCount = isReviewMode ? identifiedKnowledge.length : objectives.length + knowledgeTopics.length;
+    : skillObjs.filter((o) => enabledIds.has(o.id)).length
+      + ungeneratedSkillItems.filter((_, i) => selectedUngeneratedIndices.has(ungeneratedItems.indexOf(ungeneratedSkillItems[i]))).length
+      + enabledTopicIds.size
+      + ungeneratedKnowledgeSelectedCount;
+  const totalCount = isReviewMode
+    ? identifiedKnowledge.length
+    : skillObjs.length + ungeneratedSkillItems.length + knowledgeTopics.length + ungeneratedKnowledgeItems.length;
 
   const renderObjectiveRow = (
     id: string,
@@ -640,7 +651,7 @@ export default function CourseEditorPage() {
             </>
           ) : (
             <>
-              {SECTION_ORDER.filter((k) => k !== "knowledge").map((kind) => {
+              {(["skill"] as ObjectiveKind[]).map((kind) => {
                 const items = grouped[kind];
                 const ungeneratedForKind = ungeneratedItems
                   .map((item, i) => ({ ...item, _uIdx: i }))
