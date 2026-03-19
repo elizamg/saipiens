@@ -8,6 +8,7 @@ import type {
   ObjectiveKind,
   KnowledgeQueueItem,
   KnowledgeProgress,
+  UnitProgress,
 } from "../../types/domain";
 
 const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
@@ -26,6 +27,7 @@ interface ThreadListProps {
   onSelectKnowledgeItem?: (itemId: string) => void;
   onBack?: () => void;
   knowledgeProgress?: KnowledgeProgress;
+  unitProgress?: UnitProgress;
   allSkillsComplete?: boolean;
 }
 
@@ -38,6 +40,7 @@ export default function ThreadList({
   onSelectKnowledgeItem,
   onBack,
   knowledgeProgress,
+  unitProgress,
   allSkillsComplete = false,
 }: ThreadListProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({

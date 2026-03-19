@@ -1504,7 +1504,12 @@ def handle_list_threads_for_unit(event, unit_id: str):
 
         p = prog_by_obj.get(oid) or _default_progress(student_id, oid or "")
         earned = int(p.get("earnedStars") or 0)
+        obj_kind = obj.get("kind", "skill")
         stage_type = p.get("currentStageType") or _compute_current_stage_type(earned)
+
+        # Capstone only has a challenge stage — override begin/walkthrough
+        if obj_kind == "capstone" and stage_type in ("begin", "walkthrough"):
+            stage_type = "challenge"
 
         stages = _load_stages_by_objective(oid) if oid else []
         stage_id = _current_stage_id_from_stages(stages, stage_type)
@@ -1571,7 +1576,12 @@ def handle_get_thread_with_progress(event, thread_id: str):
     if not p:
         p = _default_progress(student_id, oid)
     earned = int(p.get("earnedStars") or 0)
+    obj_kind = obj.get("kind", "skill")
     stage_type = p.get("currentStageType") or _compute_current_stage_type(earned)
+
+    # Capstone only has a challenge stage — override begin/walkthrough
+    if obj_kind == "capstone" and stage_type in ("begin", "walkthrough"):
+        stage_type = "challenge"
 
     stages = _load_stages_by_objective(oid)
     stage_id = _current_stage_id_from_stages(stages, stage_type)
@@ -1782,10 +1792,16 @@ def _call_tutor_pipeline(
                     capstone_meta = identify_weakest_skill(
                         dynamodb, T, IDX, unit_id, student_id
                     )
+                    # Store skill context and update thread title to show the chosen topic
+                    skill_title = capstone_meta.get("title", "Capstone")
+                    thread_key = thread_record.get("id", f"thread-{objective.get('id', '')}")
                     thread_tbl.update_item(
-                        Key={"id": thread_record.get("id", f"thread-{objective.get('id', '')}")},
-                        UpdateExpression="SET capstoneSkillContext = :ctx",
-                        ExpressionAttributeValues={":ctx": capstone_meta},
+                        Key={"id": thread_key},
+                        UpdateExpression="SET capstoneSkillContext = :ctx, title = :t",
+                        ExpressionAttributeValues={
+                            ":ctx": capstone_meta,
+                            ":t": f"Teach: {skill_title}",
+                        },
                     )
 
                 result = capstone_teach_step(
@@ -1895,8 +1911,11 @@ def handle_send_message(event, thread_id: str):
     stage_id = body.get("stageId")
     stage_type = body.get("stageType")  # client sends this to avoid extra DB lookup
     is_clarify = body.get("clarify") is True
-    if not isinstance(content, str) or not content.strip():
+    capstone_init = body.get("capstoneInit") is True  # Allow empty content for capstone initialization
+    if not capstone_init and (not isinstance(content, str) or not content.strip()):
         return resp(400, {"error": "Missing content"})
+    if capstone_init:
+        content = content or ""
 
     from concurrent.futures import ThreadPoolExecutor, Future
 
@@ -1914,7 +1933,8 @@ def handle_send_message(event, thread_id: str):
 
     # Parallelize: save student message + update thread + fetch context + stage + conversation
     def _save_msg():
-        msgs_tbl.put_item(Item=student_msg)
+        if not capstone_init:
+            msgs_tbl.put_item(Item=student_msg)
 
     def _update_thread():
         try:
@@ -2028,7 +2048,7 @@ def handle_send_message(event, thread_id: str):
                             _complete_challenge_for_student(student_id, objective_id)
                             _trigger_report_stats_update(student_id, ctx["thread"].get("unitId", ""))
 
-    return resp(200, {"studentMessage": student_msg, "tutorMessage": tutor_msg})
+    return resp(200, {"studentMessage": None if capstone_init else student_msg, "tutorMessage": tutor_msg})
 
 
 # ---- Instructor routes ----
