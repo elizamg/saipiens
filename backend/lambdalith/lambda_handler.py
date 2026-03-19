@@ -27,6 +27,25 @@ s3 = boto3.client(
 lambda_client = boto3.client("lambda")
 
 UPLOAD_BUCKET = "sapiens-upload-staging-681816819209"
+
+
+def _presign_avatar_url(avatar_url):
+    """If avatarUrl is an S3 key (avatars/...), return a presigned GET URL. Otherwise pass through."""
+    if not avatar_url or not isinstance(avatar_url, str):
+        return avatar_url
+    # Handle both raw keys and full S3 URLs stored previously
+    if avatar_url.startswith("avatars/"):
+        s3_key = avatar_url
+    elif f"{UPLOAD_BUCKET}.s3" in avatar_url:
+        # Extract key from https://bucket.s3.region.amazonaws.com/key
+        s3_key = avatar_url.split(".amazonaws.com/", 1)[-1]
+    else:
+        return avatar_url
+    return s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": UPLOAD_BUCKET, "Key": s3_key},
+        ExpiresIn=3600,
+    )
 SELF_FUNCTION_NAME = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "sapiens-api")
 
 # ---- Tables (env vars) ----
@@ -450,16 +469,7 @@ def handle_current_student(event):
         _audit_log("student_first_login", sub=sub, method="GET", path="/current-student", status=200)
 
     if item:
-        # Update name from JWT if it changed
-        jwt_name = _name_from_claims(event)
-        if jwt_name != "Unknown" and item.get("name") != jwt_name:
-            item["name"] = jwt_name
-            students.update_item(
-                Key={"id": sub},
-                UpdateExpression="SET #n = :n, updatedAt = :u",
-                ExpressionAttributeNames={"#n": "name"},
-                ExpressionAttributeValues={":n": jwt_name, ":u": iso_now()},
-            )
+        item["avatarUrl"] = _presign_avatar_url(item.get("avatarUrl"))
         return resp(200, item)
 
     now = iso_now()
@@ -743,6 +753,8 @@ def handle_get_unit_progress(event, unit_id: str):
         key_condition=Key("unitId").eq(unit_id),
         scan_forward=True,
     )
+    # Exclude disabled objectives from progress counting
+    objectives = [o for o in objectives if o.get("enabled") is not False]
 
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     all_prog = query_all(
@@ -941,21 +953,7 @@ def handle_get_unit_grading_report(event, unit_id: str):
     got = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id})
     existing = got.get("Item")
     if existing:
-        return resp(200, {
-            "id": existing["id"],
-            "unitId": unit_id,
-            "studentId": student_id,
-            "summary": existing.get("teacherSummary", ""),
-            "createdAt": existing.get("createdAt", ""),
-            "skillCompleted": existing.get("skillCompleted", 0),
-            "skillTotal": existing.get("skillTotal", 0),
-            "skillCompletedBeforeDeadline": existing.get("skillCompletedBeforeDeadline", 0),
-            "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
-            "knowledgeTotal": existing.get("knowledgeTotal", 0),
-            "deadline": existing.get("deadline", ""),
-            "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
-            "objectiveDetails": existing.get("objectiveDetails", []),
-        })
+        return resp(200, _format_grading_report_response(existing, is_teacher=True))
 
     # Generate on-demand: gather data
     units_tbl = dynamodb.Table(T["UNITS"])
@@ -1048,28 +1046,34 @@ def handle_get_unit_grading_report(event, unit_id: str):
         1 for attempts in by_topic.values()
         if any(a.get("status") == "completed_correct" for a in attempts)
     )
-
-    # Generate report
-    from backend_code.grading_report_pipeline import generate_teacher_summary, generate_student_summary
-
-    teacher_summary = generate_teacher_summary(
-        unit_title=unit.get("title", ""),
-        course_title=course.get("title", ""),
-        objectives_data=objectives_data,
-        knowledge_data=knowledge_data,
-    )
-    student_summary = generate_student_summary(
-        unit_title=unit.get("title", ""),
-        course_title=course.get("title", ""),
-        objectives_data=objectives_data,
-        knowledge_data=knowledge_data,
-    )
+    knowledge_attempts = len([qi for qi in unit_kq if qi.get("status", "").startswith("completed_")])
 
     # Deadline completion status
     all_completed = skill_completed == skill_total and skill_total > 0
     completed_before_deadline = None
     if deadline and all_completed and latest_completion_ts:
         completed_before_deadline = latest_completion_ts <= deadline
+
+    # On-time percentage: what fraction of skills were completed before the deadline
+    on_time_pct = None
+    if deadline and skill_total > 0:
+        on_time_pct = round(skill_completed_before_deadline / skill_total * 100)
+
+    # Generate report — parallelize teacher and student summaries
+    from concurrent.futures import ThreadPoolExecutor
+    from backend_code.grading_report_pipeline import generate_teacher_summary, generate_student_summary
+
+    summary_kwargs = dict(
+        unit_title=unit.get("title", ""),
+        course_title=course.get("title", ""),
+        objectives_data=objectives_data,
+        knowledge_data=knowledge_data,
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        teacher_future = executor.submit(generate_teacher_summary, **summary_kwargs)
+        student_future = executor.submit(generate_student_summary, **summary_kwargs)
+    teacher_summary = teacher_future.result()
+    student_summary = student_future.result()
 
     # Store
     report_id = str(uuid.uuid4())
@@ -1086,28 +1090,166 @@ def handle_get_unit_grading_report(event, unit_id: str):
         "skillCompletedBeforeDeadline": skill_completed_before_deadline,
         "knowledgeCorrect": knowledge_correct,
         "knowledgeTotal": knowledge_total,
+        "knowledgeAttempts": knowledge_attempts,
         "deadline": deadline or "",
         "completedBeforeDeadline": completed_before_deadline,
+        "onTimePct": on_time_pct,
+        "completionDate": latest_completion_ts or "",
         "objectiveDetails": objective_details,
         "createdAt": now,
     }
     gr_tbl.put_item(Item=report_item)
 
-    return resp(200, {
-        "id": report_id,
-        "unitId": unit_id,
-        "studentId": student_id,
-        "summary": teacher_summary,
-        "createdAt": now,
-        "skillCompleted": skill_completed,
-        "skillTotal": skill_total,
-        "skillCompletedBeforeDeadline": skill_completed_before_deadline,
-        "knowledgeCorrect": knowledge_correct,
-        "knowledgeTotal": knowledge_total,
-        "deadline": deadline or "",
-        "completedBeforeDeadline": completed_before_deadline,
-        "objectiveDetails": objective_details,
-    })
+    return resp(200, _format_grading_report_response(report_item, is_teacher=True))
+
+
+def _format_grading_report_response(report: dict, is_teacher: bool = False) -> dict:
+    """Format a grading report item for API response."""
+    return {
+        "id": report["id"],
+        "unitId": report["unitId"],
+        "studentId": report["studentId"],
+        "summary": report.get("teacherSummary" if is_teacher else "studentSummary", ""),
+        "createdAt": report.get("createdAt", ""),
+        "skillCompleted": report.get("skillCompleted", 0),
+        "skillTotal": report.get("skillTotal", 0),
+        "skillCompletedBeforeDeadline": report.get("skillCompletedBeforeDeadline", 0),
+        "knowledgeCorrect": report.get("knowledgeCorrect", 0),
+        "knowledgeTotal": report.get("knowledgeTotal", 0),
+        "knowledgeAttempts": report.get("knowledgeAttempts", 0),
+        "deadline": report.get("deadline", ""),
+        "completedBeforeDeadline": report.get("completedBeforeDeadline"),
+        "onTimePct": report.get("onTimePct"),
+        "completionDate": report.get("completionDate", ""),
+        "objectiveDetails": report.get("objectiveDetails", []),
+        "status": report.get("status", "ready"),
+    }
+
+
+def _trigger_report_stats_update(student_id: str, unit_id: str):
+    """Fire-and-forget async Lambda to update grading report stats."""
+    if not unit_id:
+        return
+    try:
+        lambda_client.invoke(
+            FunctionName=SELF_FUNCTION_NAME,
+            InvocationType="Event",
+            Payload=json.dumps({
+                "_internal": "update-report-stats",
+                "studentId": student_id,
+                "unitId": unit_id,
+            }).encode(),
+        )
+    except Exception:
+        pass  # Non-critical
+
+
+def _update_grading_report_stats(student_id: str, unit_id: str):
+    """Update just the stats on a cached grading report (no AI regen).
+    Called after knowledge grading or skill progress changes."""
+    gr_tbl = dynamodb.Table(T["GRADING_REPORTS"])
+    existing = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id}).get("Item")
+    if not existing:
+        return  # No report to update yet
+
+    # Gather fresh stats
+    objectives = query_all(
+        dynamodb.Table(T["OBJECTIVES"]),
+        index_name=IDX["UNIT_OBJECTIVES"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    all_prog = query_all(
+        dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"]),
+        key_condition=Key("studentId").eq(student_id),
+    )
+    obj_id_set = {o.get("id") for o in objectives if o.get("id")}
+    progress_map = {p["objectiveId"]: p for p in all_prog if p.get("objectiveId") in obj_id_set}
+
+    all_kq = query_all(
+        dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"]),
+        key_condition=Key("studentId").eq(student_id),
+    )
+    unit_kq = [qi for qi in all_kq if qi.get("unitId") == unit_id]
+
+    topics = query_all(
+        dynamodb.Table(T["KNOWLEDGE_TOPICS"]),
+        index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+        key_condition=Key("unitId").eq(unit_id),
+    )
+    topics_map = {t["id"]: t for t in topics if t.get("id")}
+
+    unit = dynamodb.Table(T["UNITS"]).get_item(Key={"id": unit_id}).get("Item") or {}
+    deadline = unit.get("deadline")
+
+    # Compute skill stats
+    skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
+    skill_total = len(skill_objs)
+    skill_completed = 0
+    skill_completed_before_deadline = 0
+    latest_completion_ts = None
+    objective_details = []
+    for o in skill_objs:
+        p = progress_map.get(o.get("id"), {})
+        completed = int(p.get("earnedStars", 0)) >= 3 or p.get("currentStageType") == "challenge"
+        ts = p.get("updatedAt") or p.get("createdAt") if completed else None
+        detail = {"title": o.get("title", ""), "completed": completed, "completedAt": ts or ""}
+        if completed:
+            skill_completed += 1
+            if ts and (latest_completion_ts is None or ts > latest_completion_ts):
+                latest_completion_ts = ts
+            if deadline and ts and ts <= deadline:
+                skill_completed_before_deadline += 1
+                detail["beforeDeadline"] = True
+            elif deadline and ts:
+                detail["beforeDeadline"] = False
+        objective_details.append(detail)
+
+    # Knowledge stats
+    by_topic: dict[str, list[dict]] = {}
+    for qi in unit_kq:
+        tid = qi.get("knowledgeTopicId", "")
+        by_topic.setdefault(tid, []).append(qi)
+    knowledge_total = len(topics_map)
+    knowledge_correct = sum(
+        1 for attempts in by_topic.values()
+        if any(a.get("status") == "completed_correct" for a in attempts)
+    )
+    knowledge_attempts = len([qi for qi in unit_kq if qi.get("status", "").startswith("completed_")])
+
+    all_completed = skill_completed == skill_total and skill_total > 0
+    completed_before_deadline = None
+    if deadline and all_completed and latest_completion_ts:
+        completed_before_deadline = latest_completion_ts <= deadline
+    on_time_pct = None
+    if deadline and skill_total > 0:
+        on_time_pct = round(skill_completed_before_deadline / skill_total * 100)
+
+    # Update cached report in-place
+    gr_tbl.update_item(
+        Key={"studentId": student_id, "unitId": unit_id},
+        UpdateExpression=(
+            "SET skillCompleted = :sc, skillTotal = :st, "
+            "skillCompletedBeforeDeadline = :scbd, "
+            "knowledgeCorrect = :kc, knowledgeTotal = :kt, "
+            "knowledgeAttempts = :ka, "
+            "completedBeforeDeadline = :cbd, onTimePct = :otp, "
+            "completionDate = :cd, objectiveDetails = :od, "
+            "updatedAt = :u"
+        ),
+        ExpressionAttributeValues={
+            ":sc": skill_completed,
+            ":st": skill_total,
+            ":scbd": skill_completed_before_deadline,
+            ":kc": knowledge_correct,
+            ":kt": knowledge_total,
+            ":ka": knowledge_attempts,
+            ":cbd": completed_before_deadline,
+            ":otp": on_time_pct,
+            ":cd": latest_completion_ts or "",
+            ":od": objective_details,
+            ":u": iso_now(),
+        },
+    )
 
 
 def handle_get_unit_feedback_for_student(event, unit_id: str):
@@ -1226,7 +1368,8 @@ def handle_update_feedback(event, feedback_id: str):
 
 
 def handle_get_my_grading_report(event, unit_id: str):
-    """GET /units/{unitId}/my-grading-report — student view."""
+    """GET /units/{unitId}/my-grading-report — student view.
+    Returns cached report. Report stats are updated live as the student works."""
     student_id = effective_student_id(event)
     if not student_id:
         return resp(401, {"error": "Unauthorized"})
@@ -1237,22 +1380,20 @@ def handle_get_my_grading_report(event, unit_id: str):
     got = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id})
     existing = got.get("Item")
     if existing:
-        return resp(200, {
-            "id": existing["id"],
-            "unitId": unit_id,
-            "studentId": student_id,
-            "summary": existing.get("studentSummary", ""),
-            "createdAt": existing.get("createdAt", ""),
-            "skillCompleted": existing.get("skillCompleted", 0),
-            "skillTotal": existing.get("skillTotal", 0),
-            "skillCompletedBeforeDeadline": existing.get("skillCompletedBeforeDeadline", 0),
-            "knowledgeCorrect": existing.get("knowledgeCorrect", 0),
-            "knowledgeTotal": existing.get("knowledgeTotal", 0),
-            "deadline": existing.get("deadline", ""),
-            "completedBeforeDeadline": existing.get("completedBeforeDeadline"),
-            "objectiveDetails": existing.get("objectiveDetails", []),
-        })
-    return resp_null()
+        return resp(200, _format_grading_report_response(existing, is_teacher=False))
+
+    # No report yet — trigger async generation
+    async_payload = {
+        "_internal": "generate-grading-report",
+        "studentId": student_id,
+        "unitId": unit_id,
+    }
+    lambda_client.invoke(
+        FunctionName=SELF_FUNCTION_NAME,
+        InvocationType="Event",
+        Payload=json.dumps(async_payload).encode(),
+    )
+    return resp(200, {"status": "generating", "unitId": unit_id, "studentId": student_id})
 
 
 def handle_get_my_feedback(event, unit_id: str):
@@ -1331,6 +1472,8 @@ def handle_list_threads_for_unit(event, unit_id: str):
     )
     # contract: objective order drives thread ordering
     objectives.sort(key=lambda o: int(o.get("order") or 0))
+    # Filter out disabled objectives so students don't see them
+    objectives = [o for o in objectives if o.get("enabled") is not False]
     obj_by_id = {o.get("id"): o for o in objectives if o.get("id")}
 
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
@@ -1342,6 +1485,8 @@ def handle_list_threads_for_unit(event, unit_id: str):
     )
 
     threads = _ensure_threads_for_unit(unit, objectives, threads)
+    # Only include threads whose objective is enabled
+    threads = [t for t in threads if t.get("objectiveId") in obj_by_id]
 
     prog_tbl = dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"])
     all_prog = query_all(
@@ -1477,7 +1622,12 @@ def handle_list_messages(event, thread_id: str):
 
 
 def _get_thread_context(thread_id: str, student_id: str):
-    """Return (thread, course, objective, stage) dicts needed for pipeline calls, or None on error."""
+    """Return (thread, course, objective, stage) dicts needed for pipeline calls, or None on error.
+
+    Uses ThreadPoolExecutor to parallelize independent DB lookups after fetching the thread.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
     threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
     thread = threads_tbl.get_item(Key={"id": thread_id}).get("Item")
     if not thread:
@@ -1488,18 +1638,27 @@ def _get_thread_context(thread_id: str, student_id: str):
     if not objective_id or not course_id:
         return None
 
-    objectives_tbl = dynamodb.Table(T["OBJECTIVES"])
-    objective = objectives_tbl.get_item(Key={"id": objective_id}).get("Item")
-    if not objective:
-        return None
+    # Fetch objective, course, and student in parallel
+    def _get_objective():
+        return dynamodb.Table(T["OBJECTIVES"]).get_item(Key={"id": objective_id}).get("Item")
 
-    courses_tbl = dynamodb.Table(T["COURSES"])
-    course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
-    if not course:
-        return None
+    def _get_course():
+        return dynamodb.Table(T["COURSES"]).get_item(Key={"id": course_id}).get("Item")
 
-    students_tbl = dynamodb.Table(T["STUDENTS"])
-    student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
+    def _get_student():
+        return dynamodb.Table(T["STUDENTS"]).get_item(Key={"id": student_id}).get("Item") or {}
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        obj_future = executor.submit(_get_objective)
+        course_future = executor.submit(_get_course)
+        student_future = executor.submit(_get_student)
+
+    objective = obj_future.result()
+    course = course_future.result()
+    student = student_future.result()
+
+    if not objective or not course:
+        return None
 
     return {
         "thread": thread,
@@ -1700,6 +1859,8 @@ def handle_send_message(event, thread_id: str):
     if not isinstance(content, str) or not content.strip():
         return resp(400, {"error": "Missing content"})
 
+    from concurrent.futures import ThreadPoolExecutor, Future
+
     now = iso_now()
     student_msg = {
         "id": str(uuid.uuid4()),
@@ -1711,30 +1872,47 @@ def handle_send_message(event, thread_id: str):
     }
 
     msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
-    msgs_tbl.put_item(Item=student_msg)
 
-    threads_tbl = dynamodb.Table(T["CHAT_THREADS"])
-    try:
-        threads_tbl.update_item(
-            Key={"id": thread_id},
-            UpdateExpression="SET lastMessageAt = :t",
-            ExpressionAttributeValues={":t": now},
-        )
-    except Exception:
-        pass
+    # Parallelize: save student message + update thread + fetch context + stage + conversation
+    def _save_msg():
+        msgs_tbl.put_item(Item=student_msg)
+
+    def _update_thread():
+        try:
+            dynamodb.Table(T["CHAT_THREADS"]).update_item(
+                Key={"id": thread_id},
+                UpdateExpression="SET lastMessageAt = :t",
+                ExpressionAttributeValues={":t": now},
+            )
+        except Exception:
+            pass
+
+    def _get_stage_prompt():
+        if stage_id:
+            stage_item = dynamodb.Table(T["ITEM_STAGES"]).get_item(Key={"id": stage_id}).get("Item")
+            if stage_item:
+                return stage_item.get("prompt", "")
+        return ""
+
+    need_pipeline = stage_type in ("walkthrough", "challenge")
+    ctx_future: Future | None = None
+    stage_future: Future | None = None
+    conv_future: Future | None = None
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        executor.submit(_save_msg)
+        executor.submit(_update_thread)
+        if need_pipeline:
+            ctx_future = executor.submit(_get_thread_context, thread_id, student_id)
+            stage_future = executor.submit(_get_stage_prompt)
+            conv_future = executor.submit(_load_conversation_history, thread_id, stage_id)
 
     # Generate tutor reply for walkthrough and challenge stages
     tutor_msg = None
-    if stage_type in ("walkthrough", "challenge"):
-        ctx = _get_thread_context(thread_id, student_id)
+    if need_pipeline:
+        ctx = ctx_future.result() if ctx_future else None
         if ctx:
-            # Look up stage prompt from ITEM_STAGES
-            stage_prompt = ""
-            if stage_id:
-                stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
-                stage_item = stages_tbl.get_item(Key={"id": stage_id}).get("Item")
-                if stage_item:
-                    stage_prompt = stage_item.get("prompt", "")
+            stage_prompt = stage_future.result() if stage_future else ""
 
             if is_clarify:
                 # Clarifying question — answer the student's question without grading
@@ -1761,7 +1939,7 @@ def handle_send_message(event, thread_id: str):
                 except Exception as e:
                     print(f"[clarify error] stage_type={stage_type}: {e}")
             else:
-                conversation = _load_conversation_history(thread_id, stage_id)
+                conversation = conv_future.result() if conv_future else _load_conversation_history(thread_id, stage_id)
                 pipeline_result = _call_tutor_pipeline(
                     stage_type=stage_type,
                     objective=ctx["objective"],
@@ -1802,8 +1980,10 @@ def handle_send_message(event, thread_id: str):
                     if objective_id:
                         if is_finished and stage_type == "walkthrough":
                             _advance_progress_for_student(student_id, objective_id, required_stars=1)
+                            _trigger_report_stats_update(student_id, ctx["thread"].get("unitId", ""))
                         elif grading_category in ("correct", "slight clarification") and stage_type == "challenge":
                             _complete_challenge_for_student(student_id, objective_id)
+                            _trigger_report_stats_update(student_id, ctx["thread"].get("unitId", ""))
 
     return resp(200, {"studentMessage": student_msg, "tutorMessage": tutor_msg})
 
@@ -1835,16 +2015,7 @@ def handle_current_instructor(event):
         _audit_log("instructor_first_login", sub=instructor_id, method="GET", path="/current-instructor", status=200)
 
     if item:
-        # Update name from JWT if it changed (e.g. user edited Cognito profile)
-        jwt_name = _name_from_claims(event)
-        if jwt_name != "Unknown" and item.get("name") != jwt_name:
-            item["name"] = jwt_name
-            instructors_tbl.update_item(
-                Key={"id": instructor_id},
-                UpdateExpression="SET #n = :n, updatedAt = :u",
-                ExpressionAttributeNames={"#n": "name"},
-                ExpressionAttributeValues={":n": jwt_name, ":u": iso_now()},
-            )
+        item["avatarUrl"] = _presign_avatar_url(item.get("avatarUrl"))
         return resp(200, item)
 
     # Auto-create instructor record on first access
@@ -2394,25 +2565,83 @@ def handle_list_knowledge_topics(unit_id: str):
     return resp(200, items)
 
 
+def handle_update_knowledge_topic_enabled(event, topic_id: str):
+    """PATCH /knowledge-topics/{topicId}/enabled → updated KnowledgeTopic."""
+    instructor_id = effective_instructor_id(event)
+    if not instructor_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        return resp(400, {"error": "Missing or invalid 'enabled' boolean"})
+
+    tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
+    existing = tbl.get_item(Key={"id": topic_id}).get("Item")
+    if not existing:
+        return resp_not_found("KnowledgeTopic")
+
+    tbl.update_item(
+        Key={"id": topic_id},
+        UpdateExpression="SET enabled = :e",
+        ExpressionAttributeValues={":e": enabled},
+    )
+    existing["enabled"] = enabled
+    return resp(200, existing)
+
+
 # ---- Knowledge Queue helpers ----
 
 def _get_unit_context(unit_id: str, student_id: str) -> tuple:
-    """Return (subject, grade) for a unit + student."""
-    units_tbl = dynamodb.Table(T["UNITS"])
-    unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
-    course_id = unit.get("courseId", "") if unit else ""
-    subject = "Unknown Subject"
-    if course_id:
-        courses_tbl = dynamodb.Table(T["COURSES"])
-        course = courses_tbl.get_item(Key={"id": course_id}).get("Item")
-        subject = course.get("title", "Unknown Subject") if course else "Unknown Subject"
-    students_tbl = dynamodb.Table(T["STUDENTS"])
-    student = students_tbl.get_item(Key={"id": student_id}).get("Item") or {}
-    grade = student.get("yearLabel", "Unknown Grade")
+    """Return (subject, grade) for a unit + student.
+    Parallelizes the student lookup with the unit→course chain."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _get_student_grade():
+        student = dynamodb.Table(T["STUDENTS"]).get_item(Key={"id": student_id}).get("Item") or {}
+        return student.get("yearLabel", "Unknown Grade")
+
+    # Start student lookup in parallel with unit lookup
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        grade_future = executor.submit(_get_student_grade)
+
+        unit = dynamodb.Table(T["UNITS"]).get_item(Key={"id": unit_id}).get("Item")
+        course_id = unit.get("courseId", "") if unit else ""
+        subject = "Unknown Subject"
+        if course_id:
+            course = dynamodb.Table(T["COURSES"]).get_item(Key={"id": course_id}).get("Item")
+            subject = course.get("title", "Unknown Subject") if course else "Unknown Subject"
+
+    grade = grade_future.result()
     return subject, grade
 
 
 # ---- Knowledge Queue (student-facing) ----
+
+def _activate_knowledge_item(tbl, student_id: str, unit_id: str, item: dict):
+    """Activate a pending knowledge queue item and kick off async clarifying question gen."""
+    tbl.update_item(
+        Key={"studentId": student_id, "id": item["id"]},
+        UpdateExpression="SET #s = :s",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": "active"},
+    )
+    # Generate clarifying questions in the background
+    if not item.get("suggestedQuestions") and item.get("questionPrompt"):
+        async_payload = {
+            "_internal": "backfill-clarifying-questions",
+            "studentId": student_id,
+            "unitId": unit_id,
+            "items": [{"id": item["id"], "questionPrompt": item["questionPrompt"]}],
+        }
+        lambda_client.invoke(
+            FunctionName=SELF_FUNCTION_NAME,
+            InvocationType="Event",
+            Payload=json.dumps(async_payload).encode(),
+        )
+
 
 def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
     """Auto-create queue items for a student on first access to a unit's queue.
@@ -2425,6 +2654,8 @@ def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
         index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
         key_condition=Key("unitId").eq(unit_id),
     )
+    # Filter out disabled knowledge topics
+    topics = [t for t in topics if t.get("enabled") is not False]
     if not topics:
         return []
 
@@ -2450,6 +2681,10 @@ def _init_knowledge_queue(student_id: str, unit_id: str) -> list[dict]:
             )
             if q_items:
                 question_text = q_items[0].get("text", "")
+
+        # Fallback: use topic description if question text is empty
+        if not question_text:
+            question_text = topic.get("knowledgeTopic", "") or topic.get("description", "")
 
         item_id = str(uuid.uuid4())
         item = {
@@ -2502,24 +2737,77 @@ def handle_list_knowledge_queue(event, unit_id: str):
         if "questionPrompt" not in item and "question" in item:
             item["questionPrompt"] = item["question"]
 
-    # Backfill clarifying questions for any visible items missing them
+    # Backfill clarifying questions asynchronously — don't block the response
     needs_backfill = [i for i in visible if not i.get("suggestedQuestions") and i.get("questionPrompt")]
     if needs_backfill:
-        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
-        subject, grade = _get_unit_context(unit_id, student_id)
-        for item in needs_backfill:
-            try:
-                cqs = gen_clarifying_questions(subject, grade, item["questionPrompt"])
-                tbl.update_item(
-                    Key={"studentId": student_id, "id": item["id"]},
-                    UpdateExpression="SET suggestedQuestions = :sq",
-                    ExpressionAttributeValues={":sq": cqs},
-                )
-                item["suggestedQuestions"] = cqs
-            except Exception as e:
-                print(f"[clarifying-questions] backfill failed for {item['id']}: {e}")
+        async_payload = {
+            "_internal": "backfill-clarifying-questions",
+            "studentId": student_id,
+            "unitId": unit_id,
+            "items": [{"id": i["id"], "questionPrompt": i["questionPrompt"]} for i in needs_backfill],
+        }
+        lambda_client.invoke(
+            FunctionName=SELF_FUNCTION_NAME,
+            InvocationType="Event",
+            Payload=json.dumps(async_payload).encode(),
+        )
 
     return resp(200, visible)
+
+
+def handle_list_knowledge_messages(event, queue_item_id: str):
+    """GET /knowledge-queue/{queueItemId}/messages → ChatMessage[]
+    Returns persisted messages for this knowledge queue item, sorted by createdAt asc.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+    # Knowledge messages use threadId = "kq-{queueItemId}" to namespace them
+    thread_id = f"kq-{queue_item_id}"
+    items = query_all(
+        msgs_tbl,
+        key_condition=Key("threadId").eq(thread_id),
+        scan_forward=True,
+    )
+    return resp(200, items)
+
+
+def handle_save_knowledge_message(event, queue_item_id: str):
+    """POST /knowledge-queue/{queueItemId}/messages
+    Body: { "role": "student"|"tutor", "content": string, "metadata"?: object }
+    Persists a knowledge chat message and returns it.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    err, body = require_json(event)
+    if err:
+        return err
+
+    role = body.get("role")
+    content = body.get("content")
+    if role not in ("student", "tutor") or not isinstance(content, str):
+        return resp(400, {"error": "Missing role or content"})
+
+    now = iso_now()
+    thread_id = f"kq-{queue_item_id}"
+    msg = {
+        "id": str(uuid.uuid4()),
+        "threadId": thread_id,
+        "role": role,
+        "content": content,
+        "createdAt": now,
+    }
+    metadata = body.get("metadata")
+    if metadata and isinstance(metadata, dict):
+        msg["metadata"] = metadata
+
+    msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+    msgs_tbl.put_item(Item=msg)
+    return resp(200, msg)
 
 
 def handle_clarify_knowledge_question(event, queue_item_id: str):
@@ -2548,13 +2836,23 @@ def handle_clarify_knowledge_question(event, queue_item_id: str):
         return resp(403, {"error": "Not enrolled in this course"})
     question = existing.get("questionPrompt", "") or existing.get("question", "")
 
-    # Look up topic description (skill being tested)
-    topic_id = existing.get("knowledgeTopicId")
-    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
-    topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
-    skill_description = (topic.get("knowledgeTopic", "") if topic else "") or question
+    # Parallelize topic lookup and unit context fetch
+    from concurrent.futures import ThreadPoolExecutor
 
-    subject, grade = _get_unit_context(unit_id, student_id)
+    topic_id = existing.get("knowledgeTopicId")
+
+    def _get_topic():
+        if topic_id:
+            return dynamodb.Table(T["KNOWLEDGE_TOPICS"]).get_item(Key={"id": topic_id}).get("Item")
+        return None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        topic_future = executor.submit(_get_topic)
+        ctx_future = executor.submit(_get_unit_context, unit_id, student_id)
+
+    topic = topic_future.result()
+    skill_description = (topic.get("knowledgeTopic", "") if topic else "") or question
+    subject, grade = ctx_future.result()
 
     try:
         from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_question_answer
@@ -2569,6 +2867,183 @@ def handle_clarify_knowledge_question(event, queue_item_id: str):
     except Exception as e:
         print(f"[clarifying-answer] failed for {queue_item_id}: {e}")
         return resp(500, {"error": "Failed to generate clarifying answer"})
+
+
+def handle_respond_knowledge_queue_item(event, queue_item_id: str):
+    """POST /knowledge-queue/{queueItemId}/respond
+    Body: { "answer": string, "attemptNumber": 1 | 2 }
+    Multi-turn knowledge evaluation. On attempt 1, may return "partial" with feedback
+    instead of grading. On attempt 2, always returns a final binary grade.
+    """
+    student_id = effective_student_id(event)
+    if not student_id:
+        return resp(401, {"error": "Unauthorized"})
+
+    body = json.loads(event.get("body") or "{}")
+    answer = body.get("answer")
+    attempt_number = body.get("attemptNumber", 1)
+    if not answer:
+        return resp(400, {"error": "Missing answer"})
+
+    tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    existing = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    if not existing:
+        return resp_not_found("KnowledgeQueueItem")
+    if existing.get("status") != "active":
+        return resp(400, {"error": "Item is not active"})
+
+    unit_id = existing["unitId"]
+    if not _check_enrollment_for_unit(student_id, unit_id):
+        return resp(403, {"error": "Not enrolled in this course"})
+
+    # Parallelize: topic lookup, unit context, conversation history, and next pending item
+    from concurrent.futures import ThreadPoolExecutor
+
+    topic_id = existing.get("knowledgeTopicId")
+    question = existing.get("questionPrompt", "") or existing.get("question", "")
+    thread_id = f"kq-{queue_item_id}"
+
+    def _get_topic():
+        if topic_id:
+            return dynamodb.Table(T["KNOWLEDGE_TOPICS"]).get_item(Key={"id": topic_id}).get("Item")
+        return None
+
+    def _get_conversation():
+        msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+        all_msgs = query_all(msgs_tbl, key_condition=Key("threadId").eq(thread_id), scan_forward=True)
+        lines = []
+        for m in all_msgs:
+            role_label = "Student" if m.get("role") == "student" else "Tutor"
+            lines.append(f"{role_label}: {m.get('content', '')}")
+        return "\n".join(lines) if lines else "(no prior messages)"
+
+    def _get_all_unit_items():
+        return [
+            i for i in query_all(tbl, key_condition=Key("studentId").eq(student_id))
+            if i.get("unitId") == unit_id
+        ]
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        topic_future = executor.submit(_get_topic)
+        ctx_future = executor.submit(_get_unit_context, unit_id, student_id)
+        conv_future = executor.submit(_get_conversation)
+        items_future = executor.submit(_get_all_unit_items)
+
+    topic = topic_future.result()
+    topic_description = (topic.get("knowledgeTopic", "") if topic else "") or question
+    subject, grade = ctx_future.result()
+    conversation_history = conv_future.result()
+    all_items = items_future.result()
+
+    # Find the next pending item now so we can generate its clarifying questions in parallel with grading
+    pending = [i for i in all_items if i.get("status") == "pending"]
+    pending.sort(key=lambda x: x.get("order", 0))
+    next_pending = pending[0] if pending else None
+
+    # Run grading AI call + clarifying question gen for next item in parallel
+    clarify_future = None
+
+    def _gen_clarifying_for_next():
+        """Generate clarifying questions for the next item while grading runs."""
+        if not next_pending:
+            return None
+        if next_pending.get("suggestedQuestions") or not next_pending.get("questionPrompt"):
+            return None
+        try:
+            from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+            return gen_clarifying_questions(subject, grade, next_pending["questionPrompt"])
+        except Exception as e:
+            print(f"[clarifying-questions] parallel gen failed for {next_pending['id']}: {e}")
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        clarify_future = executor.submit(_gen_clarifying_for_next)
+
+        # Call the multi-turn evaluation LLM (runs in main thread while clarify runs in bg)
+        try:
+            from backend_code.info_question_pipeline import respond_to_knowledge_answer
+            outcome, tutor_feedback = respond_to_knowledge_answer(
+                grade=grade,
+                subject=subject,
+                information=topic_description,
+                question=question,
+                conversation_history=conversation_history,
+                answer=answer,
+                attempt_number=attempt_number,
+            )
+        except Exception as e:
+            print(f"[respond error] knowledge queue item {queue_item_id}: {e}")
+            # Wait for clarify thread before returning
+            clarify_future.result()
+            return resp(500, {"error": "Evaluation failed"})
+
+    result: dict = {"outcome": outcome, "tutorFeedback": tutor_feedback}
+
+    # If partial, return feedback without grading — student gets another attempt
+    if outcome == "partial":
+        # Save clarifying questions if they finished (for next time)
+        cqs = clarify_future.result()
+        if cqs and next_pending:
+            tbl.update_item(
+                Key={"studentId": student_id, "id": next_pending["id"]},
+                UpdateExpression="SET suggestedQuestions = :sq",
+                ExpressionAttributeValues={":sq": cqs},
+            )
+        return resp(200, result)
+
+    # Final grade: correct or incorrect — same completion logic as /complete
+    now = iso_now()
+    is_correct = outcome == "correct"
+    new_status = "completed_correct" if is_correct else "completed_incorrect"
+    tbl.update_item(
+        Key={"studentId": student_id, "id": queue_item_id},
+        UpdateExpression="SET #s = :s, is_correct = :ic, updatedAt = :u, completedAt = :c",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": new_status, ":ic": is_correct, ":u": now, ":c": now},
+    )
+    # Construct updated item from known values instead of re-fetching; sanitize Decimals from DynamoDB
+    updated_item = _sanitize_for_json({**existing, "status": new_status, "is_correct": is_correct, "updatedAt": now, "completedAt": now})
+    result["updatedItem"] = updated_item
+
+    # Activate next pending item and save its clarifying questions (already generated in parallel)
+    if next_pending:
+        cqs = clarify_future.result()
+        update_expr = "SET #s = :s"
+        expr_values: dict = {":s": "active"}
+        if cqs:
+            update_expr += ", suggestedQuestions = :sq"
+            expr_values[":sq"] = cqs
+        tbl.update_item(
+            Key={"studentId": student_id, "id": next_pending["id"]},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues=expr_values,
+        )
+
+    # If incorrect, defer retry question generation to async Lambda
+    if not is_correct:
+        max_order = max((i.get("order", 0) for i in all_items), default=0)
+        max_label = max((i.get("labelIndex", 0) for i in all_items), default=0)
+        async_payload = {
+            "_internal": "generate-retry-question",
+            "studentId": student_id,
+            "unitId": unit_id,
+            "knowledgeTopicId": existing["knowledgeTopicId"],
+            "question": question,
+            "topicDescription": topic_description,
+            "grade": grade,
+            "subject": subject,
+            "maxOrder": max_order,
+            "maxLabel": max_label,
+        }
+        lambda_client.invoke(
+            FunctionName=SELF_FUNCTION_NAME,
+            InvocationType="Event",
+            Payload=json.dumps(async_payload, default=_json_default).encode(),
+        )
+
+    _trigger_report_stats_update(student_id, unit_id)
+    return resp(200, result)
 
 
 def handle_complete_knowledge_queue_item(event, queue_item_id: str):
@@ -2598,14 +3073,24 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
     now = iso_now()
     tutor_feedback = None
 
-    # Pre-fetch context used by both grading and retry question generation
+    # Pre-fetch context in parallel
+    from concurrent.futures import ThreadPoolExecutor
+
     topic_id = existing.get("knowledgeTopicId")
-    topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
-    topic = topics_tbl.get_item(Key={"id": topic_id}).get("Item") if topic_id else None
-    topic_description = (topic.get("knowledgeTopic", "") if topic else "") or existing.get("questionPrompt", "") or existing.get("question", "")
     question = existing.get("questionPrompt", "") or existing.get("question", "")
 
-    subject, grade = _get_unit_context(unit_id, student_id)
+    def _get_topic():
+        if topic_id:
+            return dynamodb.Table(T["KNOWLEDGE_TOPICS"]).get_item(Key={"id": topic_id}).get("Item")
+        return None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        topic_future = executor.submit(_get_topic)
+        ctx_future = executor.submit(_get_unit_context, unit_id, student_id)
+
+    topic = topic_future.result()
+    topic_description = (topic.get("knowledgeTopic", "") if topic else "") or question
+    subject, grade = ctx_future.result()
 
     # Grade via AI if answer text was provided
     if answer is not None and is_correct is None:
@@ -2630,63 +3115,48 @@ def handle_complete_knowledge_queue_item(event, queue_item_id: str):
         ExpressionAttributeNames={"#s": "status"},
         ExpressionAttributeValues={":s": new_status, ":ic": is_correct, ":u": now, ":c": now},
     )
-    updated_item = tbl.get_item(Key={"studentId": student_id, "id": queue_item_id}).get("Item")
+    # Construct updated item from known values instead of re-fetching; sanitize Decimals from DynamoDB
+    updated_item = _sanitize_for_json({**existing, "status": new_status, "is_correct": is_correct, "updatedAt": now, "completedAt": now})
 
     result: dict = {"updatedItem": updated_item}
     if tutor_feedback is not None:
         result["tutorFeedback"] = tutor_feedback
 
-    # If incorrect, create a retry item with a newly generated question
-    new_queue_item = None
+    # Query unit items once for both retry creation and next-item advancement
+    all_items = [
+        i for i in query_all(tbl, key_condition=Key("studentId").eq(student_id))
+        if i.get("unitId") == unit_id
+    ]
+
+    # Advance the next pending item to active and eagerly gen clarifying questions
+    pending = [i for i in all_items if i.get("status") == "pending"]
+    pending.sort(key=lambda x: x.get("order", 0))
+    if pending:
+        _activate_knowledge_item(tbl, student_id, unit_id, pending[0])
+
+    # If incorrect, defer retry question generation to async Lambda
     if not is_correct:
-        all_items = query_all(tbl, key_condition=Key("studentId").eq(student_id))
-        unit_items = [i for i in all_items if i.get("unitId") == unit_id]
-        max_order = max((i.get("order", 0) for i in unit_items), default=0)
-
-        # Generate a new question for the retry item (reuse context from above)
-        retry_question = question
-        try:
-            from backend_code.info_question_pipeline import generate_info_question
-            retry_question = generate_info_question(
-                grade=grade,
-                subject=subject,
-                description=topic_description,
-            )
-        except Exception as e:
-            print(f"[retry question gen error] {queue_item_id}: {e}")
-            # Fall back to reusing the original question
-
-        max_label = max((i.get("labelIndex", 0) for i in unit_items), default=0)
-        retry_id = str(uuid.uuid4())
-        new_queue_item = {
+        max_order = int(max((i.get("order", 0) for i in all_items), default=0))
+        max_label = int(max((i.get("labelIndex", 0) for i in all_items), default=0))
+        async_payload = {
+            "_internal": "generate-retry-question",
             "studentId": student_id,
-            "id": retry_id,
             "unitId": unit_id,
             "knowledgeTopicId": existing["knowledgeTopicId"],
-            "labelIndex": max_label + 1,
-            "order": max_order + 1,
-            "status": "pending",
-            "questionPrompt": retry_question,
-            "createdAt": now,
+            "question": question,
+            "topicDescription": topic_description,
+            "grade": grade,
+            "subject": subject,
+            "maxOrder": max_order,
+            "maxLabel": max_label,
         }
-        tbl.put_item(Item=new_queue_item)
-        result["newQueueItem"] = new_queue_item
-
-    # Advance the next pending item to active
-    all_items = query_all(tbl, key_condition=Key("studentId").eq(student_id))
-    unit_items = [i for i in all_items if i.get("unitId") == unit_id]
-    pending = [i for i in unit_items if i.get("status") == "pending"]
-    pending.sort(key=lambda x: x.get("order", 0))
-
-    if pending:
-        next_item = pending[0]
-        tbl.update_item(
-            Key={"studentId": student_id, "id": next_item["id"]},
-            UpdateExpression="SET #s = :s",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": "active"},
+        lambda_client.invoke(
+            FunctionName=SELF_FUNCTION_NAME,
+            InvocationType="Event",
+            Payload=json.dumps(async_payload, default=_json_default).encode(),
         )
 
+    _trigger_report_stats_update(student_id, unit_id)
     return resp(200, result)
 
 
@@ -2701,25 +3171,27 @@ def handle_get_knowledge_progress(event, unit_id: str):
     if not _check_enrollment_for_unit(student_id, unit_id):
         return resp(403, {"error": "Not enrolled in this course"})
 
-    # Get total topics for this unit
+    # Get total topics for this unit (exclude disabled)
     topics_tbl = dynamodb.Table(T["KNOWLEDGE_TOPICS"])
     topics = query_all(
         topics_tbl,
         index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
         key_condition=Key("unitId").eq(unit_id),
     )
+    topics = [t for t in topics if t.get("enabled") is not False]
     total_topics = len(topics)
+    enabled_topic_ids = {t["id"] for t in topics if t.get("id")}
 
     # Get all queue items for this student in this unit
     queue_tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
     all_items = query_all(queue_tbl, key_condition=Key("studentId").eq(student_id))
     unit_items = [i for i in all_items if i.get("unitId") == unit_id]
 
-    # Track per-topic best result
+    # Track per-topic best result (only for enabled topics)
     topic_results: dict[str, bool] = {}
     for item in unit_items:
         tid = item.get("knowledgeTopicId")
-        if not tid:
+        if not tid or tid not in enabled_topic_ids:
             continue
         status = item.get("status", "")
         if status == "completed_correct":
@@ -3072,6 +3544,213 @@ def handle_generate_objectives(event, unit_id: str):
     )
 
     return resp(202, {"unitId": unit_id, "status": "processing"})
+
+
+def _handle_backfill_clarifying_questions_async(payload: dict):
+    """Async handler — generates clarifying questions for items missing them."""
+    student_id = payload["studentId"]
+    unit_id = payload["unitId"]
+    items = payload["items"]
+
+    try:
+        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+        subject, grade = _get_unit_context(unit_id, student_id)
+        tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+
+        for item in items:
+            try:
+                cqs = gen_clarifying_questions(subject, grade, item["questionPrompt"])
+                tbl.update_item(
+                    Key={"studentId": student_id, "id": item["id"]},
+                    UpdateExpression="SET suggestedQuestions = :sq",
+                    ExpressionAttributeValues={":sq": cqs},
+                )
+                print(f"[async] Backfilled clarifying questions for {item['id']}")
+            except Exception as e:
+                print(f"[async clarifying-questions] backfill failed for {item['id']}: {e}")
+    except Exception as e:
+        print(f"[async clarifying-questions] error: {e}")
+
+
+def _handle_generate_grading_report_async(payload: dict):
+    """Async handler — generates a grading report for a student in the background."""
+    student_id = payload["studentId"]
+    unit_id = payload["unitId"]
+
+    gr_tbl = dynamodb.Table(T["GRADING_REPORTS"])
+    force = payload.get("force", False)
+
+    # Skip if report already exists and not forced
+    if not force:
+        existing = gr_tbl.get_item(Key={"studentId": student_id, "unitId": unit_id}).get("Item")
+        if existing:
+            print(f"[async grading report] Already exists for student={student_id} unit={unit_id}")
+            return
+
+    try:
+        units_tbl = dynamodb.Table(T["UNITS"])
+        unit = units_tbl.get_item(Key={"id": unit_id}).get("Item")
+        if not unit:
+            print(f"[async grading report] Unit {unit_id} not found")
+            return
+
+        course_id = unit.get("courseId", "")
+        course = dynamodb.Table(T["COURSES"]).get_item(Key={"id": course_id}).get("Item") or {}
+
+        objectives = query_all(
+            dynamodb.Table(T["OBJECTIVES"]),
+            index_name=IDX["UNIT_OBJECTIVES"],
+            key_condition=Key("unitId").eq(unit_id),
+        )
+
+        all_prog = query_all(
+            dynamodb.Table(T["STUDENT_OBJECTIVE_PROGRESS"]),
+            key_condition=Key("studentId").eq(student_id),
+        )
+        obj_id_set = {obj.get("id") for obj in objectives if obj.get("id")}
+        progress_map = {p["objectiveId"]: p for p in all_prog if p.get("objectiveId") in obj_id_set}
+
+        all_kq = query_all(
+            dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"]),
+            key_condition=Key("studentId").eq(student_id),
+        )
+        unit_kq = [qi for qi in all_kq if qi.get("unitId") == unit_id]
+
+        topics = query_all(
+            dynamodb.Table(T["KNOWLEDGE_TOPICS"]),
+            index_name=IDX["UNIT_KNOWLEDGE_TOPICS"],
+            key_condition=Key("unitId").eq(unit_id),
+        )
+        topics_map = {t["id"]: t for t in topics if t.get("id")}
+
+        deadline = unit.get("deadline")
+        objectives_data = _format_objectives_data(objectives, progress_map, deadline)
+        knowledge_data = _format_knowledge_data(unit_kq, topics_map)
+
+        # Compute stats
+        skill_objs = [o for o in objectives if o.get("objectiveType") != "knowledge"]
+        skill_total = len(skill_objs)
+        skill_completed = 0
+        skill_completed_before_deadline = 0
+        latest_completion_ts = None
+        objective_details = []
+        for o in skill_objs:
+            p = progress_map.get(o.get("id"), {})
+            completed = int(p.get("earnedStars", 0)) >= 3 or p.get("currentStageType") == "challenge"
+            ts = p.get("updatedAt") or p.get("createdAt") if completed else None
+            detail = {"title": o.get("title", ""), "completed": completed, "completedAt": ts or ""}
+            if completed:
+                skill_completed += 1
+                if ts and (latest_completion_ts is None or ts > latest_completion_ts):
+                    latest_completion_ts = ts
+                if deadline and ts and ts <= deadline:
+                    skill_completed_before_deadline += 1
+                    detail["beforeDeadline"] = True
+                elif deadline and ts:
+                    detail["beforeDeadline"] = False
+            objective_details.append(detail)
+
+        by_topic: dict[str, list[dict]] = {}
+        for qi in unit_kq:
+            tid = qi.get("knowledgeTopicId", "")
+            by_topic.setdefault(tid, []).append(qi)
+        knowledge_total = len(topics_map)
+        knowledge_correct = sum(
+            1 for attempts in by_topic.values()
+            if any(a.get("status") == "completed_correct" for a in attempts)
+        )
+        knowledge_attempts = len([qi for qi in unit_kq if qi.get("status", "").startswith("completed_")])
+
+        all_completed = skill_completed == skill_total and skill_total > 0
+        completed_before_deadline = None
+        if deadline and all_completed and latest_completion_ts:
+            completed_before_deadline = latest_completion_ts <= deadline
+        on_time_pct = None
+        if deadline and skill_total > 0:
+            on_time_pct = round(skill_completed_before_deadline / skill_total * 100)
+
+        # Generate summaries in parallel
+        from concurrent.futures import ThreadPoolExecutor
+        from backend_code.grading_report_pipeline import generate_teacher_summary, generate_student_summary
+
+        summary_kwargs = dict(
+            unit_title=unit.get("title", ""),
+            course_title=course.get("title", ""),
+            objectives_data=objectives_data,
+            knowledge_data=knowledge_data,
+        )
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            teacher_future = executor.submit(generate_teacher_summary, **summary_kwargs)
+            student_future = executor.submit(generate_student_summary, **summary_kwargs)
+        teacher_summary = teacher_future.result()
+        student_summary = student_future.result()
+
+        now = iso_now()
+        report_item = {
+            "studentId": student_id,
+            "unitId": unit_id,
+            "id": str(uuid.uuid4()),
+            "courseId": course_id,
+            "teacherSummary": teacher_summary,
+            "studentSummary": student_summary,
+            "skillCompleted": skill_completed,
+            "skillTotal": skill_total,
+            "skillCompletedBeforeDeadline": skill_completed_before_deadline,
+            "knowledgeCorrect": knowledge_correct,
+            "knowledgeTotal": knowledge_total,
+            "knowledgeAttempts": knowledge_attempts,
+            "deadline": deadline or "",
+            "completedBeforeDeadline": completed_before_deadline,
+            "onTimePct": on_time_pct,
+            "completionDate": latest_completion_ts or "",
+            "objectiveDetails": objective_details,
+            "createdAt": now,
+        }
+        gr_tbl.put_item(Item=report_item)
+        print(f"[async grading report] Generated for student={student_id} unit={unit_id}")
+
+    except Exception as e:
+        print(f"[async grading report error] student={student_id} unit={unit_id}: {e}")
+
+
+def _handle_generate_retry_question_async(payload: dict):
+    """Async handler — generates a retry question for an incorrect knowledge answer."""
+    student_id = payload["studentId"]
+    unit_id = payload["unitId"]
+    topic_id = payload["knowledgeTopicId"]
+    question = payload["question"]
+    topic_description = payload["topicDescription"]
+    grade = payload["grade"]
+    subject = payload["subject"]
+    max_order = payload["maxOrder"]
+    max_label = payload["maxLabel"]
+
+    retry_question = question
+    try:
+        from backend_code.info_question_pipeline import generate_info_question
+        retry_question = generate_info_question(
+            grade=grade,
+            subject=subject,
+            description=topic_description,
+        )
+    except Exception as e:
+        print(f"[async retry question gen error] topic={topic_id}: {e}")
+
+    now = iso_now()
+    tbl = dynamodb.Table(T["KNOWLEDGE_QUEUE_ITEMS"])
+    retry_id = str(uuid.uuid4())
+    tbl.put_item(Item={
+        "studentId": student_id,
+        "id": retry_id,
+        "unitId": unit_id,
+        "knowledgeTopicId": topic_id,
+        "labelIndex": max_label + 1,
+        "order": max_order + 1,
+        "status": "pending",
+        "questionPrompt": retry_question,
+        "createdAt": now,
+    })
+    print(f"[async] Created retry question {retry_id} for student={student_id} topic={topic_id}")
 
 
 def _handle_generate_objectives_async(payload: dict):
@@ -3552,6 +4231,7 @@ def handle_update_profile(event):
         ExpressionAttributeValues=attr_values,
     )
     item.update(updates)
+    item["avatarUrl"] = _presign_avatar_url(item.get("avatarUrl"))
     return resp(200, item)
 
 
@@ -3588,9 +4268,7 @@ def handle_avatar_upload_url(event):
         },
         ExpiresIn=900,
     )
-    public_url = f"https://{UPLOAD_BUCKET}.s3.us-west-1.amazonaws.com/{s3_key}"
-
-    return resp(200, {"uploadUrl": upload_url, "publicUrl": public_url})
+    return resp(200, {"uploadUrl": upload_url, "publicUrl": s3_key})
 
 
 # ---- Main router ----
@@ -3601,6 +4279,18 @@ def handler(event, context):
         return  # async invocation, no HTTP response needed
     if isinstance(event, dict) and event.get("_internal") == "generate-objectives":
         _handle_generate_objectives_async(event)
+        return
+    if isinstance(event, dict) and event.get("_internal") == "generate-retry-question":
+        _handle_generate_retry_question_async(event)
+        return
+    if isinstance(event, dict) and event.get("_internal") == "backfill-clarifying-questions":
+        _handle_backfill_clarifying_questions_async(event)
+        return
+    if isinstance(event, dict) and event.get("_internal") == "update-report-stats":
+        _update_grading_report_stats(event["studentId"], event["unitId"])
+        return
+    if isinstance(event, dict) and event.get("_internal") == "generate-grading-report":
+        _handle_generate_grading_report_async(event)
         return
 
     try:
@@ -3667,6 +4357,16 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_list_knowledge_topics(unit_id)
 
+        if method == "PATCH" and path.endswith("/enabled") and path.startswith("/knowledge-topics/"):
+            topic_id = params.get("topicId")
+            if not topic_id:
+                # Extract from path manually
+                parts = path.strip("/").split("/")
+                topic_id = parts[1] if len(parts) >= 2 else None
+            if not topic_id:
+                return resp(400, {"error": "Missing topicId"})
+            return handle_update_knowledge_topic_enabled(event, topic_id)
+
         if method == "GET" and path.endswith("/knowledge-queue") and path.startswith("/units/"):
             unit_id = params.get("unitId")
             if not unit_id:
@@ -3679,11 +4379,29 @@ def handler(event, context):
                 return resp(400, {"error": "Missing unitId"})
             return handle_get_knowledge_progress(event, unit_id)
 
+        if method == "GET" and path.endswith("/messages") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_list_knowledge_messages(event, item_id)
+
+        if method == "POST" and path.endswith("/messages") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_save_knowledge_message(event, item_id)
+
         if method == "POST" and path.endswith("/clarify") and path.startswith("/knowledge-queue/"):
             item_id = params.get("itemId")
             if not item_id:
                 return resp(400, {"error": "Missing itemId"})
             return handle_clarify_knowledge_question(event, item_id)
+
+        if method == "POST" and path.endswith("/respond") and path.startswith("/knowledge-queue/"):
+            item_id = params.get("itemId")
+            if not item_id:
+                return resp(400, {"error": "Missing itemId"})
+            return handle_respond_knowledge_queue_item(event, item_id)
 
         if method == "POST" and path.endswith("/complete") and path.startswith("/knowledge-queue/"):
             item_id = params.get("itemId")

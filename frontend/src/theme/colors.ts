@@ -6,7 +6,7 @@ export const CREAM = SURFACE; // alias for existing imports
 // Muted accent colors — desaturated so they combine without clashing
 export const OLIVE = "#a39e72";
 export const LAVENDER = "#9a98b5";
-export const PRIMARY = "#8b7a9e";
+export const PRIMARY = "#7B68A6";
 
 // Success: muted sage (harmonizes with olive, reads as success)
 export const SUCCESS_GREEN = "#5c8f6a";
@@ -23,6 +23,7 @@ export const DARK_ACCENT = "#504b43";
 export const TRANSPARENT_GREEN = TRANSPARENT_PRIMARY;
 
 // Gradients (muted)
+export const PRIMARY_GRADIENT = "linear-gradient(90deg, hsla(258, 26%, 53%, 1) 0%, hsla(263, 29%, 68%, 1) 52%, hsla(221, 58%, 79%, 1) 100%)";
 export const BLUE_MAIN = "rgb(59, 130, 246)";
 export const GREEN_GRADIENT = `linear-gradient(90deg, ${SUCCESS_GREEN}, #4a7c59)`;
 export const GREEN_GRADIENT_VERTICAL = `linear-gradient(180deg, ${LAVENDER} 0%, ${PRIMARY} 100%)`;

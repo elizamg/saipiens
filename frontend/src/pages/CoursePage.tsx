@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import ActiveUnits from "../components/course/ActiveUnits";
+import CourseStatsBar from "../components/course/CourseStatsBar";
+import FeedbackHighlight from "../components/course/FeedbackHighlight";
 import AwardsGrid from "../components/dashboard/AwardsGrid";
 import TeacherFeedbackPanel from "../components/dashboard/TeacherFeedbackPanel";
 import Avatar from "../components/ui/Avatar";
+import Skeleton from "../components/ui/Skeleton";
 import {
   getCurrentStudent,
   getCourse,
@@ -14,10 +17,42 @@ import {
   listFeedbackForCourse,
   getUnitProgress,
   getKnowledgeProgress,
+  getMyUnitGradingReport,
 } from "../services/api";
-import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
-import { CourseIcon } from "../theme/courseIcons";
-import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress } from "../types/domain";
+import { GRAY_900, GRAY_500, WHITE } from "../theme/colors";
+import { CourseIcon, COURSE_COLORS } from "../theme/courseIcons";
+import type { Student, Course, Unit, Instructor, Award, FeedbackItem, UnitProgress, GradingReport } from "../types/domain";
+
+function CoursePageSkeleton() {
+  return (
+    <>
+      {/* Course header skeleton */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+          <Skeleton width={48} height={48} borderRadius={8} style={{ flexShrink: 0 }} />
+          <Skeleton width={280} height={32} borderRadius={8} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Skeleton width={32} height={32} borderRadius="50%" style={{ flexShrink: 0 }} />
+          <Skeleton width={140} height={14} borderRadius={6} />
+        </div>
+      </div>
+      {/* Unit row skeletons */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ backgroundColor: WHITE, borderRadius: 16, padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 16 }}>
+            <Skeleton width={40} height={40} borderRadius={8} style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+              <Skeleton width="50%" height={16} borderRadius={6} />
+              <Skeleton width="80%" height={8} borderRadius={4} />
+            </div>
+            <Skeleton width={100} height={36} borderRadius={8} style={{ flexShrink: 0 }} />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
 
 export default function CoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -28,6 +63,11 @@ export default function CoursePage() {
   const [awards, setAwards] = useState<Award[]>([]);
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
   const [progressMap, setProgressMap] = useState<Record<string, UnitProgress>>({});
+  const [courseStats, setCourseStats] = useState<{
+    skillCompleted: number; skillTotal: number;
+    knowledgeCorrect: number; knowledgeTotal: number;
+  }>({ skillCompleted: 0, skillTotal: 0, knowledgeCorrect: 0, knowledgeTotal: 0 });
+  const [latestGradingReport, setLatestGradingReport] = useState<GradingReport | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,14 +99,21 @@ export default function CoursePage() {
         }
 
         // Load progress for each unit sequentially to avoid 503 throttling
-        // Combine skill progress + knowledge progress into one UnitProgress
+        // Track skill and knowledge separately for the stats bar
         const pMap: Record<string, UnitProgress> = {};
+        let totalSkillCompleted = 0, totalSkillCount = 0;
+        let totalKnowledgeCorrect = 0, totalKnowledgeCount = 0;
         for (const unit of unitsData) {
           try {
             const [skillProg, knowledgeProg] = await Promise.all([
               getUnitProgress(studentData.id, unit.id),
               getKnowledgeProgress(unit.id, studentData.id).catch(() => null),
             ]);
+            totalSkillCompleted += skillProg.completedObjectives;
+            totalSkillCount += skillProg.totalObjectives;
+            totalKnowledgeCorrect += knowledgeProg?.correctCount ?? 0;
+            totalKnowledgeCount += knowledgeProg?.totalTopics ?? 0;
+
             const totalObjectives = skillProg.totalObjectives + (knowledgeProg?.totalTopics ?? 0);
             const completedObjectives = skillProg.completedObjectives + (knowledgeProg?.correctCount ?? 0);
             pMap[unit.id] = {
@@ -80,6 +127,25 @@ export default function CoursePage() {
           }
         }
         setProgressMap(pMap);
+        setCourseStats({
+          skillCompleted: totalSkillCompleted,
+          skillTotal: totalSkillCount,
+          knowledgeCorrect: totalKnowledgeCorrect,
+          knowledgeTotal: totalKnowledgeCount,
+        });
+
+        // Fetch the most recent grading report for feedback highlight
+        for (const unit of unitsData) {
+          try {
+            const report = await getMyUnitGradingReport(unit.id);
+            if (report?.summary) {
+              setLatestGradingReport(report);
+              break; // Use the first available report
+            }
+          } catch {
+            // Skip
+          }
+        }
       } catch (error) {
         console.error("Error loading course data:", error);
       } finally {
@@ -126,14 +192,14 @@ export default function CoursePage() {
   return (
     <AppShell student={student} activePath="/courses">
       {loading ? (
-        <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Loading…</div>
+        <CoursePageSkeleton />
       ) : !course ? (
         <div style={{ padding: 24, fontSize: 14, color: GRAY_500 }}>Course not found.</div>
       ) : student ? (
-        <>
+        <div style={{ animation: "fadeIn 0.3s ease both" }}>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              <CourseIcon icon={course.icon ?? "general"} size={48} color={PRIMARY} />
+              <CourseIcon icon={course.icon ?? "general"} size={48} color={(COURSE_COLORS[course.icon ?? "general"] ?? COURSE_COLORS.general).main} />
               <h1 style={titleStyles}>{course.title}</h1>
             </div>
             <div style={instructorRowStyles}>
@@ -154,6 +220,31 @@ export default function CoursePage() {
             </div>
           </header>
 
+          <CourseStatsBar
+            skillCompleted={courseStats.skillCompleted}
+            skillTotal={courseStats.skillTotal}
+            knowledgeCorrect={courseStats.knowledgeCorrect}
+            knowledgeTotal={courseStats.knowledgeTotal}
+            unitsCompleted={Object.values(progressMap).filter((p) => p.progressPercent === 100).length}
+            totalUnits={units.length}
+          />
+
+          <FeedbackHighlight
+            teacherFeedback={
+              feedback.filter((f) => f.sourceType === "teacher")
+                .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0] ?? null
+            }
+            samSummary={latestGradingReport?.summary ?? null}
+            instructor={
+              (() => {
+                const tf = feedback.find((f) => f.sourceType === "teacher");
+                return tf?.instructorId
+                  ? instructors.find((i) => i.id === tf.instructorId) ?? null
+                  : null;
+              })()
+            }
+          />
+
           <ActiveUnits
             units={units}
             courseId={course.id}
@@ -165,7 +256,7 @@ export default function CoursePage() {
             unitMap={Object.fromEntries(units.map((u) => [u.id, u]))}
             instructorsMap={Object.fromEntries(instructors.map((i) => [i.id, i]))}
           />
-        </>
+        </div>
       ) : null}
     </AppShell>
   );

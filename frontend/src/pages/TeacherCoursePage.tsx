@@ -4,8 +4,9 @@ import AppShell from "../components/layout/AppShell";
 import ActiveUnits from "../components/course/ActiveUnits";
 import NewUnitCard from "../components/course/NewUnitCard";
 import Button from "../components/ui/Button";
-import { GRAY_900, GRAY_500, PRIMARY } from "../theme/colors";
-import { CourseIcon } from "../theme/courseIcons";
+import { GRAY_900, GRAY_500, WHITE } from "../theme/colors";
+import Skeleton from "../components/ui/Skeleton";
+import { CourseIcon, COURSE_COLORS } from "../theme/courseIcons";
 import {
   getCourse,
   listUnits,
@@ -88,7 +89,27 @@ export default function TeacherCoursePage() {
         sidebarCourses={sidebarCourses}
         routePrefix="/teacher"
       >
-        <p style={{ fontSize: 14, color: GRAY_500 }}>Loading course…</p>
+        <>
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+              <Skeleton width={48} height={48} borderRadius={8} style={{ flexShrink: 0 }} />
+              <Skeleton width={260} height={32} borderRadius={8} />
+            </div>
+            <Skeleton width={160} height={14} borderRadius={6} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ backgroundColor: WHITE, borderRadius: 16, padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 16 }}>
+                <Skeleton width={40} height={40} borderRadius={8} style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <Skeleton width="50%" height={16} borderRadius={6} />
+                  <Skeleton width="75%" height={8} borderRadius={4} />
+                </div>
+                <Skeleton width={100} height={36} borderRadius={8} style={{ flexShrink: 0 }} />
+              </div>
+            ))}
+          </div>
+        </>
       </AppShell>
     );
   }
@@ -106,7 +127,7 @@ export default function TeacherCoursePage() {
         <>
           <header style={headerStyles}>
             <div style={titleRowStyles}>
-              <CourseIcon icon={course.icon ?? "general"} size={48} color={PRIMARY} />
+              <CourseIcon icon={course.icon ?? "general"} size={48} color={(COURSE_COLORS[course.icon ?? "general"] ?? COURSE_COLORS.general).main} />
               {editingTitle ? (
                 <input
                   autoFocus

@@ -9,6 +9,7 @@ import {
 } from "../services/api";
 import type { Student, Course, Unit } from "../types/domain";
 import BackButton from "../components/ui/BackButton";
+import Skeleton from "../components/ui/Skeleton";
 import { GRAY_600, GRAY_900, GRAY_200, WHITE, SUCCESS_GREEN } from "../theme/colors";
 
 export default function FeedbackCoursePage() {
@@ -59,7 +60,13 @@ export default function FeedbackCoursePage() {
           Select a unit to view feedback.
         </p>
         {loading ? (
-          <p style={{ fontSize: 14, color: GRAY_600 }}>Loading units…</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {[60, 45, 70].map((w, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", padding: "16px 20px", background: WHITE, border: `1px solid ${GRAY_200}`, borderRadius: 12 }}>
+                <Skeleton width={`${w}%`} height={15} borderRadius={6} />
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {units.map((unit) => (

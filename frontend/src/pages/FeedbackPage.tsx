@@ -1,10 +1,24 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
-import { CourseIcon } from "../theme/courseIcons";
+import { CourseIcon, COURSE_COLORS } from "../theme/courseIcons";
+import Skeleton from "../components/ui/Skeleton";
 import { getCurrentStudent, listCoursesForStudent } from "../services/api";
 import type { Student, Course } from "../types/domain";
-import { GRAY_600, GRAY_900, GRAY_200, WHITE, PRIMARY } from "../theme/colors";
+import { GRAY_600, GRAY_900, GRAY_200, WHITE } from "../theme/colors";
+
+function FeedbackPageSkeleton() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", background: WHITE, border: `1px solid ${GRAY_200}`, borderRadius: 12 }}>
+          <Skeleton width={28} height={28} borderRadius={6} style={{ flexShrink: 0 }} />
+          <Skeleton width="55%" height={15} borderRadius={6} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function FeedbackPage() {
   const navigate = useNavigate();
@@ -33,9 +47,9 @@ export default function FeedbackPage() {
           Select a course to view Sam's reports and teacher feedback.
         </p>
         {loading ? (
-          <p style={{ fontSize: 14, color: GRAY_600 }}>Loading courses…</p>
+          <FeedbackPageSkeleton />
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "fadeIn 0.3s ease both" }}>
             {courses.map((course) => (
               <button
                 key={course.id}
@@ -55,7 +69,7 @@ export default function FeedbackPage() {
                   color: GRAY_900,
                 }}
               >
-                <CourseIcon icon={course.icon ?? "general"} size={28} color={PRIMARY} />
+                <CourseIcon icon={course.icon ?? "general"} size={28} color={(COURSE_COLORS[course.icon ?? "general"] ?? COURSE_COLORS.general).main} />
                 {course.title}
               </button>
             ))}

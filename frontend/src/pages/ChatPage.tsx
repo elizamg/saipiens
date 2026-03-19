@@ -3,6 +3,8 @@ import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import ThreadList from "../components/chat/ThreadList";
 import MessageList from "../components/chat/MessageList";
 import ChatComposer from "../components/chat/ChatComposer";
+import CelebrationBanner from "../components/ui/CelebrationBanner";
+import Confetti from "../components/ui/Confetti";
 import {
   getCurrentStudent,
   getCourse,
@@ -18,13 +20,57 @@ import {
   getAgent,
   getKnowledgeQueue,
   getKnowledgeProgress,
-  completeKnowledgeAttempt,
+  respondToKnowledgeAnswer,
   listKnowledgeMessages,
   sendKnowledgeMessage,
   clarifyKnowledgeQuestion,
 } from "../services/api";
 import { isStageCompleted, stageLabel, stageTypeToProgressState } from "../utils/progress";
-import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, SUCCESS_GREEN } from "../theme/colors";
+import { WHITE, GRAY_900, GRAY_500, GRAY_600, PRIMARY, GRAY_300, GRAY_200, SUCCESS_GREEN } from "../theme/colors";
+import Skeleton from "../components/ui/Skeleton";
+
+function ChatPageSkeleton() {
+  return (
+    <div style={{ display: "flex", height: "100vh", backgroundColor: WHITE }}>
+      {/* Sidebar */}
+      <div style={{ width: 260, flexShrink: 0, borderRight: `1px solid ${GRAY_200}`, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+        <Skeleton width="70%" height={14} borderRadius={6} style={{ marginBottom: 8 }} />
+        {[80, 65, 72, 55, 68].map((w, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8 }}>
+            <Skeleton width={28} height={28} borderRadius="50%" style={{ flexShrink: 0 }} />
+            <Skeleton width={`${w}%`} height={14} borderRadius={6} />
+          </div>
+        ))}
+      </div>
+      {/* Main panel */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Header */}
+        <div style={{ padding: "16px 24px", borderBottom: `1px solid ${GRAY_200}` }}>
+          <Skeleton width={160} height={13} borderRadius={6} style={{ marginBottom: 8 }} />
+          <Skeleton width={240} height={20} borderRadius={6} />
+        </div>
+        {/* Messages */}
+        <div style={{ flex: 1, padding: "24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Skeleton width={32} height={32} borderRadius="50%" style={{ flexShrink: 0 }} />
+            <Skeleton width="55%" height={64} borderRadius={12} />
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Skeleton width="40%" height={44} borderRadius={12} />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Skeleton width={32} height={32} borderRadius="50%" style={{ flexShrink: 0 }} />
+            <Skeleton width="65%" height={80} borderRadius={12} />
+          </div>
+        </div>
+        {/* Composer */}
+        <div style={{ padding: "16px 24px", borderTop: `1px solid ${GRAY_200}` }}>
+          <Skeleton width="100%" height={44} borderRadius={8} />
+        </div>
+      </div>
+    </div>
+  );
+}
 import type {
   Student,
   Course,
@@ -102,8 +148,11 @@ export default function ChatPage() {
   const [gradingInProgress, setGradingInProgress] = useState(false);
   const [gradedItemIds, setGradedItemIds] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [knowledgeConfetti, setKnowledgeConfetti] = useState(false);
   const [pendingClarify, setPendingClarify] = useState(false);
   const [usedClarifyQuestions, setUsedClarifyQuestions] = useState<Set<string>>(new Set());
+  const [knowledgeAttemptCounts, setKnowledgeAttemptCounts] = useState<Record<string, number>>({});
   const [usedSkillClarifyQuestions, setUsedSkillClarifyQuestions] = useState<Set<string>>(new Set());
   // Track which item IDs we've already loaded messages for (avoid double-load)
   const loadedMessageItemIds = useRef<Set<string>>(new Set());
@@ -558,52 +607,68 @@ export default function ChatPage() {
         return;
       }
 
-      // Grade immediately
+      // Multi-turn answer evaluation (up to 2 attempts before final grade)
+      const itemId = selectedKnowledgeItem.id;
+      const currentAttempts = knowledgeAttemptCounts[itemId] ?? 0;
+      const attemptNumber = currentAttempts + 1;
+      setKnowledgeAttemptCounts((prev) => ({ ...prev, [itemId]: attemptNumber }));
+
       setGradingInProgress(true);
       try {
-        const { updatedItem, tutorFeedback } = await completeKnowledgeAttempt(
-          unitId,
-          student.id,
-          selectedKnowledgeItem.id,
-          content
+        const { outcome, tutorFeedback } = await respondToKnowledgeAnswer(
+          itemId,
+          content,
+          attemptNumber
         );
 
-        setGradedItemIds((prev) => new Set([...prev, selectedKnowledgeItem.id]));
-
-        // Show AI feedback as a tutor chat message
+        // Show tutor feedback as a chat message
         try {
-          const resultContent = tutorFeedback
-            ?? (updatedItem.is_correct ? "Correct! Great work on this topic." : "Good try, we'll revisit this.");
-          const resultMsg = await sendKnowledgeMessage(
-            selectedKnowledgeItem.id,
-            "tutor",
-            resultContent
-          );
-
+          const resultMsg = await sendKnowledgeMessage(itemId, "tutor", tutorFeedback);
           setKnowledgeMessages((prev) => ({
             ...prev,
-            [selectedKnowledgeItem.id]: [...(prev[selectedKnowledgeItem.id] ?? []), resultMsg],
+            [itemId]: [...(prev[itemId] ?? []), resultMsg],
           }));
         } catch {
           // Result message display is non-critical
         }
 
-        // Refresh queue + progress
-        const [updatedQueue, kProgress] = await Promise.all([
-          getKnowledgeQueue(unitId, student.id),
-          getKnowledgeProgress(unitId, student.id),
-        ]);
-        setKnowledgeItems(updatedQueue);
-        setKnowledgeProgress(kProgress);
+        if (outcome === "partial") {
+          // Keep composer enabled — student gets another attempt
+          // No grading, no queue refresh needed
+        } else {
+          // Final grade (correct or incorrect)
+          // Update local item immediately so label shows correct state without waiting for refresh
+          setKnowledgeItems((prev) =>
+            prev.map((item) =>
+              item.id === itemId
+                ? { ...item, status: outcome === "correct" ? "completed_correct" as const : "completed_incorrect" as const, is_correct: outcome === "correct" }
+                : item
+            )
+          );
+          setGradedItemIds((prev) => new Set([...prev, itemId]));
 
-        // Stay on current item — student clicks next in sidebar
+          // Trigger confetti for correct answers
+          if (outcome === "correct") {
+            setKnowledgeConfetti(true);
+            setTimeout(() => setKnowledgeConfetti(false), 2500);
+          }
+
+          // Refresh queue + progress — clarifying questions are generated in parallel with grading
+          Promise.all([
+            getKnowledgeQueue(unitId, student.id),
+            getKnowledgeProgress(unitId, student.id),
+          ]).then(([updatedQueue, kProgress]) => {
+            setKnowledgeItems(updatedQueue);
+            setKnowledgeProgress(kProgress);
+          }).catch(console.error);
+        }
       } catch (error) {
-        console.error("Error grading knowledge item:", error);
+        console.error("Error evaluating knowledge answer:", error);
       } finally {
         setGradingInProgress(false);
       }
     },
-    [selectedKnowledgeItemId, selectedKnowledgeItem, student, unitId, knowledgeItemIsActive, knowledgeItemIsGraded, pendingClarify, setSearchParams]
+    [selectedKnowledgeItemId, selectedKnowledgeItem, student, unitId, knowledgeItemIsActive, knowledgeItemIsGraded, pendingClarify, knowledgeAttemptCounts]
   );
 
   const handleAdvanceToNextStage = useCallback(async () => {
@@ -713,7 +778,9 @@ export default function ChatPage() {
     return messages;
   }, [messages, currentStage, currentStageCompleted, selectedThreadId, showNewAttemptButton]);
 
-  const skillNumber = isSkillThread && selectedThread ? selectedThread.order + 1 : 0;
+  const skillNumber = isSkillThread && selectedThread
+    ? threads.filter((t) => t.kind === "skill").sort((a, b) => a.order - b.order).findIndex((t) => t.id === selectedThread.id) + 1
+    : 0;
   const attemptNumber = currentNavIndex >= 0 ? currentNavIndex + 1 : 0;
 
   const showCurrentQuestion = currentStage?.stageType === "challenge"
@@ -730,6 +797,21 @@ export default function ChatPage() {
   const showChallengePills = isSkillThread
     && currentStage?.stageType === "challenge"
     && !currentStageCompleted;
+
+  // ============ Unit Completion Celebration ============
+  const prevAllCompleteRef = useRef(false);
+  useEffect(() => {
+    if (threads.length === 0) return;
+    const allSkillsComplete = threads.every((t) => t.progressState === "challenge_complete");
+    const allKnowledgeDone = !knowledgeItems.length || knowledgeItems.every(
+      (k) => k.status === "completed_correct" || k.status === "completed_incorrect"
+    );
+    const allComplete = allSkillsComplete && allKnowledgeDone;
+    if (allComplete && !prevAllCompleteRef.current) {
+      setShowCelebration(true);
+    }
+    prevAllCompleteRef.current = allComplete;
+  }, [threads, knowledgeItems]);
 
   // ============ Styles ============
 
@@ -912,13 +994,7 @@ export default function ChatPage() {
   };
 
   if (loading) {
-    return (
-      <div style={containerStyles}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          Loading...
-        </div>
-      </div>
-    );
+    return <ChatPageSkeleton />;
   }
 
   const isKnowledgeMode = selectedKnowledgeItem != null;
@@ -941,7 +1017,15 @@ export default function ChatPage() {
         unitProgress={unitProgress || undefined}
         knowledgeProgress={knowledgeProgress || undefined}
       />
-      <main style={mainStyles}>
+      <main style={{ ...mainStyles, position: "relative" as const }}>
+        {knowledgeConfetti && <Confetti trigger={knowledgeConfetti} intensity="small" />}
+        {showCelebration && (
+          <CelebrationBanner
+            unitTitle={unit?.title ?? "this unit"}
+            show={showCelebration}
+            onDismiss={() => setShowCelebration(false)}
+          />
+        )}
         <header style={headerStyles}>
           <div style={breadcrumbRowStyles}>
             <span style={breadcrumbStyles}>
@@ -1062,7 +1146,7 @@ export default function ChatPage() {
         {isKnowledgeMode ? (
           // ── Knowledge item chat area ──
           <div style={chatAreaStyles}>
-            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} isSending={gradingInProgress || isSending} />
+            <MessageList messages={currentKnowledgeMessages} agent={agentData ?? undefined} isSending={!knowledgeItemIsGraded && (gradingInProgress || isSending)} />
             {/* Graded status bar */}
             {knowledgeItemIsGraded && (
               <div style={ctaBarStyles}>
@@ -1077,8 +1161,8 @@ export default function ChatPage() {
                 <span style={completedLabelStyles}>{preCompletedLabel}</span>
               </div>
             )}
-            {/* Suggested question pills: shown for active empty chats */}
-            {knowledgeSuggestedQuestions.length > 0 && (
+            {/* Suggested question pills: always show "Ask a question" for active items */}
+            {knowledgeItemIsActive && !knowledgeItemIsGraded && !gradingInProgress && (
               <div style={pillContainerStyles}>
                 <button
                   type="button"

@@ -38,18 +38,32 @@ export default function ProgressCircle({ state, size = 16 }: ProgressCircleProps
   }
 
   if (state === "challenge_complete") {
-    // Full circle
+    // Full circle with celebration animation
     return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle
-          cx={cx}
-          cy={cy}
-          r={innerR}
-          fill={SUCCESS_GREEN}
-          stroke={SUCCESS_GREEN}
-          strokeWidth={strokeWidth}
-        />
-      </svg>
+      <>
+        <style>{`
+          @keyframes progress-complete-pop {
+            0% { transform: scale(1); filter: drop-shadow(0 0 0px transparent); }
+            40% { transform: scale(1.35); filter: drop-shadow(0 0 6px rgba(92,143,106,0.6)); }
+            100% { transform: scale(1); filter: drop-shadow(0 0 0px transparent); }
+          }
+        `}</style>
+        <svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          style={{ animation: "progress-complete-pop 0.6s ease-out" }}
+        >
+          <circle
+            cx={cx}
+            cy={cy}
+            r={innerR}
+            fill={SUCCESS_GREEN}
+            stroke={SUCCESS_GREEN}
+            strokeWidth={strokeWidth}
+          />
+        </svg>
+      </>
     );
   }
 

@@ -4,6 +4,7 @@ import AppShell from "../components/layout/AppShell";
 import Button from "../components/ui/Button";
 import BackButton from "../components/ui/BackButton";
 import { GRAY_300, GRAY_500, GRAY_900, PRIMARY } from "../theme/colors";
+import Skeleton from "../components/ui/Skeleton";
 import type { ObjectiveKind, Course, Unit, Objective, Student, KnowledgeTopic } from "../types/domain";
 import {
   getCourse,
@@ -18,6 +19,7 @@ import {
   updateUnitDeadline,
   deleteUnit,
   listKnowledgeTopics,
+  updateKnowledgeTopicEnabled,
 } from "../services/api";
 
 const SECTION_ORDER: ObjectiveKind[] = ["knowledge", "skill", "capstone"];
@@ -52,6 +54,7 @@ export default function CourseEditorPage() {
 
   // Knowledge topics (shown alongside objectives for "ready" units)
   const [knowledgeTopics, setKnowledgeTopics] = useState<KnowledgeTopic[]>([]);
+  const [enabledTopicIds, setEnabledTopicIds] = useState<Set<string>>(new Set());
 
   // For units in "review" status (no objectives yet, only identified knowledge)
   const [identifiedKnowledge, setIdentifiedKnowledge] = useState<
@@ -113,8 +116,16 @@ export default function CourseEditorPage() {
           try {
             const topics = await listKnowledgeTopics(unitId);
             setKnowledgeTopics(topics);
+            setEnabledTopicIds(new Set(topics.filter((t) => t.enabled !== false).map((t) => t.id)));
           } catch {
             // no knowledge topics available
+          }
+          // Also fetch identified knowledge so we can show ungenerated items greyed out
+          try {
+            const data = await getIdentifiedKnowledge(unitId);
+            setIdentifiedKnowledge(data.identifiedKnowledge);
+          } catch {
+            // no identified knowledge available
           }
         }
       })
@@ -136,12 +147,17 @@ export default function CourseEditorPage() {
             const objs = await listTeacherObjectives(unitId);
             setObjectives(objs);
             setEnabledIds(new Set(objs.filter((o) => o.enabled !== false).map((o) => o.id)));
-            setIdentifiedKnowledge([]);
             setGenerating(false);
             // Fetch knowledge topics for the newly ready unit
             try {
               const topics = await listKnowledgeTopics(unitId);
               setKnowledgeTopics(topics);
+              setEnabledTopicIds(new Set(topics.filter((t) => t.enabled !== false).map((t) => t.id)));
+            } catch { /* ignore */ }
+            // Re-fetch identified knowledge so ungenerated items still show
+            try {
+              const data = await getIdentifiedKnowledge(unitId);
+              setIdentifiedKnowledge(data.identifiedKnowledge);
             } catch { /* ignore */ }
             return;
           }
@@ -156,6 +172,16 @@ export default function CourseEditorPage() {
 
   const toggleObjective = useCallback((id: string) => {
     setEnabledIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setDirty(true);
+  }, []);
+
+  const toggleKnowledgeTopic = useCallback((id: string) => {
+    setEnabledTopicIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -190,14 +216,32 @@ export default function CourseEditorPage() {
         }
       } else {
         // Edit mode: update enabled state for each changed objective
-        const updates = objectives
+        const objUpdates = objectives
           .filter((obj) => (obj.enabled !== false) !== enabledIds.has(obj.id))
           .map((obj) => updateObjectiveEnabled(obj.id, enabledIds.has(obj.id)));
-        await Promise.all(updates);
+        // Also update knowledge topic enabled state
+        const topicUpdates = knowledgeTopics
+          .filter((t) => (t.enabled !== false) !== enabledTopicIds.has(t.id))
+          .map((t) => updateKnowledgeTopicEnabled(t.id, enabledTopicIds.has(t.id)));
+        await Promise.all([...objUpdates, ...topicUpdates]);
         // Update local state to reflect saved enabled values
         setObjectives((prev) =>
           prev.map((obj) => ({ ...obj, enabled: enabledIds.has(obj.id) }))
         );
+        setKnowledgeTopics((prev) =>
+          prev.map((t) => ({ ...t, enabled: enabledTopicIds.has(t.id) }))
+        );
+        // Generate objectives for any newly selected ungenerated items
+        if (selectedUngeneratedIndices.size > 0) {
+          const toGenerate = ungeneratedItems
+            .filter((_, i) => selectedUngeneratedIndices.has(i))
+            .map((k) => ({ type: k.type, description: k.description }));
+          if (toGenerate.length > 0) {
+            await generateSelectedObjectives(unitId, toGenerate);
+            setSelectedUngeneratedIndices(new Set());
+            setGenerating(true);
+          }
+        }
       }
       setDirty(false);
     } catch (err) {
@@ -272,6 +316,35 @@ export default function CourseEditorPage() {
     }
     return byKind;
   }, [objectives, enabledIds]);
+
+  // Ungenerated items: identified knowledge that wasn't selected for generation
+  // Shown greyed out in edit mode with checkboxes so the instructor can generate them later
+  const isReviewMode = identifiedKnowledge.length > 0 && objectives.length === 0;
+  const ungeneratedItems = useMemo(() => {
+    if (isReviewMode || identifiedKnowledge.length === 0 || (objectives.length === 0 && knowledgeTopics.length === 0)) return [] as { type: string; description: string }[];
+    const generatedDescriptions = new Set<string>();
+    objectives.forEach((o) => {
+      if (o.description) generatedDescriptions.add(o.description.toLowerCase().trim());
+      if (o.title) generatedDescriptions.add(o.title.toLowerCase().trim());
+    });
+    knowledgeTopics.forEach((t) => {
+      if (t.knowledgeTopic) generatedDescriptions.add(t.knowledgeTopic.toLowerCase().trim());
+    });
+    return identifiedKnowledge.filter((item) => !generatedDescriptions.has(item.description.toLowerCase().trim()));
+  }, [isReviewMode, identifiedKnowledge, objectives, knowledgeTopics]);
+
+  // Track which ungenerated items the instructor has checked for generation
+  const [selectedUngeneratedIndices, setSelectedUngeneratedIndices] = useState<Set<number>>(new Set());
+
+  const toggleUngenerated = useCallback((index: number) => {
+    setSelectedUngeneratedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+    setDirty(true);
+  }, []);
 
   // Group identified knowledge for review mode
   const reviewGrouped = useMemo(() => {
@@ -349,16 +422,38 @@ export default function CourseEditorPage() {
   if (loading) {
     return (
       <AppShell {...shellProps}>
-        <p style={{ fontSize: 14, color: GRAY_500 }}>Loading…</p>
+        <>
+          <Skeleton width={200} height={28} borderRadius={8} style={{ marginBottom: 24 }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 10, border: `1px solid ${GRAY_300}` }}>
+                <Skeleton width={20} height={20} borderRadius={4} style={{ flexShrink: 0 }} />
+                <Skeleton width={`${55 + i * 7}%`} height={14} borderRadius={6} />
+              </div>
+            ))}
+          </div>
+        </>
       </AppShell>
     );
   }
 
-  const isReviewMode = identifiedKnowledge.length > 0 && objectives.length === 0;
+  const ungeneratedKnowledgeItems = ungeneratedItems.filter((i) => i.type !== "skill");
+  const ungeneratedKnowledgeSelectedCount = ungeneratedKnowledgeItems.filter((item) => {
+    const globalIdx = ungeneratedItems.indexOf(item);
+    return selectedUngeneratedIndices.has(globalIdx);
+  }).length;
+
+  const skillObjs = objectives.filter((o) => o.kind === "skill");
+  const ungeneratedSkillItems = ungeneratedItems.filter((i) => i.type === "skill");
   const enabledCount = isReviewMode
     ? selectedReviewIndices.size
-    : enabledIds.size + knowledgeTopics.length;
-  const totalCount = isReviewMode ? identifiedKnowledge.length : objectives.length + knowledgeTopics.length;
+    : skillObjs.filter((o) => enabledIds.has(o.id)).length
+      + ungeneratedSkillItems.filter((_, i) => selectedUngeneratedIndices.has(ungeneratedItems.indexOf(ungeneratedSkillItems[i]))).length
+      + enabledTopicIds.size
+      + ungeneratedKnowledgeSelectedCount;
+  const totalCount = isReviewMode
+    ? identifiedKnowledge.length
+    : skillObjs.length + ungeneratedSkillItems.length + knowledgeTopics.length + ungeneratedKnowledgeItems.length;
 
   const renderObjectiveRow = (
     id: string,
@@ -485,9 +580,11 @@ export default function CourseEditorPage() {
             </div>
           )}
 
-          <p style={{ fontSize: 14, color: GRAY_500, marginBottom: 24 }}>
-            {enabledCount} of {totalCount} objective{totalCount !== 1 ? "s" : ""} selected
-          </p>
+          {!generating && totalCount > 0 && (
+            <p style={{ fontSize: 14, color: GRAY_500, marginBottom: 24 }}>
+              {enabledCount} of {totalCount} objective{totalCount !== 1 ? "s" : ""} selected
+            </p>
+          )}
 
           <div style={actionBarStyles}>
             <Button
@@ -535,7 +632,7 @@ export default function CourseEditorPage() {
               {reviewGrouped.skills.length > 0 && (
                 <section style={sectionStyles}>
                   <h2 style={sectionHeadingStyles}>
-                    Skills ({reviewGrouped.skills.length})
+                    Skills ({reviewGrouped.skills.filter((k) => selectedReviewIndices.has(k._idx)).length}/{reviewGrouped.skills.length})
                   </h2>
                   {reviewGrouped.skills.map((k) =>
                     renderObjectiveRow(
@@ -550,7 +647,7 @@ export default function CourseEditorPage() {
               {reviewGrouped.knowledge.length > 0 && (
                 <section style={sectionStyles}>
                   <h2 style={sectionHeadingStyles}>
-                    Knowledge ({reviewGrouped.knowledge.length})
+                    Knowledge ({reviewGrouped.knowledge.filter((k) => selectedReviewIndices.has(k._idx)).length}/{reviewGrouped.knowledge.length})
                   </h2>
                   {reviewGrouped.knowledge.map((k) =>
                     renderObjectiveRow(
@@ -565,13 +662,18 @@ export default function CourseEditorPage() {
             </>
           ) : (
             <>
-              {SECTION_ORDER.filter((k) => k !== "knowledge").map((kind) => {
+              {(["skill"] as ObjectiveKind[]).map((kind) => {
                 const items = grouped[kind];
-                if (items.length === 0) return null;
+                const ungeneratedForKind = ungeneratedItems
+                  .map((item, i) => ({ ...item, _uIdx: i }))
+                  .filter((item) => (kind === "skill" ? item.type === "skill" : item.type !== "skill" && item.type !== "knowledge"));
+                if (items.length === 0 && ungeneratedForKind.length === 0) return null;
+                const enabledInSection = items.filter((o) => enabledIds.has(o.id)).length + ungeneratedForKind.filter((item) => selectedUngeneratedIndices.has(item._uIdx)).length;
+                const totalInSection = items.length + ungeneratedForKind.length;
                 return (
                   <section key={kind} style={sectionStyles}>
                     <h2 style={sectionHeadingStyles}>
-                      {SECTION_LABELS[kind]} ({items.length})
+                      {SECTION_LABELS[kind]} ({enabledInSection}/{totalInSection})
                     </h2>
                     {items.map((obj) =>
                       renderObjectiveRow(
@@ -581,35 +683,48 @@ export default function CourseEditorPage() {
                         () => toggleObjective(obj.id)
                       )
                     )}
+                    {ungeneratedForKind.map((item) =>
+                      renderObjectiveRow(
+                        `ungen-${item._uIdx}`,
+                        item.description,
+                        selectedUngeneratedIndices.has(item._uIdx),
+                        () => toggleUngenerated(item._uIdx)
+                      )
+                    )}
                   </section>
                 );
               })}
-              {knowledgeTopics.length > 0 && (
+              {(knowledgeTopics.length > 0 || ungeneratedItems.some((i) => i.type !== "skill")) && (
                 <section style={sectionStyles}>
                   <h2 style={sectionHeadingStyles}>
-                    Knowledge ({knowledgeTopics.length})
+                    Knowledge ({enabledTopicIds.size + ungeneratedKnowledgeSelectedCount}/{knowledgeTopics.length + ungeneratedKnowledgeItems.length})
                   </h2>
-                  {knowledgeTopics
-                    .sort((a, b) => a.order - b.order)
-                    .map((topic) => (
-                      <div
-                        key={topic.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: 10,
-                          padding: "10px 12px",
-                          borderRadius: 8,
-                          backgroundColor: "#f9fafb",
-                          marginBottom: 6,
-                          fontSize: 14,
-                          color: GRAY_900,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        <span>{topic.knowledgeTopic}</span>
-                      </div>
-                    ))}
+                  {[...knowledgeTopics]
+                    .sort((a, b) => {
+                      const aEnabled = enabledTopicIds.has(a.id) ? 0 : 1;
+                      const bEnabled = enabledTopicIds.has(b.id) ? 0 : 1;
+                      if (aEnabled !== bEnabled) return aEnabled - bEnabled;
+                      return a.order - b.order;
+                    })
+                    .map((topic) =>
+                      renderObjectiveRow(
+                        topic.id,
+                        topic.knowledgeTopic,
+                        enabledTopicIds.has(topic.id),
+                        () => toggleKnowledgeTopic(topic.id)
+                      )
+                    )}
+                  {ungeneratedItems
+                    .map((item, i) => ({ ...item, _uIdx: i }))
+                    .filter((item) => item.type !== "skill")
+                    .map((item) =>
+                      renderObjectiveRow(
+                        `ungen-${item._uIdx}`,
+                        item.description,
+                        selectedUngeneratedIndices.has(item._uIdx),
+                        () => toggleUngenerated(item._uIdx)
+                      )
+                    )}
                 </section>
               )}
             </>

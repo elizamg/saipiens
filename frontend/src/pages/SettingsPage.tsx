@@ -6,7 +6,7 @@ import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import Avatar from "../components/ui/Avatar";
 import { getCurrentStudent, updateProfile, getAvatarUploadUrl } from "../services/api";
-import { getCurrentUserEmail, changePassword } from "../services/cognitoAuth";
+import { getCurrentUserEmail, changePassword, updateCognitoName } from "../services/cognitoAuth";
 import { useAuth } from "../contexts/AuthContext";
 import type { Student } from "../types/domain";
 import {
@@ -57,14 +57,15 @@ export default function SettingsPage() {
       let avatarUrl: string | undefined;
       if (avatarFile) {
         const { uploadUrl, publicUrl } = await getAvatarUploadUrl(avatarFile.name, avatarFile.type);
-        if (uploadUrl !== "mock") {
-          await fetch(uploadUrl, { method: "PUT", body: avatarFile });
-          avatarUrl = publicUrl;
-        } else {
-          avatarUrl = avatarPreviewUrl; // already an object URL from file selection
-        }
+        await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": avatarFile.type },
+          body: avatarFile,
+        });
+        avatarUrl = publicUrl;
       }
       await updateProfile({ name, ...(avatarUrl ? { avatarUrl } : {}) });
+      await updateCognitoName(name);
       setSaveSuccess(true);
       setAvatarFile(null);
     } catch (e) {
@@ -201,7 +202,7 @@ export default function SettingsPage() {
         {/* Sign Out */}
         <Card>
           <h2 style={cardHeadingStyle}>Sign Out</h2>
-          <Button variant="secondary" onClick={handleSignOut}>
+          <Button onClick={handleSignOut}>
             Sign Out
           </Button>
         </Card>

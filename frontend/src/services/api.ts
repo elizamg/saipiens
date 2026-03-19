@@ -346,13 +346,19 @@ export function listKnowledgeTopics(unitId: string): Promise<KnowledgeTopic[]> {
   return get<KnowledgeTopic[]>(`/units/${unitId}/knowledge-topics`);
 }
 
+export function updateKnowledgeTopicEnabled(
+  topicId: string,
+  enabled: boolean
+): Promise<KnowledgeTopic> {
+  return patch<KnowledgeTopic>(`/knowledge-topics/${topicId}/enabled`, { enabled });
+}
+
 // ---------------------------------------------------------------------------
 // Knowledge Queue (student-facing)
 // ---------------------------------------------------------------------------
 
-export function listKnowledgeMessages(_queueItemId: string): Promise<ChatMessage[]> {
-  // Knowledge queue items don't have a separate message thread — stub for UI compat.
-  return Promise.resolve([]);
+export function listKnowledgeMessages(queueItemId: string): Promise<ChatMessage[]> {
+  return get<ChatMessage[]>(`/knowledge-queue/${queueItemId}/messages`);
 }
 
 export function sendKnowledgeMessage(
@@ -361,17 +367,10 @@ export function sendKnowledgeMessage(
   content: string,
   metadata?: ChatMessage["metadata"]
 ): Promise<ChatMessage> {
-  // Knowledge messages are session-only (no backend persistence).
-  // Create a local ChatMessage object for the UI.
-  const msg: ChatMessage = {
-    id: `kqi_msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    threadId: queueItemId,
-    role,
-    content,
-    createdAt: new Date().toISOString(),
-    ...(metadata ? { metadata } : {}),
-  };
-  return Promise.resolve(msg);
+  return post<ChatMessage>(
+    `/knowledge-queue/${queueItemId}/messages`,
+    { role, content, ...(metadata ? { metadata } : {}) }
+  );
 }
 
 export function getKnowledgeQueue(
@@ -391,6 +390,21 @@ export function completeKnowledgeAttempt(
     `/knowledge-queue/${queueItemId}/complete`,
     { answer }
   );
+}
+
+export type KnowledgeRespondOutcome = "correct" | "incorrect" | "partial";
+
+export function respondToKnowledgeAnswer(
+  queueItemId: string,
+  answer: string,
+  attemptNumber: number
+): Promise<{
+  outcome: KnowledgeRespondOutcome;
+  tutorFeedback: string;
+  updatedItem?: KnowledgeQueueItem;
+  newQueueItem?: KnowledgeQueueItem;
+}> {
+  return post(`/knowledge-queue/${queueItemId}/respond`, { answer, attemptNumber });
 }
 
 export function clarifyKnowledgeQuestion(
