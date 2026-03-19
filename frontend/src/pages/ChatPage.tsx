@@ -630,6 +630,14 @@ export default function ChatPage() {
           // No grading, no queue refresh needed
         } else {
           // Final grade (correct or incorrect)
+          // Update local item immediately so label shows correct state without waiting for refresh
+          setKnowledgeItems((prev) =>
+            prev.map((item) =>
+              item.id === itemId
+                ? { ...item, status: outcome === "correct" ? "completed_correct" as const : "completed_incorrect" as const, is_correct: outcome === "correct" }
+                : item
+            )
+          );
           setGradedItemIds((prev) => new Set([...prev, itemId]));
 
           // Trigger confetti for correct answers
@@ -638,13 +646,14 @@ export default function ChatPage() {
             setTimeout(() => setKnowledgeConfetti(false), 2500);
           }
 
-          // Refresh queue + progress
-          const [updatedQueue, kProgress] = await Promise.all([
+          // Refresh queue + progress in background for consistency
+          Promise.all([
             getKnowledgeQueue(unitId, student.id),
             getKnowledgeProgress(unitId, student.id),
-          ]);
-          setKnowledgeItems(updatedQueue);
-          setKnowledgeProgress(kProgress);
+          ]).then(([updatedQueue, kProgress]) => {
+            setKnowledgeItems(updatedQueue);
+            setKnowledgeProgress(kProgress);
+          }).catch(console.error);
         }
       } catch (error) {
         console.error("Error evaluating knowledge answer:", error);

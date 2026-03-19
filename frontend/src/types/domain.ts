@@ -85,10 +85,18 @@ export interface GradingReport {
   createdAt: string;
   skillCompleted?: number;
   skillTotal?: number;
+  skillCompletedBeforeDeadline?: number;
   knowledgeCorrect?: number;
   knowledgeTotal?: number;
+  knowledgeAttempts?: number;
   deadline?: string;
   completedBeforeDeadline?: boolean | null;
+  /** Percentage of skills completed before the deadline (0-100) */
+  onTimePct?: number | null;
+  /** ISO timestamp when the student finished all skills, or empty if in progress */
+  completionDate?: string;
+  /** "ready" or "generating" — if generating, report is being created asynchronously */
+  status?: string;
 }
 
 // ============ Objective (Sidebar Item) & Stage Types ============
