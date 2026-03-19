@@ -768,7 +768,7 @@ def handle_get_unit_progress(event, unit_id: str):
     for o in objectives:
         oid = o.get("id")
         p = prog_by_obj.get(oid)
-        if p and p.get("progressState") == "challenge_complete":
+        if p and int(p.get("earnedStars") or 0) >= 3:
             obj_completed += 1
 
     total = len(objectives)

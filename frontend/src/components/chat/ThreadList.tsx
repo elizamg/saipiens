@@ -339,7 +339,6 @@ function SectionGroup({
   onToggle,
   selectedThreadId,
   onSelectThread,
-  unitProgress,
   locked = false,
 }: SectionGroupProps) {
   const completedCount = threads.filter((t) => t.progressState === "challenge_complete").length;
