@@ -135,7 +135,7 @@ export default function MessageBubble({ message, agent, onNewAttempt }: MessageB
           {showCircle && <ProgressCircle state={progressState as ProgressState} size={20} />}
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             {PROGRESS_LABEL_CONFIG[progressState as string]?.icon}
-            {PROGRESS_LABEL_CONFIG[progressState as string]?.text ?? message.content}
+            {message.content || PROGRESS_LABEL_CONFIG[progressState as string]?.text}
           </span>
         </div>
       ) : (

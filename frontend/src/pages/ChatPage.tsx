@@ -82,6 +82,7 @@ import type {
   Agent,
   KnowledgeQueueItem,
   KnowledgeProgress,
+  ObjectiveKind,
 } from "../types/domain";
 
 /** Synthetic completion message appended when a stage is completed. */
@@ -89,12 +90,13 @@ function makeCompletionMessage(
   stageId: string,
   threadId: string,
   stageType: StageType,
-  progressState: ProgressState
+  progressState: ProgressState,
+  kind?: ObjectiveKind
 ): ChatMessage {
   const labels: Record<StageType, string> = {
     begin: "Walkthrough started",
     walkthrough: "Walkthrough complete",
-    challenge: "Challenge complete!",
+    challenge: kind === "capstone" ? "Capstone complete!" : "Challenge complete!",
   };
   return {
     id: `completion_${stageId}`,
@@ -449,6 +451,47 @@ export default function ChatPage() {
     loadThreadData();
   }, [selectedThreadId, selectedStageId, threads]);
 
+  // Auto-trigger the first capstone message when the thread is opened with no messages.
+  // We track which threads we've already initialized and use a separate flag
+  // ("capstoneDataLoaded") so we only fire after both messages AND currentStage are set.
+  const capstoneInitializedThreadIds = useRef<Set<string>>(new Set());
+  const [capstoneDataLoaded, setCapstoneDataLoaded] = useState(false);
+
+  // Set the flag once the load-thread-data effect has finished for a capstone thread
+  useEffect(() => {
+    if (!selectedThreadId || !currentStage) {
+      setCapstoneDataLoaded(false);
+      return;
+    }
+    const thread = threads.find((t) => t.id === selectedThreadId);
+    if (thread?.kind === "capstone") {
+      setCapstoneDataLoaded(true);
+    } else {
+      setCapstoneDataLoaded(false);
+    }
+  }, [selectedThreadId, currentStage, threads]);
+
+  useEffect(() => {
+    if (!capstoneDataLoaded || !selectedThreadId || !selectedStageId || !student) return;
+    if (capstoneInitializedThreadIds.current.has(selectedThreadId)) return;
+    if (messages.length > 0) {
+      capstoneInitializedThreadIds.current.add(selectedThreadId);
+      return;
+    }
+
+    capstoneInitializedThreadIds.current.add(selectedThreadId);
+    setIsSending(true);
+
+    sendMessage(selectedThreadId, "", selectedStageId, "challenge", undefined, true)
+      .then(({ tutorMessage }) => {
+        const msgs: typeof messages = [];
+        if (tutorMessage) msgs.push(tutorMessage);
+        setMessages(msgs);
+      })
+      .catch((err) => console.error("Error initializing capstone:", err))
+      .finally(() => setIsSending(false));
+  }, [capstoneDataLoaded, selectedThreadId, selectedStageId, student, messages.length]);
+
   const handleSelectThread = useCallback(
     (threadId: string) => {
       const thread = threads.find((t) => t.id === threadId);
@@ -753,7 +796,7 @@ export default function ChatPage() {
       );
       if (hasSystemCompletion) return messages;
       const progressState = stageTypeToProgressState(currentStage.stageType);
-      return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, currentStage.stageType, progressState)];
+      return [...messages, makeCompletionMessage(currentStage.id, selectedThreadId, currentStage.stageType, progressState, selectedThread?.kind)];
     }
     if (showNewAttemptButton) {
       return [...messages, makeNewAttemptMessage(currentStage.id, selectedThreadId)];
@@ -781,15 +824,34 @@ export default function ChatPage() {
     && currentStage?.stageType === "challenge"
     && !currentStageCompleted;
 
+  // ============ Skill/Capstone Completion State ============
+  const allSkillsComplete = threads.length > 0
+    && threads.filter((t) => t.kind === "skill").every((t) => t.progressState === "challenge_complete")
+    && threads.some((t) => t.kind === "skill");
+
+  const allObjectiveThreads = threads.filter((t) => t.kind === "skill" || t.kind === "capstone");
+  const completedThreads = allObjectiveThreads.filter((t) => t.progressState === "challenge_complete").length;
+  const completedKnowledge = knowledgeItems.filter(
+    (k) => k.status === "completed_correct" || k.status === "completed_incorrect"
+  ).length;
+  const totalCount = allObjectiveThreads.length + knowledgeItems.length;
+  const completedCount = completedThreads + completedKnowledge;
+  const unitProgress = totalCount > 0 ? {
+    unitId: unitId ?? "",
+    totalObjectives: totalCount,
+    completedObjectives: completedCount,
+    progressPercent: Math.round((completedCount / totalCount) * 100),
+  } : undefined;
+
   // ============ Unit Completion Celebration ============
   const prevAllCompleteRef = useRef(false);
   useEffect(() => {
     if (threads.length === 0) return;
-    const allSkillsComplete = threads.every((t) => t.progressState === "challenge_complete");
+    const allThreadsDone = threads.every((t) => t.progressState === "challenge_complete");
     const allKnowledgeDone = !knowledgeItems.length || knowledgeItems.every(
       (k) => k.status === "completed_correct" || k.status === "completed_incorrect"
     );
-    const allComplete = allSkillsComplete && allKnowledgeDone;
+    const allComplete = allThreadsDone && allKnowledgeDone;
     if (allComplete && !prevAllCompleteRef.current) {
       setShowCelebration(true);
     }
@@ -998,6 +1060,8 @@ export default function ChatPage() {
         onSelectKnowledgeItem={handleSelectKnowledgeItem}
         onBack={() => (courseId ? navigate(`/course/${courseId}`) : navigate(-1))}
         knowledgeProgress={knowledgeProgress || undefined}
+        unitProgress={unitProgress}
+        allSkillsComplete={allSkillsComplete}
       />
       <main style={{ ...mainStyles, position: "relative" as const }}>
         {knowledgeConfetti && <Confetti trigger={knowledgeConfetti} intensity="small" />}

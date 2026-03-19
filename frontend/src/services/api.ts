@@ -330,11 +330,12 @@ export function sendMessage(
   content: string,
   stageId?: string,
   stageType?: string,
-  clarify?: boolean
+  clarify?: boolean,
+  capstoneInit?: boolean
 ): Promise<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }> {
   return post<{ studentMessage: ChatMessage; tutorMessage: ChatMessage | null }>(
     `/threads/${threadId}/messages`,
-    { content, stageId, stageType, ...(clarify ? { clarify: true } : {}) }
+    { content, stageId, stageType, ...(clarify ? { clarify: true } : {}), ...(capstoneInit ? { capstoneInit: true } : {}) }
   );
 }
 

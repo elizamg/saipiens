@@ -768,7 +768,7 @@ def handle_get_unit_progress(event, unit_id: str):
     for o in objectives:
         oid = o.get("id")
         p = prog_by_obj.get(oid)
-        if p and p.get("progressState") == "challenge_complete":
+        if p and int(p.get("earnedStars") or 0) >= 3:
             obj_completed += 1
 
     total = len(objectives)
@@ -1504,7 +1504,12 @@ def handle_list_threads_for_unit(event, unit_id: str):
 
         p = prog_by_obj.get(oid) or _default_progress(student_id, oid or "")
         earned = int(p.get("earnedStars") or 0)
+        obj_kind = obj.get("kind", "skill")
         stage_type = p.get("currentStageType") or _compute_current_stage_type(earned)
+
+        # Capstone only has a challenge stage — override begin/walkthrough
+        if obj_kind == "capstone" and stage_type in ("begin", "walkthrough"):
+            stage_type = "challenge"
 
         stages = _load_stages_by_objective(oid) if oid else []
         stage_id = _current_stage_id_from_stages(stages, stage_type)
@@ -1571,7 +1576,12 @@ def handle_get_thread_with_progress(event, thread_id: str):
     if not p:
         p = _default_progress(student_id, oid)
     earned = int(p.get("earnedStars") or 0)
+    obj_kind = obj.get("kind", "skill")
     stage_type = p.get("currentStageType") or _compute_current_stage_type(earned)
+
+    # Capstone only has a challenge stage — override begin/walkthrough
+    if obj_kind == "capstone" and stage_type in ("begin", "walkthrough"):
+        stage_type = "challenge"
 
     stages = _load_stages_by_objective(oid)
     stage_id = _current_stage_id_from_stages(stages, stage_type)
@@ -1763,7 +1773,52 @@ def _call_tutor_pipeline(
                 }
 
         elif stage_type == "challenge":
-            if objective_kind == "knowledge":
+            if objective_kind == "capstone":
+                # Capstone: teach-back conversation pipeline
+                from backend_code.capstone_pipeline import capstone_teach_step, identify_weakest_skill
+
+                # Load or identify the weakest skill for this capstone
+                thread_obj = objective  # objective dict passed in
+                unit_id = thread_obj.get("unitId", "")
+                student_id = student.get("id", "")
+
+                # Check if we already identified the skill (stored in thread metadata)
+                thread_tbl = dynamodb.Table(T["CHAT_THREADS"])
+                thread_record = thread_tbl.get_item(Key={"id": f"thread-{objective.get('id', '')}"}).get("Item", {})
+                capstone_meta = thread_record.get("capstoneSkillContext")
+
+                if not capstone_meta:
+                    # First message — identify weakest skill and store it
+                    capstone_meta = identify_weakest_skill(
+                        dynamodb, T, IDX, unit_id, student_id
+                    )
+                    # Store skill context and update thread title to show the chosen topic
+                    skill_title = capstone_meta.get("title", "Capstone")
+                    thread_key = thread_record.get("id", f"thread-{objective.get('id', '')}")
+                    thread_tbl.update_item(
+                        Key={"id": thread_key},
+                        UpdateExpression="SET capstoneSkillContext = :ctx, title = :t",
+                        ExpressionAttributeValues={
+                            ":ctx": capstone_meta,
+                            ":t": f"Teach: {skill_title}",
+                        },
+                    )
+
+                result = capstone_teach_step(
+                    subject=subject,
+                    grade=grade,
+                    skill_description=capstone_meta.get("description", objective_title),
+                    grading_feedback=capstone_meta.get("grading_feedback", ""),
+                    conversation=conversation,
+                )
+                if result:
+                    return {
+                        "text": result.get("Tutor_Response"),
+                        "is_finished": bool(result.get("Is_Finished")),
+                        "grading_category": None,
+                    }
+
+            elif objective_kind == "knowledge":
                 from backend_code.info_question_pipeline import grade_info
                 _is_correct, feedback = grade_info(
                     grade=grade,
@@ -1774,7 +1829,7 @@ def _call_tutor_pipeline(
                 )
                 return {"text": feedback, "is_finished": False, "grading_category": None}
             else:
-                # skill or capstone
+                # skill
                 from challenge_question_pipeline import grade_skill
                 category, feedback = grade_skill(
                     grade=grade,
@@ -1856,8 +1911,11 @@ def handle_send_message(event, thread_id: str):
     stage_id = body.get("stageId")
     stage_type = body.get("stageType")  # client sends this to avoid extra DB lookup
     is_clarify = body.get("clarify") is True
-    if not isinstance(content, str) or not content.strip():
+    capstone_init = body.get("capstoneInit") is True  # Allow empty content for capstone initialization
+    if not capstone_init and (not isinstance(content, str) or not content.strip()):
         return resp(400, {"error": "Missing content"})
+    if capstone_init:
+        content = content or ""
 
     from concurrent.futures import ThreadPoolExecutor, Future
 
@@ -1875,7 +1933,8 @@ def handle_send_message(event, thread_id: str):
 
     # Parallelize: save student message + update thread + fetch context + stage + conversation
     def _save_msg():
-        msgs_tbl.put_item(Item=student_msg)
+        if not capstone_init:
+            msgs_tbl.put_item(Item=student_msg)
 
     def _update_thread():
         try:
@@ -1977,6 +2036,7 @@ def handle_send_message(event, thread_id: str):
 
                     # Auto-advance objective progress
                     objective_id = ctx["objective"].get("id")
+                    objective_kind = ctx["objective"].get("kind", "")
                     if objective_id:
                         if is_finished and stage_type == "walkthrough":
                             _advance_progress_for_student(student_id, objective_id, required_stars=1)
@@ -1984,8 +2044,11 @@ def handle_send_message(event, thread_id: str):
                         elif grading_category in ("correct", "slight clarification") and stage_type == "challenge":
                             _complete_challenge_for_student(student_id, objective_id)
                             _trigger_report_stats_update(student_id, ctx["thread"].get("unitId", ""))
+                        elif is_finished and objective_kind == "capstone" and stage_type == "challenge":
+                            _complete_challenge_for_student(student_id, objective_id)
+                            _trigger_report_stats_update(student_id, ctx["thread"].get("unitId", ""))
 
-    return resp(200, {"studentMessage": student_msg, "tutorMessage": tutor_msg})
+    return resp(200, {"studentMessage": None if capstone_init else student_msg, "tutorMessage": tutor_msg})
 
 
 # ---- Instructor routes ----
@@ -3930,6 +3993,45 @@ def _handle_generate_objectives_async(payload: dict):
                             print(f"[clarifying-questions] generate-flow failed for {queue_item_id}: {e}")
 
             knowledge_order += 1
+
+    # Create one capstone objective per unit (unlocked after all skills complete)
+    capstone_obj_id = str(uuid.uuid4())
+    capstone_item = {
+        "id": capstone_obj_id,
+        "unitId": unit_id,
+        "title": "Capstone",
+        "description": "Teach-back capstone: explain a concept to a curious learner",
+        "kind": "capstone",
+        "order": 9999,  # always last
+        "enabled": True,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    objectives_tbl.put_item(Item=capstone_item)
+
+    # Single challenge stage for the capstone (prompt generated dynamically at chat time)
+    capstone_stage_id = str(uuid.uuid4())
+    capstone_stage = {
+        "id": capstone_stage_id,
+        "itemId": capstone_obj_id,
+        "stageType": "challenge",
+        "order": 0,
+        "prompt": "Teach the concept to your curious classmate!",
+        "createdAt": now,
+    }
+    stages_tbl.put_item(Item=capstone_stage)
+
+    capstone_thread_id = f"thread-{capstone_obj_id}"
+    capstone_thread = {
+        "id": capstone_thread_id,
+        "courseId": course_id,
+        "unitId": unit_id,
+        "objectiveId": capstone_obj_id,
+        "title": "Capstone",
+        "kind": "capstone",
+        "lastMessageAt": now,
+    }
+    threads_tbl.put_item(Item=capstone_thread)
 
     # Mark unit as ready (keep identifiedKnowledge so teacher can edit later)
     units_tbl.update_item(

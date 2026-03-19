@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "Tutor_Response": {
+      "type": "string",
+      "description": "The curious student's response — a question, expression of confusion, or grateful acknowledgment if the teaching is complete."
+    },
+    "Is_Finished": {
+      "type": "boolean",
+      "description": "True only when the student has clearly and correctly taught the full concept, especially the areas they previously struggled with."
+    }
+  },
+  "required": ["Tutor_Response", "Is_Finished"]
+}
