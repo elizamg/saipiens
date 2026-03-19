@@ -11,8 +11,7 @@
  *  - API client: apiFetch behavior, error handling
  */
 
-import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 // ── Mock cognitoAuth before importing anything ──
@@ -67,7 +66,7 @@ describe('ProgressBar', () => {
   });
 
   it('clamps percent to 0 when given negative value', () => {
-    const { container } = render(<ProgressBar percent={-10} showLabel />);
+    render(<ProgressBar percent={-10} showLabel />);
     expect(screen.getByText('0%')).toBeInTheDocument();
   });
 
@@ -343,10 +342,6 @@ import type {
   Student,
   Course,
   Unit,
-  Objective,
-  StudentObjectiveProgress,
-  ThreadWithProgress,
-  KnowledgeQueueItem,
 } from '../types/domain';
 
 describe('Domain types', () => {
