@@ -63,6 +63,163 @@ Sapiens is a process-first, AI-driven learning platform built for K-12 classroom
 
 ---
 
+# Sprint 4 Progress
+
+## Live App
+
+**App Link:**
+[https://sapiens-pp4l.vercel.app/](https://sapiens-pp4l.vercel.app/)
+
+Or run locally:
+
+```bash
+git clone https://github.com/elizamg/sapiens.git
+cd sapiens/frontend
+npm install
+npm run dev
+````
+
+## Testing Instructions
+
+### Testing The Student Flow
+
+1. Click **Get Started**
+2. Sign up or log in (real Cognito accounts — no more mock data)
+3. Enter a course → select a unit
+4. Try a **Knowledge** question — submit an answer, see AI grading + feedback, then watch the retry queue if you answer incorrectly
+5. Try a **Skill** walkthrough — the AI tutor walks you through the problem step-by-step
+6. Complete the **Challenge** stage — get graded on a 4-category rubric
+7. Watch for confetti on correct answers and celebration banners on unit completion
+8. Check the progress stats on your homepage
+
+### Testing The Teacher Flow
+
+1. Log in as an instructor (account must be in the `instructors` Cognito group)
+2. Create a new course → add students → upload a PDF
+3. Review AI-identified learning objectives → select which to generate
+4. Watch the processing status poll until curriculum is ready
+5. Edit unit: enable/disable objectives, set deadlines
+6. View grading reports per unit — see AI-generated summaries of student progress
+
+### Running The Test Suites
+
+```bash
+# Backend integration tests (88 tests, ~90s)
+cd backend && python test_suite.py
+
+# Backend edge case & security tests (37 tests)
+python test_edge_cases.py
+
+# LLM output quality tests (24 tests, uses Gemini-as-judge)
+export SAIPIENS_GEMINI_API_KEY=<your-key>
+python test_llm_quality.py
+
+# Frontend component tests
+cd frontend && npx vitest run
+```
+
+Full test results: [TEST_REPORT.md](TEST_REPORT.md) (243 tests across all suites)
+
+## Team Updates
+
+### Brooke — Backend Integration, Performance, Testing, Security, and Documentation
+
+This sprint I shipped the full end-to-end pipeline, hardened security, built out gamification and performance features, wrote comprehensive test suites, and documented the entire system. Here's a summary:
+
+#### 1. End-to-End Curriculum Pipeline
+
+Connected the unit ingestion pipeline from upload to question generation:
+
+- Pre-signed S3 uploads bypass the API Gateway 10MB limit
+- Async Lambda self-invocation handles long-running AI processing (up to 5 min)
+- Frontend polls `GET /units/{unitId}/upload-status` until ready
+- Added file conversion support and stored file metadata on Unit records
+- Created ChatThreads and KnowledgeQueueItems automatically during curriculum generation
+
+Commits: `bd43a6c`, `e955c06`, `81ca042`, `16cfe92`, `f59013b`, `cf0ace0`, `30f69a4`
+
+#### 2. Student AI Pipeline Wiring
+
+Wired the full student-facing AI experience:
+
+| Feature | What it does |
+|---------|--------------|
+| Knowledge questions | AI grades answers, generates retry questions on incorrect, manages the queue |
+| Skill walkthroughs | AI tutor walks through problems step-by-step via the scaffolded pipeline |
+| Challenge grading | 4-category rubric (correct / slight clarification / small mistake / incorrect) |
+| Multi-turn knowledge chat | Students get 2 answer attempts with clarifying questions before final grading |
+| Clarifying questions | AI generates "Ask a question" pills — now generated eagerly with zero extra latency |
+
+Commits: `bc7ada4`, `08955b7`, `eac5368`, `dc4e687`, `fd15ddf`, `b0a4d25`
+
+#### 3. Teacher Features
+
+- **Grading reports**: Per-unit feedback with AI-generated summaries for both teachers and students (`1541d18`, `7eebe34`, `cb9bcc7`)
+- **Deadline management**: Unit deadlines with on-time/late tracking in grading reports (`4f458a3`, `bf0d12a`, `bfea01f`, `4be9c51`)
+- **Course management**: Soft/hard delete for courses and units, roster filtering, title editing (`4f458a3`)
+- **Objective editing**: Show ungenerated objectives with checkboxes in edit mode, fix section header counts (`6693451`, `e71e381`, `4464246`)
+- **Knowledge topic management**: Enable/disable individual topics, persist knowledge chat messages (`a5d3fb6`)
+
+#### 4. Gamification & UX Polish
+
+- Progress stats on homepage: skills mastered, knowledge correct, units completed, streak counter
+- Confetti animation on correct answers and challenge completions
+- Celebration banners on unit completion
+- Custom SVG icons replacing emojis throughout the UI
+- Course color-coding with 9 subject-specific colors
+- Animated number counters on stat cards, progress circle glow animations
+
+Commits: `a1210f5`, `be2a1ca`, `a10a602`
+
+#### 5. Performance Optimizations
+
+- **Parallel DB calls** via `ThreadPoolExecutor` — saves 200–600ms per request in chat, knowledge grading, and clarify handlers
+- **Async retry question generation** — incorrect knowledge answers return immediately instead of blocking on a second AI call
+- **Eager clarifying question generation** — pills generated in parallel with grading, ready on arrival
+- **Async grading report generation** — frontend polls instead of blocking
+
+Commits: `65c26b6`, `fd15ddf`, `b0a4d25`
+
+#### 6. Security Hardening
+
+- Removed dev auth headers from production (`DEV_AUTH_ENABLED=false`)
+- Added enrollment-based validation — students can only access courses they're enrolled in
+- Frontend 401 handling with automatic redirect to login
+- Profile/settings endpoints for account management
+
+Commit: `b8e8a9c`
+
+#### 7. Comprehensive Test Suites
+
+| Suite | Tests | What it covers |
+|-------|-------|---------------|
+| Backend integration ([test_suite.py](backend/test_suite.py)) | 88 | All API routes, error handling, AI pipelines |
+| Edge cases & security ([test_edge_cases.py](backend/test_edge_cases.py)) | 37 | Auth, input validation, path traversal, cross-student isolation, CORS |
+| LLM output quality ([test_llm_quality.py](backend/test_llm_quality.py)) | 24 | Walkthrough tutoring quality, grading accuracy, safety boundaries, prompt injection resistance |
+| Frontend components ([components.test.tsx](frontend/src/test/components.test.tsx)) | 41 | ProgressBar, DualProgressBar, ProgressCircle, MessageBubble, domain types |
+| Auth unit tests | 22 | Cognito service, AuthContext, RequireRole guards |
+| **Total** | **212+** | |
+
+LLM tests use **Gemini-as-judge**: a separate Gemini call evaluates whether the tutor's response meets quality criteria (pedagogical tone, no answer leakage, format compliance).
+
+Full report: [TEST_REPORT.md](TEST_REPORT.md)
+
+#### 8. Documentation
+
+Wrote comprehensive documentation covering the full system:
+
+| Document | Description |
+|----------|-------------|
+| [Frontend README](frontend/README.md) | Tech stack, setup, routing, API integration, design system |
+| [Frontend Architecture](frontend/ARCHITECTURE.md) | Component hierarchy, data flow, state management decisions |
+| [AI Pipelines](backend/AI_PIPELINES.md) | Curriculum generation, tutoring, grading — flow diagrams, prompts, design rationale |
+| [Deployment Guide](DEPLOYMENT.md) | AWS infrastructure, env vars, Lambda deploy, Cognito setup, production checklist |
+| [Development Guide](DEVELOPMENT.md) | Local setup, testing workflows, project structure, documentation index |
+| [Backend Master Doc](backend/sapiens_backend_master_document.md) | Architecture overview, auth model, data models (updated) |
+| [API Routes](backend/route_schema.md) | Full 52+ endpoint reference (updated) |
+
+---
+
 # Sprint 3 Progress
 ## Live App
 
