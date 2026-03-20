@@ -163,15 +163,40 @@ class Gen_Curriculum_Pipeline:
 
             return await call_api()
 
-        task_metadata = [
-            {"knowledge_type": k["type"], "knowledge_description": k["description"]}
-            for k in identified_knowledge
-            for _ in range(QUESTIONS_PER_KNOWLEDGE)
-        ]
+        # Skills get 2 questions (walkthrough + challenge), info items get 1
+        SKILL_QUESTIONS = 2
+        task_metadata = []
+        for k in identified_knowledge:
+            count = SKILL_QUESTIONS if k["type"] == "skill" else QUESTIONS_PER_KNOWLEDGE
+            for _ in range(count):
+                task_metadata.append({"knowledge_type": k["type"], "knowledge_description": k["description"]})
+
         tasks = [create_question(m["knowledge_type"], m["knowledge_description"]) for m in task_metadata]
         question_texts = await asyncio.gather(*tasks)
         print(f"\t> Generated {len(question_texts)} questions in parallel!")
-        return [{**meta, "question": q} for meta, q in zip(task_metadata, question_texts)]
+
+        # Group skill questions in pairs for walkthrough/challenge
+        results = []
+        i = 0
+        for k in identified_knowledge:
+            count = SKILL_QUESTIONS if k["type"] == "skill" else QUESTIONS_PER_KNOWLEDGE
+            if k["type"] == "skill" and count == SKILL_QUESTIONS:
+                results.append({
+                    "knowledge_type": k["type"],
+                    "knowledge_description": k["description"],
+                    "question": question_texts[i],
+                    "walkthrough_question": question_texts[i],
+                    "challenge_question": question_texts[i + 1],
+                })
+            else:
+                results.append({
+                    "knowledge_type": k["type"],
+                    "knowledge_description": k["description"],
+                    "question": question_texts[i],
+                })
+            i += count
+
+        return results
 
     def download_test_textbook(self):
         self.download_pdf(TEST_TEXTBOOK_CHAPTER_DOWNLOAD_URL, TEST_TEXTBOOK_CHAPTER_PATH)
