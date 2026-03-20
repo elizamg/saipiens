@@ -15,7 +15,7 @@ through an AI-enabled homework system."</i></p>
 
 # TA Instructions
 
-**Live App:** [https://sapiens-pp4l.vercel.app/](https://sapiens-pp4l.vercel.app/)
+**Live App:** [https://saipiens-chi.vercel.app/](https://saipiens-chi.vercel.app/)
 
 This section walks through the full teacher and student experience end-to-end using pre-configured test accounts.
 
@@ -411,6 +411,7 @@ Wrote comprehensive documentation covering the full system:
 
    7. Deck and Poster
     Spearheaded deck and poster
+   8. Creating test accounts and courses for demo
 
 
 
