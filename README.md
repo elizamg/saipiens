@@ -46,7 +46,7 @@ This section walks through the full teacher and student experience end-to-end us
 
 1. From the course page, click **New Unit**
 2. When prompted, give the unit a name (e.g. "Chapter 2")
-3. Upload using this PDF:
+3. Upload using this PDF or one of your choosing:
 
    [https://files-backend.assets.thrillshare.com/documents/asset/uploaded_file/756/Jenkins_Independent_Schools/6a69020c-cc47-4f66-9c0e-01061564cf20/chap_02.pdf?disposition=inline](https://files-backend.assets.thrillshare.com/documents/asset/uploaded_file/756/Jenkins_Independent_Schools/6a69020c-cc47-4f66-9c0e-01061564cf20/chap_02.pdf?disposition=inline)
 
