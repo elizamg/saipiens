@@ -13,6 +13,89 @@ through an AI-enabled homework system."</i></p>
 
 ---
 
+# TA Instructions
+
+**Live App:** [https://sapiens-pp4l.vercel.app/](https://sapiens-pp4l.vercel.app/)
+
+This section walks through the full teacher and student experience end-to-end using pre-configured test accounts.
+
+---
+
+## Step 1 — Teacher Flow (Ms. Gallagher)
+
+**Login credentials:**
+| Field | Value |
+|-------|-------|
+| Email | `ms.gallagher@sapiens.dev` |
+| Password | `Gallagher#2026` |
+| Role | Instructor |
+
+1. Go to the app and click **Get Started**
+2. Click **Log In** and enter the credentials above
+3. You'll land on Ms. Gallagher's instructor dashboard
+
+### Create a Course
+
+1. Click **New Course**
+2. Name it anything (e.g. "AP Chemistry")
+3. Choose a subject icon and color
+4. Add students — search for **Emma Thompson** and add her (along with any others you'd like)
+5. Click **Create Course**
+
+### Upload Curriculum & Generate a Unit
+
+1. From the course page, click **New Unit**
+2. When prompted, give the unit a name (e.g. "Chapter 2")
+3. Upload using this PDF:
+
+   [https://files-backend.assets.thrillshare.com/documents/asset/uploaded_file/756/Jenkins_Independent_Schools/6a69020c-cc47-4f66-9c0e-01061564cf20/chap_02.pdf?disposition=inline](https://files-backend.assets.thrillshare.com/documents/asset/uploaded_file/756/Jenkins_Independent_Schools/6a69020c-cc47-4f66-9c0e-01061564cf20/chap_02.pdf?disposition=inline)
+
+4. The system will process the PDF and extract learning objectives — this takes ~1–2 minutes
+5. Once processing is complete, you'll see a list of AI-identified **knowledge topics** and **skill objectives**
+6. Check or uncheck the objectives you want to include, then click **Generate**
+7. The unit is now live for enrolled students
+
+---
+
+## Step 2 — Student Flow (Emma Thompson)
+
+**Login credentials:**
+| Field | Value |
+|-------|-------|
+| Email | `emma.thompson@sapiens.dev` |
+| Password | `Student#2026` |
+| Role | Student |
+
+1. Go to the app and click **Get Started**
+2. Click **Log In** and enter Emma's credentials
+3. You'll see the course Ms. Gallagher just created on the homepage
+
+### Explore the Unit
+
+1. Click into the course → select the unit you uploaded
+2. **Knowledge questions** — these are factual recall items. Submit an answer, see AI grading, and observe the retry queue if you answer incorrectly
+3. **Skills (Walkthrough)** — the AI tutor walks through the problem step-by-step with you. Use the "Ask a question" button to enter clarify mode and ask follow-ups
+4. **Skills (Challenge)** — attempt the problem independently. You'll receive graded feedback on a 4-category rubric
+5. **Capstone** — unlocks after completing all skill walkthroughs and challenges. The AI asks you to explain the concept back in your own words
+6. Watch for confetti on correct answers and a celebration banner when the full unit is complete
+
+---
+
+## Step 3 — Test Feedback
+
+### Student Side
+1. Still logged in as Emma, navigate to **Feedback** in the sidebar
+2. Select the course → select the unit
+3. You'll see Sam's AI-generated summary of Emma's performance and any teacher comments
+
+### Teacher Side
+1. Log back in as Ms. Gallagher
+2. Navigate to **Feedback** in the sidebar
+3. Select the course → select a student → select the unit
+4. You'll see the same AI-generated grading report from the teacher's perspective, including per-objective breakdowns and deadline status
+
+---
+
 # App Overview
 
 Sapiens is a process-first, AI-driven learning platform built for K-12 classrooms. It transforms teacher-provided curriculum documents into adaptive, AI-tutored homework assignments that prioritize student reasoning over answer production.
