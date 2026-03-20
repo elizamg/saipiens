@@ -621,7 +621,7 @@ def handle_list_stages_for_objective(event, objective_id: str):
         scan_forward=True,  # order asc
     )
 
-    # Lazily generate suggestedQuestions for challenge stages that are missing them
+    # Async-backfill suggestedQuestions for challenge stages missing them (non-blocking)
     challenge_needs_backfill = [
         s for s in items
         if s.get("stageType") == "challenge" and not s.get("suggestedQuestions") and s.get("prompt")
@@ -629,26 +629,23 @@ def handle_list_stages_for_objective(event, objective_id: str):
     if challenge_needs_backfill:
         student_id = effective_student_id(event)
         if student_id:
-            # Look up unitId from the objective
             obj = dynamodb.Table(T["OBJECTIVES"]).get_item(Key={"id": objective_id}).get("Item")
             unit_id = obj.get("unitId", "") if obj else ""
             if unit_id:
                 try:
-                    from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
-                    subject, grade = _get_unit_context(unit_id, student_id)
-                    for stage in challenge_needs_backfill:
-                        try:
-                            cqs = gen_clarifying_questions(subject, grade, stage["prompt"])
-                            stages_tbl.update_item(
-                                Key={"id": stage["id"]},
-                                UpdateExpression="SET suggestedQuestions = :sq",
-                                ExpressionAttributeValues={":sq": cqs},
-                            )
-                            stage["suggestedQuestions"] = cqs
-                        except Exception as e:
-                            print(f"[clarifying-questions] backfill failed for stage {stage['id']}: {e}")
+                    async_payload = {
+                        "_internal": "backfill-skill-clarifying-questions",
+                        "unitId": unit_id,
+                        "studentId": student_id,
+                        "stages": [{"id": s["id"], "prompt": s["prompt"]} for s in challenge_needs_backfill],
+                    }
+                    lambda_client.invoke(
+                        FunctionName=SELF_FUNCTION_NAME,
+                        InvocationType="Event",
+                        Payload=json.dumps(async_payload).encode(),
+                    )
                 except Exception as e:
-                    print(f"[clarifying-questions] stage backfill setup failed: {e}")
+                    print(f"[clarifying-questions] async backfill trigger failed: {e}")
 
     return resp(200, items)
 
@@ -2051,18 +2048,39 @@ def handle_new_attempt(event, thread_id: str):
         return resp(404, {"error": f"No {stage_type} stage found for this objective"})
 
     max_order = max((int(s.get("order") or 0) for s in stages), default=0)
+    new_stage_id = str(uuid.uuid4())
     new_stage = {
-        "id": str(uuid.uuid4()),
+        "id": new_stage_id,
         "itemId": objective_id,
         "stageType": stage_type,
         "order": max_order + 1,
-        "prompt": template.get("prompt", ""),
+        "prompt": template.get("prompt", ""),  # placeholder until async gen completes
         "createdAt": iso_now(),
     }
-    if template.get("suggestedQuestions"):
-        new_stage["suggestedQuestions"] = template["suggestedQuestions"]
 
     dynamodb.Table(T["ITEM_STAGES"]).put_item(Item=new_stage)
+
+    # Async-generate a fresh question for this new attempt (same skill, different question)
+    course_id = thread.get("courseId")
+    if course_id:
+        try:
+            course = dynamodb.Table(T["COURSES"]).get_item(Key={"id": course_id}).get("Item") or {}
+            objective = dynamodb.Table(T["OBJECTIVES"]).get_item(Key={"id": objective_id}).get("Item") or {}
+            async_payload = {
+                "_internal": "generate-retry-skill-question",
+                "stageId": new_stage_id,
+                "skillDescription": objective.get("description", ""),
+                "grade": course.get("gradeLevel", "Unknown Grade"),
+                "subject": course.get("subject") or course.get("title", "Unknown Subject"),
+            }
+            lambda_client.invoke(
+                FunctionName=SELF_FUNCTION_NAME,
+                InvocationType="Event",
+                Payload=json.dumps(async_payload).encode(),
+            )
+        except Exception as e:
+            print(f"[new-attempt] Failed to trigger async skill question gen: {e}")
+
     return resp(200, new_stage)
 
 
@@ -4005,6 +4023,59 @@ def _handle_generate_retry_question_async(payload: dict):
     print(f"[async] Created retry question {retry_id} for student={student_id} topic={topic_id}")
 
 
+def _handle_backfill_skill_clarifying_questions_async(payload: dict):
+    """Async handler — generates clarifying questions for skill challenge stages missing them."""
+    unit_id = payload["unitId"]
+    student_id = payload["studentId"]
+    stages = payload["stages"]
+
+    try:
+        from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+        subject, grade = _get_unit_context(unit_id, student_id)
+        stages_tbl = dynamodb.Table(T["ITEM_STAGES"])
+
+        for stage in stages:
+            try:
+                cqs = gen_clarifying_questions(subject, grade, stage["prompt"])
+                stages_tbl.update_item(
+                    Key={"id": stage["id"]},
+                    UpdateExpression="SET suggestedQuestions = :sq",
+                    ExpressionAttributeValues={":sq": cqs},
+                )
+                print(f"[async] Backfilled skill clarifying questions for stage {stage['id']}")
+            except Exception as e:
+                print(f"[async skill-clarifying-questions] backfill failed for {stage['id']}: {e}")
+    except Exception as e:
+        print(f"[async skill-clarifying-questions] error: {e}")
+
+
+def _handle_generate_retry_skill_question_async(payload: dict):
+    """Async handler — generates a new skill question for a retry attempt."""
+    stage_id = payload["stageId"]
+    skill_description = payload["skillDescription"]
+    grade = payload["grade"]
+    subject = payload["subject"]
+
+    try:
+        from gen_curriculum_pipeline import Gen_Curriculum_Pipeline
+        pipeline = Gen_Curriculum_Pipeline()
+        new_question = pipeline.create_skill_question(subject=subject, grade=grade, description=skill_description)
+    except Exception as e:
+        print(f"[async retry skill question gen error] stage={stage_id}: {e}")
+        return
+
+    # Update the stage's prompt with the freshly generated question
+    try:
+        dynamodb.Table(T["ITEM_STAGES"]).update_item(
+            Key={"id": stage_id},
+            UpdateExpression="SET prompt = :p",
+            ExpressionAttributeValues={":p": new_question},
+        )
+        print(f"[async] Updated stage {stage_id} with new skill question")
+    except Exception as e:
+        print(f"[async retry skill question update error] stage={stage_id}: {e}")
+
+
 def _handle_generate_objectives_async(payload: dict):
     """
     Phase 2 async handler — generates questions for teacher-selected objectives
@@ -4100,17 +4171,30 @@ def _handle_generate_objectives_async(payload: dict):
             }
             objectives_tbl.put_item(Item=obj_item)
 
+            # Use distinct questions for walkthrough vs challenge
+            walkthrough_q = k.get("walkthrough_question") or question_text or description
+            challenge_q = k.get("challenge_question") or question_text or description
+
+            created_stage_ids = {}
             for stage_order, stage_type in enumerate(STAGE_TYPES):
+                if stage_type == "walkthrough":
+                    prompt = walkthrough_q
+                elif stage_type == "challenge":
+                    prompt = challenge_q
+                else:
+                    prompt = walkthrough_q  # begin stage uses walkthrough question
+
                 stage_id = str(uuid.uuid4())
                 stage_item = {
                     "id": stage_id,
                     "itemId": obj_id,
                     "stageType": stage_type,
                     "order": stage_order,
-                    "prompt": question_text or description,
+                    "prompt": prompt,
                     "createdAt": now,
                 }
                 stages_tbl.put_item(Item=stage_item)
+                created_stage_ids[stage_type] = stage_id
 
             if question_text:
                 q_id = str(uuid.uuid4())
@@ -4135,6 +4219,44 @@ def _handle_generate_objectives_async(payload: dict):
                 "lastMessageAt": now,
             }
             threads_tbl.put_item(Item=thread_item)
+
+            # Pre-generate first walkthrough tutor message so it's ready before the student opens
+            try:
+                from scaffolded_question_pipeline import scaffolded_question_step
+                result = scaffolded_question_step(
+                    subject=subject, grade=grade, question=walkthrough_q, conversation=[],
+                )
+                if result and result.get("Tutor_Response"):
+                    wt_stage_id = created_stage_ids.get("walkthrough")
+                    if wt_stage_id:
+                        msgs_tbl = dynamodb.Table(T["CHAT_MESSAGES"])
+                        msgs_tbl.put_item(Item={
+                            "id": str(uuid.uuid4()),
+                            "threadId": thread_id,
+                            "stageId": wt_stage_id,
+                            "role": "tutor",
+                            "content": result["Tutor_Response"],
+                            "createdAt": now,
+                            "metadata": {"isPreGenerated": True},
+                        })
+                        print(f"[pre-gen] Walkthrough first message for objective {obj_id}")
+            except Exception as e:
+                print(f"[pre-gen] Walkthrough message failed for {obj_id}: {e}")
+
+            # Pre-generate clarifying questions for the challenge stage
+            try:
+                from backend_code.gen_clarifying_questions_pipeline import gen_clarifying_questions
+                ch_stage_id = created_stage_ids.get("challenge")
+                if ch_stage_id and challenge_q:
+                    cqs = gen_clarifying_questions(subject, grade, challenge_q)
+                    stages_tbl.update_item(
+                        Key={"id": ch_stage_id},
+                        UpdateExpression="SET suggestedQuestions = :sq",
+                        ExpressionAttributeValues={":sq": cqs},
+                    )
+                    print(f"[pre-gen] Challenge clarifying questions for objective {obj_id}")
+            except Exception as e:
+                print(f"[pre-gen] Challenge clarifying questions failed for {obj_id}: {e}")
 
             skill_order += 1
 
@@ -4573,6 +4695,12 @@ def handler(event, context):
         return
     if isinstance(event, dict) and event.get("_internal") == "generate-retry-question":
         _handle_generate_retry_question_async(event)
+        return
+    if isinstance(event, dict) and event.get("_internal") == "generate-retry-skill-question":
+        _handle_generate_retry_skill_question_async(event)
+        return
+    if isinstance(event, dict) and event.get("_internal") == "backfill-skill-clarifying-questions":
+        _handle_backfill_skill_clarifying_questions_async(event)
         return
     if isinstance(event, dict) and event.get("_internal") == "backfill-clarifying-questions":
         _handle_backfill_clarifying_questions_async(event)
